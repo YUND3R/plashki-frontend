@@ -18,6 +18,7 @@ const loading = ref(false)
 const saving = ref(false)
 const error = ref<string | null>(null)
 const saveMessage = ref<string | null>(null)
+const AUTH_REQUIRED_TEXT = 'Авторизуйтесь или зарегистрируйтесь.'
 
 const designs = ref<LobbyOverlayDesignOption[]>([])
 const selectedDesign = ref('')
@@ -29,6 +30,8 @@ const canSave = computed(() => {
   if (saving.value) return false
   return true
 })
+
+const isAuthRequiredError = computed(() => (error.value ?? '').trim() === AUTH_REQUIRED_TEXT)
 
 function subscriptionLabel(raw: string): string {
   const s = raw.trim().toLowerCase()
@@ -123,7 +126,13 @@ watch(selectedLobbyId, () => {
   <section class="card-design">
     <article class="card-design__panel">
       <p v-if="loading" class="card-design__status">Загружаем доступные дизайны…</p>
-      <p v-else-if="error" class="card-design__status card-design__status--error" role="alert">{{ error }}</p>
+      <div v-else-if="error" class="card-design__status card-design__status--error" role="alert">
+        <span>{{ error }}</span>
+        <span v-if="isAuthRequiredError" class="card-design__auth-actions">
+          <RouterLink class="card-design__auth-link card-design__auth-link--ghost" to="/login">Вход</RouterLink>
+          <RouterLink class="card-design__auth-link" to="/register">Регистрация</RouterLink>
+        </span>
+      </div>
 
       <div v-else-if="designs.length" class="card-design__list" role="radiogroup" aria-label="Доступные дизайны карточек">
         <label
@@ -184,7 +193,40 @@ watch(selectedLobbyId, () => {
 }
 
 .card-design__status--error {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.6rem;
+  text-align: center;
   color: #b91c1c;
+}
+
+.card-design__auth-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.32rem 0.62rem;
+  border: 1px solid #fca5a5;
+  border-radius: 8px;
+  background: #fff1f2;
+  color: #9f1239;
+  font-size: 0.8rem;
+  text-decoration: none;
+}
+
+.card-design__auth-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.card-design__auth-link--ghost {
+  border-color: #fecaca;
+  background: #ffffff;
+}
+
+.card-design__auth-link:hover {
+  background: #ffe4e6;
 }
 
 .card-design__list {

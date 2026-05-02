@@ -71,12 +71,13 @@ watch(token, loadProfile, { immediate: true })
 <template>
   <section class="account" :class="{ 'account--signed': token }">
     <div v-if="!token" class="account__guest">
+      <p class="account__emoji" aria-hidden="true">😔</p>
       <p class="account__message">Вы не авторизованы или не зарегистрированы.</p>
       <div class="account__actions">
-        <RouterLink class="account__btn account__btn--primary" :to="{ name: 'register' }">
+        <RouterLink class="account__btn account__btn--outline" :to="{ name: 'register' }">
           Регистрация
         </RouterLink>
-        <RouterLink class="account__btn account__btn--outline" :to="{ name: 'login' }">
+        <RouterLink class="account__btn account__btn--primary" :to="{ name: 'login' }">
           Вход
         </RouterLink>
       </div>
@@ -156,7 +157,7 @@ watch(token, loadProfile, { immediate: true })
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
   gap: 1.25rem;
   min-height: min(420px, calc(100svh - 8rem));
   text-align: center;
@@ -182,7 +183,14 @@ watch(token, loadProfile, { immediate: true })
   flex-direction: column;
   align-items: center;
   gap: 1.25rem;
-  max-width: 360px;
+  max-width: none;
+  transform: translateY(10px);
+}
+
+.account__emoji {
+  margin: 0;
+  font-size: 2rem;
+  line-height: 1;
 }
 
 .account__message {
@@ -191,6 +199,7 @@ watch(token, loadProfile, { immediate: true })
   font-weight: 500;
   color: #374151;
   line-height: 1.5;
+  white-space: nowrap;
 }
 
 .account__actions {

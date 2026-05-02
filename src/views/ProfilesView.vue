@@ -262,12 +262,13 @@ function cardPhoto(c: PlayerCard): string {
     </Teleport>
 
     <div v-if="!token" class="profiles__guest">
-      <p class="profiles__guest-text">Войдите, чтобы видеть и создавать профили игроков.</p>
+      <p class="profiles__guest-emoji" aria-hidden="true">😔</p>
+      <p class="profiles__guest-text">Вы не авторизованы или не зарегистрированы.</p>
       <div class="profiles__guest-actions">
-        <RouterLink class="profiles__link profiles__link--primary" :to="{ name: 'login' }">Вход</RouterLink>
         <RouterLink class="profiles__link profiles__link--outline" :to="{ name: 'register' }">
           Регистрация
         </RouterLink>
+        <RouterLink class="profiles__link profiles__link--primary" :to="{ name: 'login' }">Вход</RouterLink>
       </div>
     </div>
 
@@ -372,33 +373,45 @@ function cardPhoto(c: PlayerCard): string {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1rem;
-  padding: 2rem 0;
+  justify-content: center;
+  gap: 1.25rem;
+  max-width: none;
+  min-height: min(420px, calc(100svh - 8rem));
+  margin: 0 auto;
+  padding: 0;
   text-align: center;
+}
+
+.profiles__guest-emoji {
+  margin: 0;
+  font-size: 2rem;
+  line-height: 1;
 }
 
 .profiles__guest-text {
   margin: 0;
-  font-size: 0.9375rem;
-  color: #6b7280;
-  max-width: 22rem;
-  line-height: 1.45;
+  font-size: 1.0625rem;
+  font-weight: 500;
+  color: #374151;
+  line-height: 1.5;
+  white-space: nowrap;
 }
 
 .profiles__guest-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  align-items: center;
   justify-content: center;
+  gap: 0.65rem;
 }
 
 .profiles__link {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 7.5rem;
-  padding: 0.5rem 1rem;
-  font-size: 0.875rem;
+  min-width: 8.5rem;
+  padding: 0.55rem 1.15rem;
+  font-size: 0.9375rem;
   font-weight: 500;
   text-decoration: none;
   border-radius: 8px;
@@ -425,6 +438,7 @@ function cardPhoto(c: PlayerCard): string {
 
 .profiles__link--outline:hover {
   background: #f9fafb;
+  border-color: #9ca3af;
 }
 
 .profiles__status {

@@ -201,11 +201,16 @@ onUnmounted(() => {
             <template v-if="!token">
               <div class="app-modal__body app-modal__body--tight create-lobby-modal__body">
                 <p class="create-lobby-modal__hint">
-                  Войдите в аккаунт, чтобы создать лобби и выбрать игроков из «Моих составов».
+                  Войдите в аккаунт, чтобы создать лобби и выбрать игроков из раздела «Мои игроки».
                 </p>
-                <RouterLink class="create-lobby-modal__link" :to="{ name: 'login' }" @click="close">
-                  Вход
-                </RouterLink>
+                <div class="create-lobby-modal__auth-actions">
+                  <RouterLink class="create-lobby-modal__auth-btn create-lobby-modal__auth-btn--primary" :to="{ name: 'login' }" @click="close">
+                    Вход
+                  </RouterLink>
+                  <RouterLink class="create-lobby-modal__auth-btn create-lobby-modal__auth-btn--outline" :to="{ name: 'register' }" @click="close">
+                    Регистрация
+                  </RouterLink>
+                </div>
               </div>
             </template>
 
@@ -427,6 +432,51 @@ onUnmounted(() => {
 
 .create-lobby-modal__link:hover {
   text-decoration: underline;
+}
+
+.create-lobby-modal__auth-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.55rem;
+  margin-top: 0.75rem;
+}
+
+.create-lobby-modal__auth-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 7.25rem;
+  padding: 0.48rem 0.95rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  box-sizing: border-box;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.create-lobby-modal__auth-btn--primary {
+  color: #ffffff;
+  background: #2f6feb;
+  border-color: #2f6feb;
+}
+
+.create-lobby-modal__auth-btn--primary:hover {
+  background: #2563d4;
+  border-color: #2563d4;
+}
+
+.create-lobby-modal__auth-btn--outline {
+  color: #2f6feb;
+  background: #ffffff;
+  border-color: #d1d5db;
+}
+
+.create-lobby-modal__auth-btn--outline:hover {
+  background: #f9fafb;
+  border-color: #9ca3af;
 }
 
 .create-lobby-modal__field {

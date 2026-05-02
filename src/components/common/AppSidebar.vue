@@ -108,9 +108,6 @@ const streamSection = [
       </RouterLink>
     </nav>
 
-    <div class="sidebar__footer">
-      <button type="button" class="sidebar__theme-pill">Классический</button>
-    </div>
   </aside>
 </template>
 
@@ -307,42 +304,6 @@ const streamSection = [
   padding: 0.55rem 0.35rem;
 }
 
-.sidebar__footer {
-  margin-top: auto;
-  padding: 1rem 0.85rem 1.25rem;
-}
-
-.sidebar--collapsed .sidebar__footer {
-  display: flex;
-  justify-content: center;
-  padding-inline: 0.35rem;
-}
-
-.sidebar__theme-pill {
-  display: inline-block;
-  width: 100%;
-  padding: 0.45rem 0.65rem;
-  border: none;
-  border-radius: 6px;
-  background: #e8f0fe;
-  color: #1a56c8;
-  font-size: 0.75rem;
-  font-weight: 500;
-  font-family: inherit;
-  cursor: pointer;
-  text-align: center;
-}
-
-.sidebar__theme-pill:hover {
-  background: #dbe8fd;
-}
-
-.sidebar--collapsed .sidebar__theme-pill {
-  width: auto;
-  padding: 0.45rem 0.4rem;
-  font-size: 0.65rem;
-}
-
 .sidebar--mobile-drawer {
   width: 100%;
   min-height: 100%;
@@ -383,9 +344,6 @@ const streamSection = [
     font-size: 0.625rem;
   }
 
-  .sidebar__footer {
-    padding: 0.85rem 0.65rem 1rem;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

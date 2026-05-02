@@ -45,6 +45,16 @@ function joinBase(path: string): string {
   return `${base}${p}`
 }
 
+/** Нормализуем «технические» auth-сообщения бэка в понятный текст для UI. */
+function normalizeApiErrorMessage(rawMessage: string): string {
+  const message = rawMessage.trim()
+  if (!message) return message
+  if (/Authorization:\s*Bearer\s*(<token>|&lt;token&gt;)/i.test(message)) {
+    return 'Авторизуйтесь или зарегистрируйтесь.'
+  }
+  return message
+}
+
 /** Текст ошибки из тела ответа (FastAPI: `{ "detail": "..." }` или список валидации). */
 function messageFromErrorBody(body: string): string {
   const raw = body.trim()
@@ -92,7 +102,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   const res = await fetch(joinBase(path), { ...init, headers })
   if (!res.ok) {
     const text = await res.text()
-    const message = text ? messageFromErrorBody(text) : `${res.status} ${res.statusText}`
+    const message = text ? normalizeApiErrorMessage(messageFromErrorBody(text)) : `${res.status} ${res.statusText}`
     throw new ApiError(res.status, message)
   }
   return parseSuccessBody<T>(res)
@@ -133,7 +143,7 @@ export async function apiFetchFormData<T>(
   })
   if (!res.ok) {
     const text = await res.text()
-    const message = text ? messageFromErrorBody(text) : `${res.status} ${res.statusText}`
+    const message = text ? normalizeApiErrorMessage(messageFromErrorBody(text)) : `${res.status} ${res.statusText}`
     throw new ApiError(res.status, message)
   }
   return parseSuccessBody<T>(res)
