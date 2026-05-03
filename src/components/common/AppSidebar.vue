@@ -12,8 +12,9 @@ import iconMessage from '@/assets/icons/messege_with_us.svg?url'
 import iconControl from '@/assets/icons/control.svg?url'
 import iconOverlay from '@/assets/icons/overlay.svg?url'
 
-const props = withDefaults(defineProps<{ mobileDrawer?: boolean }>(), {
+const props = withDefaults(defineProps<{ mobileDrawer?: boolean; isAdmin?: boolean }>(), {
   mobileDrawer: false,
+  isAdmin: false,
 })
 
 const collapsed = ref(false)
@@ -42,12 +43,18 @@ const streamSection = [
   { to: '/card-design', label: 'Дизайн карточек', icon: iconDesignCard },
   { to: '/overlay', label: 'Overlay', icon: iconOverlay },
 ] as const
+
+const adminSection = [{ to: '/admin/users', label: 'Пользователи', icon: iconProfiles }] as const
 </script>
 
 <template>
   <aside
     class="sidebar"
-    :class="{ 'sidebar--collapsed': collapsed, 'sidebar--mobile-drawer': props.mobileDrawer }"
+    :class="{
+      'sidebar--collapsed': collapsed,
+      'sidebar--mobile-drawer': props.mobileDrawer,
+      'sidebar--admin': props.isAdmin,
+    }"
   >
     <RouterLink class="sidebar__logo" :to="{ name: 'landing' }" aria-label="plashki — на главную страницу">
       <img
@@ -67,6 +74,10 @@ const streamSection = [
       </span>
       <span v-if="!collapsed" class="sidebar__collapse-text">Свернуть</span>
     </button>
+
+    <div v-if="props.isAdmin && !collapsed" class="sidebar__admin-chip" aria-label="Режим администратора">
+      ADMIN MODE
+    </div>
 
     <nav id="app-sidebar-nav" class="sidebar__nav" aria-label="Основное меню">
       <p v-if="!collapsed" class="sidebar__group">Основное</p>
@@ -106,6 +117,20 @@ const streamSection = [
         </span>
         <span v-if="!collapsed" class="sidebar__label">{{ item.label }}</span>
       </RouterLink>
+
+      <p v-if="props.isAdmin && !collapsed" class="sidebar__group sidebar__group--spaced">Админ</p>
+      <RouterLink
+        v-for="item in props.isAdmin ? adminSection : []"
+        :key="item.to"
+        :to="item.to"
+        class="sidebar__link"
+        :title="collapsed ? item.label : undefined"
+      >
+        <span class="sidebar__icon" aria-hidden="true">
+          <img class="sidebar__icon-img" :src="item.icon" alt="" width="20" height="20" />
+        </span>
+        <span v-if="!collapsed" class="sidebar__label">{{ item.label }}</span>
+      </RouterLink>
     </nav>
 
   </aside>
@@ -126,6 +151,10 @@ const streamSection = [
   border-radius: 12px;
   overflow: hidden;
   transition: width 0.2s ease;
+}
+
+.sidebar--admin {
+  box-shadow: inset 0 0 0 1px #fde68a;
 }
 
 .sidebar--collapsed {
@@ -204,6 +233,19 @@ const streamSection = [
 
 .sidebar__collapse-text {
   line-height: 1;
+}
+
+.sidebar__admin-chip {
+  margin: 0.2rem 0.75rem 0.45rem;
+  padding: 0.35rem 0.55rem;
+  border-radius: 8px;
+  border: 1px solid #f59e0b;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-align: center;
 }
 
 .sidebar__nav {

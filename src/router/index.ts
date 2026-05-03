@@ -116,6 +116,12 @@ const router = createRouter({
           component: () => import('@/views/CardsView.vue'),
         },
         {
+          path: 'admin/users',
+          name: 'admin-users',
+          meta: { title: 'Админ: пользователи' },
+          component: () => import('@/views/AdminUsersView.vue'),
+        },
+        {
           path: 'overlay',
           name: 'overlay',
           meta: { title: 'Overlay' },

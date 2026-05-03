@@ -11,6 +11,7 @@ const {
   avatarFile,
   password,
   passwordRepeat,
+  cookieConsent,
   loading,
   serverError,
   registrationMessage,
@@ -137,6 +138,20 @@ const {
           />
           <span v-if="fieldErrors.passwordRepeat" class="auth__error">{{ fieldErrors.passwordRepeat }}</span>
         </label>
+
+        <label class="auth__consent">
+          <input
+            v-model="cookieConsent"
+            class="auth__consent-checkbox"
+            type="checkbox"
+            name="cookieConsent"
+            required
+          />
+          <span class="auth__consent-text">
+            Я согласен(а) с использованием cookie для авторизации и безопасной работы аккаунта.
+          </span>
+        </label>
+        <span v-if="fieldErrors.cookieConsent" class="auth__error">{{ fieldErrors.cookieConsent }}</span>
 
         <button class="auth__submit" type="submit" :disabled="loading">
           {{ loading ? 'Отправка…' : 'Зарегистрироваться' }}
@@ -281,6 +296,76 @@ const {
 .auth__error {
   font-size: 0.75rem;
   color: #dc2626;
+}
+
+.auth__consent {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: -0.1rem;
+  padding: 0.6rem 0.65rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #f9fafb;
+  transition: border-color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.auth__consent:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.auth__consent-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+  width: 1.05rem;
+  height: 1.05rem;
+  border: 1.5px solid #94a3b8;
+  border-radius: 0.28rem;
+  background: #ffffff;
+  display: inline-grid;
+  place-content: center;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease;
+  flex-shrink: 0;
+}
+
+.auth__consent-checkbox::before {
+  content: '';
+  width: 0.58rem;
+  height: 0.58rem;
+  transform: scale(0);
+  transition: transform 0.14s ease;
+  background: #ffffff;
+  clip-path: polygon(14% 54%, 0 68%, 40% 100%, 100% 26%, 86% 12%, 40% 68%);
+}
+
+.auth__consent-checkbox:checked {
+  border-color: #2f6feb;
+  background: #2f6feb;
+  box-shadow: 0 0 0 1px #2f6feb;
+}
+
+.auth__consent-checkbox:checked::before {
+  transform: scale(1);
+}
+
+.auth__consent-checkbox:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(47, 111, 235, 0.25);
+}
+
+.auth__consent-text {
+  font-size: 0.79rem;
+  color: #374151;
+  line-height: 1.4;
+  user-select: none;
+}
+
+.auth__consent:has(.auth__consent-checkbox:checked) {
+  border-color: #93c5fd;
+  background: #eff6ff;
 }
 
 .auth__submit {

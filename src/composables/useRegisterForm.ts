@@ -1,10 +1,8 @@
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
 import { register, resendVerification } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
 
 export function useRegisterForm() {
-  const router = useRouter()
   const auth = useAuthStore()
 
   const username = ref('')
@@ -14,6 +12,7 @@ export function useRegisterForm() {
   const avatarFile = ref<File | null>(null)
   const password = ref('')
   const passwordRepeat = ref('')
+  const cookieConsent = ref(false)
   const loading = ref(false)
   const serverError = ref<string | null>(null)
   const registrationMessage = ref<string | null>(null)
@@ -51,6 +50,10 @@ export function useRegisterForm() {
     if (!passwordRepeat.value) err.passwordRepeat = 'Повторите пароль'
     else if (passwordRepeat.value !== password.value) err.passwordRepeat = 'Пароли не совпадают'
 
+    if (!cookieConsent.value) {
+      err.cookieConsent = 'Подтвердите согласие с использованием cookie для авторизации'
+    }
+
     fieldErrors.value = err
     return Object.keys(err).length === 0
   }
@@ -78,11 +81,7 @@ export function useRegisterForm() {
         lastName.value.trim(),
         avatarFile.value,
       )
-      if (response.access_token) {
-        auth.syncToken()
-        await router.push({ name: 'dashboard' })
-        return
-      }
+      auth.syncToken()
       emailVerificationRequired.value = true
       registrationMessage.value =
         response.message ?? 'Регистрация прошла успешно. Подтвердите email по ссылке из письма.'
@@ -121,6 +120,7 @@ export function useRegisterForm() {
     avatarFile,
     password,
     passwordRepeat,
+    cookieConsent,
     loading,
     serverError,
     registrationMessage,

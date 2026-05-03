@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { RouterView, useRoute, useRouter } from 'vue-router'
-import { logout as apiLogout } from '@/api/auth'
+import { logout as apiLogout, me } from '@/api/auth'
 import AppSidebar from '@/components/common/AppSidebar.vue'
 import ProfileSettingsModal from '@/components/account/ProfileSettingsModal.vue'
 import LobbyManageHeaderToolbar from '@/components/lobby/LobbyManageHeaderToolbar.vue'
@@ -19,6 +19,9 @@ const profilesUi = useProfilesUiStore()
 const { searchQuery: profilesToolbarSearch, playerCardsTotal: profilesPlayerTotal } = storeToRefs(profilesUi)
 const dashboardUi = useDashboardUiStore()
 const { lobbyFilter } = storeToRefs(dashboardUi)
+const userRole = ref('')
+const userRoleLoading = ref(false)
+const isAdmin = computed(() => userRole.value.trim().toUpperCase() === 'ADMIN')
 
 const FILTER_OPTIONS: { value: DashboardLobbyFilter; label: string }[] = [
   { value: 'all', label: 'Все лобби' },
@@ -43,9 +46,32 @@ const showLobbyManageHeader = computed(() => route.name === 'lobby-manage')
 const isLobbyManageRoute = computed(() => route.name === 'lobby-manage')
 
 async function logout() {
-  apiLogout()
-  auth.syncToken()
-  await router.push({ name: 'account' })
+  try {
+    await apiLogout()
+  } catch {
+    // Даже если сервер вернул ошибку logout, локально выходим из сессии.
+  } finally {
+    auth.setToken(null)
+    userRole.value = ''
+    await router.push({ name: 'account' })
+  }
+}
+
+async function syncUserRole() {
+  if (!token.value) {
+    userRole.value = ''
+    return
+  }
+  if (userRoleLoading.value) return
+  userRoleLoading.value = true
+  try {
+    const profile = await me()
+    userRole.value = typeof profile.role === 'string' ? profile.role : ''
+  } catch {
+    userRole.value = ''
+  } finally {
+    userRoleLoading.value = false
+  }
 }
 
 /** Только узкие экраны (телефоны): оверлей-меню. Планшет 640px+ — боковая панель всегда в потоке, без «гамбургера». */
@@ -82,6 +108,10 @@ watch(
   },
 )
 
+watch(token, () => {
+  void syncUserRole()
+}, { immediate: true })
+
 onMounted(() => {
   mq = window.matchMedia(MOBILE_MQ)
   syncMobile()
@@ -105,7 +135,7 @@ onUnmounted(() => {
       @click="mobileNavOpen = false"
     />
     <div class="shell__sidebar">
-      <AppSidebar :mobile-drawer="isMobile" />
+      <AppSidebar :mobile-drawer="isMobile" :is-admin="isAdmin" />
     </div>
     <div class="shell__main">
       <main class="shell__panel" :class="{ 'shell__panel--flush-border': isLobbyManageRoute }">
@@ -125,7 +155,10 @@ onUnmounted(() => {
             </span>
             <span class="shell__menu-sr">Меню</span>
           </button>
-          <h1 class="shell__title">{{ pageTitle }}</h1>
+          <div class="shell__title-wrap">
+            <h1 class="shell__title">{{ pageTitle }}</h1>
+            <span v-if="isAdmin" class="shell__admin-badge">ADMIN</span>
+          </div>
           <div v-if="showAccountActions" class="shell__header-actions">
             <button type="button" class="shell__logout" @click="logout">Выйти</button>
           </div>
@@ -433,6 +466,29 @@ onUnmounted(() => {
   color: #111827;
   line-height: var(--shell-header-row-h);
   min-width: 0;
+}
+
+.shell__title-wrap {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.shell__admin-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 1.35rem;
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  border: 1px solid #f59e0b;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  line-height: 1;
 }
 
 .shell__body {

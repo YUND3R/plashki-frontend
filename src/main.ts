@@ -3,6 +3,8 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
 import { useAuthStore } from './stores/auth'
+import { me } from './api/auth'
+import { finishAuthBootstrap, markCookieSessionAuthenticated } from './api/client'
 import './styles/main.css'
 
 const app = createApp(App)
@@ -19,4 +21,13 @@ router.afterEach((to) => {
 })
 
 useAuthStore().hydrateFromStorage()
+const auth = useAuthStore()
+void me()
+  .then(() => {
+    markCookieSessionAuthenticated()
+    auth.syncToken()
+  })
+  .catch(() => auth.setToken(null))
+  .finally(() => finishAuthBootstrap())
+
 app.mount('#app')

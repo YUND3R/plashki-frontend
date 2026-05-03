@@ -1,6 +1,10 @@
-const STORAGE_KEY = 'plashki_access_token'
+const COOKIE_SESSION_MARKER = '__cookie_session__'
+const CSRF_COOKIE_NAME = (import.meta.env.VITE_CSRF_COOKIE_NAME ?? 'plashki_csrf_token').trim()
+const CSRF_HEADER_NAME = 'X-CSRF-Token'
 
 let accessToken: string | null = null
+let unauthorizedRedirectInProgress = false
+let authBootstrapInProgress = true
 
 export class ApiError extends Error {
   status: number
@@ -16,27 +20,88 @@ export function getAccessToken(): string | null {
   return accessToken
 }
 
+export function isCookieAuthMode(): boolean {
+  return true
+}
+
+export function markCookieSessionAuthenticated(): void {
+  accessToken = COOKIE_SESSION_MARKER
+}
+
 export function setAccessToken(token: string | null): void {
-  const trimmed = token?.trim() || null
-  accessToken = trimmed
-  if (trimmed) localStorage.setItem(STORAGE_KEY, trimmed)
-  else localStorage.removeItem(STORAGE_KEY)
+  accessToken = token?.trim() ? COOKIE_SESSION_MARKER : null
 }
 
-/** Вызвать при старте приложения (main.ts). */
 export function loadAccessTokenFromStorage(): void {
-  const raw = localStorage.getItem(STORAGE_KEY)
-  accessToken = raw?.trim() || null
-  if (!accessToken) localStorage.removeItem(STORAGE_KEY)
+  accessToken = null
 }
 
-/** Токен для запроса: память + localStorage, синхронизация и trim. */
-function tokenForRequest(): string | null {
-  const fromLs = localStorage.getItem(STORAGE_KEY)?.trim() || null
-  const fromMem = accessToken?.trim() || null
-  const t = fromMem || fromLs
-  if (t && !fromMem && fromLs) accessToken = fromLs
-  return t
+export function finishAuthBootstrap(): void {
+  authBootstrapInProgress = false
+}
+
+function getCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null
+  const cookieName = name.trim()
+  if (!cookieName) return null
+  const row = document.cookie
+    .split('; ')
+    .find((item) => item.startsWith(`${cookieName}=`))
+  if (!row) return null
+  const [, rawValue = ''] = row.split('=')
+  try {
+    return decodeURIComponent(rawValue)
+  } catch {
+    return rawValue
+  }
+}
+
+function methodOf(init?: RequestInit): string {
+  return (init?.method ?? 'GET').trim().toUpperCase()
+}
+
+function isMutatingMethod(method: string): boolean {
+  return method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE'
+}
+
+function withAuthRequestInit(init?: RequestInit): RequestInit {
+  return { ...(init ?? {}), credentials: init?.credentials ?? 'include' }
+}
+
+function shouldSkipUnauthorizedRedirect(apiPath: string): boolean {
+  const p = apiPath.trim().toLowerCase()
+  if (!p) return false
+  return (
+    p.startsWith('/auth/login') ||
+    p.startsWith('/auth/register') ||
+    p.startsWith('/auth/forgot-password') ||
+    p.startsWith('/auth/verify-email') ||
+    p.startsWith('/auth/reset-password') ||
+    p.startsWith('/auth/logout')
+  )
+}
+
+function handleUnauthorized(apiPath: string): void {
+  const hadAuthenticatedSession = accessToken === COOKIE_SESSION_MARKER
+  setAccessToken(null)
+  if (typeof window === 'undefined') return
+  if (!hadAuthenticatedSession) return
+  const normalizedPath = apiPath.trim().toLowerCase()
+  if (authBootstrapInProgress && normalizedPath.startsWith('/auth/me')) return
+  if (shouldSkipUnauthorizedRedirect(apiPath)) return
+  const current = window.location.pathname.toLowerCase()
+  if (
+    current.startsWith('/login') ||
+    current.startsWith('/register') ||
+    current.startsWith('/forgot-password') ||
+    current.startsWith('/reset-password') ||
+    current.startsWith('/verify-email')
+  ) {
+    return
+  }
+  if (unauthorizedRedirectInProgress) return
+  unauthorizedRedirectInProgress = true
+  window.location.assign('/login')
 }
 
 function joinBase(path: string): string {
@@ -95,12 +160,15 @@ async function parseSuccessBody<T>(res: Response): Promise<T> {
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers)
   if (!headers.has('Accept')) headers.set('Accept', 'application/json')
-  const t = tokenForRequest()
-  if (t && !headers.has('Authorization')) {
-    headers.set('Authorization', `Bearer ${t}`)
+  const method = methodOf(init)
+  if (isMutatingMethod(method) && !headers.has(CSRF_HEADER_NAME)) {
+    const csrfToken = getCookie(CSRF_COOKIE_NAME)
+    if (csrfToken) headers.set(CSRF_HEADER_NAME, csrfToken)
   }
-  const res = await fetch(joinBase(path), { ...init, headers })
+  const requestInit = withAuthRequestInit(init)
+  const res = await fetch(joinBase(path), { ...requestInit, headers })
   if (!res.ok) {
+    if (res.status === 401) handleUnauthorized(path)
     const text = await res.text()
     const message = text ? normalizeApiErrorMessage(messageFromErrorBody(text)) : `${res.status} ${res.statusText}`
     throw new ApiError(res.status, message)
@@ -131,17 +199,20 @@ export async function apiFetchFormData<T>(
 ): Promise<T> {
   const headers = new Headers(init?.headers)
   if (!headers.has('Accept')) headers.set('Accept', 'application/json')
-  const t = tokenForRequest()
-  if (t && !headers.has('Authorization')) {
-    headers.set('Authorization', `Bearer ${t}`)
+  const method = methodOf(init)
+  if (isMutatingMethod(method) && !headers.has(CSRF_HEADER_NAME)) {
+    const csrfToken = getCookie(CSRF_COOKIE_NAME)
+    if (csrfToken) headers.set(CSRF_HEADER_NAME, csrfToken)
   }
+  const requestInit = withAuthRequestInit(init)
   const res = await fetch(joinBase(path), {
-    ...init,
-    method: init?.method ?? 'POST',
+    ...requestInit,
+    method: requestInit.method ?? 'POST',
     body: form,
     headers,
   })
   if (!res.ok) {
+    if (res.status === 401) handleUnauthorized(path)
     const text = await res.text()
     const message = text ? normalizeApiErrorMessage(messageFromErrorBody(text)) : `${res.status} ${res.statusText}`
     throw new ApiError(res.status, message)

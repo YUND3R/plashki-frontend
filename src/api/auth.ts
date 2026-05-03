@@ -1,8 +1,7 @@
-import { apiFetch, apiFetchFormData, apiFetchJson, setAccessToken } from './client'
+import { apiFetch, apiFetchFormData, apiFetchJson, markCookieSessionAuthenticated, setAccessToken } from './client'
 
 export type TokenResponse = {
-  access_token: string
-  token_type: string
+  message?: string
 }
 
 export type MessageResponse = {
@@ -20,8 +19,6 @@ export type SignedTokenPayload = {
 }
 
 export type RegisterResponse = {
-  access_token?: string
-  token_type?: string
   message?: string
 }
 
@@ -40,9 +37,20 @@ export type UserMe = {
   subscription_tier?: SubscriptionTier
 }
 
+export type AdminUser = {
+  id: string
+  username: string
+  email: string
+  first_name?: string | null
+  last_name?: string | null
+  role?: string | null
+  subscription_tier?: SubscriptionTier | string | null
+  created_at?: string | null
+}
+
 export async function login(loginValue: string, password: string): Promise<TokenResponse> {
   const data = await apiFetchJson<TokenResponse>('/auth/login', { login: loginValue, password })
-  setAccessToken(data.access_token)
+  markCookieSessionAuthenticated()
   return data
 }
 
@@ -62,15 +70,16 @@ export async function register(
   form.set('last_name', lastName)
   if (avatarFile) form.set('avatar', avatarFile)
 
-  const data = await apiFetchFormData<RegisterResponse>('/auth/register', form)
-  if (data.access_token) {
-    setAccessToken(data.access_token)
-  }
-  return data
+  return apiFetchFormData<RegisterResponse>('/auth/register', form)
 }
 
 export async function me(): Promise<UserMe> {
   return apiFetch<UserMe>('/auth/me')
+}
+
+/** ADMIN-only: список всех зарегистрированных пользователей. */
+export async function listAdminUsers(): Promise<AdminUser[]> {
+  return apiFetch<AdminUser[]>('/admin/users')
 }
 
 export async function forgotPassword(email: string): Promise<MessageResponse> {
@@ -82,7 +91,9 @@ export async function resendVerification(email: string): Promise<MessageResponse
 }
 
 export async function verifyEmail(payload: SignedTokenPayload | LegacyVerifyEmailPayload): Promise<MessageResponse> {
-  return apiFetchJson<MessageResponse>('/auth/verify-email', payload)
+  const data = await apiFetchJson<MessageResponse>('/auth/verify-email', payload)
+  markCookieSessionAuthenticated()
+  return data
 }
 
 export async function resetPassword(
@@ -99,6 +110,10 @@ export async function resetPassword(
   return apiFetchJson<MessageResponse>('/auth/reset-password', body)
 }
 
-export function logout(): void {
-  setAccessToken(null)
+export async function logout(): Promise<void> {
+  try {
+    await apiFetch<unknown>('/auth/logout', { method: 'POST' })
+  } finally {
+    setAccessToken(null)
+  }
 }
