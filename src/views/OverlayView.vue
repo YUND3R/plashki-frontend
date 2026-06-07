@@ -199,6 +199,8 @@ onUnmounted(() => {
       :is="currentDesignComponent"
       v-else
       :seats="visibleSeatRows"
+      :sheriff-check="sheriffChecks"
+      :best-move="bestMove"
       :persistent-message="persistentMessage"
       :persistent-color="persistentMessageColor"
       :popup-message="activePopupMessage"

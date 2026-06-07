@@ -9,6 +9,14 @@ defineProps({
     type: Array as PropType<(LobbyPlayer | null)[]>,
     required: true,
   },
+  sheriffCheck: {
+    type: Array as PropType<string[]>,
+    default: () => [],
+  },
+  bestMove: {
+    type: Array as PropType<string[]>,
+    default: () => [],
+  },
   persistentMessage: {
     type: String,
     default: '',

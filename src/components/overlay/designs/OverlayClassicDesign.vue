@@ -16,6 +16,14 @@ const props = defineProps({
     type: Array as PropType<(LobbyPlayer | null)[]>,
     required: true,
   },
+  sheriffCheck: {
+    type: Array as PropType<string[]>,
+    default: () => [],
+  },
+  bestMove: {
+    type: Array as PropType<string[]>,
+    default: () => [],
+  },
   persistentMessage: {
     type: String,
     default: '',
@@ -72,13 +80,66 @@ function roleIconToneClass(role: string | null): string {
   return ''
 }
 
-function statusKey(status: string | null): string {
+function statusKey(status: string | null | undefined): string {
   return (status ?? '').trim().toLowerCase()
+}
+
+function normalizedRole(role: string | null | undefined): string {
+  return (role ?? '').trim().toLowerCase()
+}
+
+function seatKey(p: LobbyPlayer | null, idx: number): string {
+  const id = (p?.membership_id ?? '').trim()
+  return id || `seat-${idx}`
+}
+
+function sheriffCheckLabels(): string[] {
+  const labels: string[] = []
+  for (const raw of props.sheriffCheck ?? []) {
+    const value = (typeof raw === 'string' ? raw : '').trim()
+    if (!value) continue
+    labels.push(value)
+  }
+  return labels
+}
+
+function bestMoveLabels(): string[] {
+  const labels: string[] = []
+  for (const raw of props.bestMove ?? []) {
+    const value = (typeof raw === 'string' ? raw : '').trim()
+    if (!value) continue
+    labels.push(value)
+  }
+  return labels
+}
+
+function isSheriffSeat(p: LobbyPlayer | null): boolean {
+  return normalizedRole(p?.game_role) === 'sheriff'
+}
+
+function isBestMoveSeat(p: LobbyPlayer | null): boolean {
+  return statusKey(p?.status) === 'best-move'
+}
+
+function isSheriffCheckMafiaLike(label: string): boolean {
+  const seatNum = Number.parseInt(label.trim(), 10)
+  if (!Number.isFinite(seatNum) || seatNum < 1) return false
+  const seat = props.seats[seatNum - 1] ?? null
+  const role = normalizedRole(seat?.game_role)
+  return role === 'mafia' || role === 'don'
+}
+
+function showSheriffChecksAbove(p: LobbyPlayer | null): boolean {
+  return isSheriffSeat(p) && sheriffCheckLabels().length > 0 && !isEliminatedStatus(p?.status ?? null)
+}
+
+function showSheriffChecksInMeta(p: LobbyPlayer | null): boolean {
+  return isSheriffSeat(p) && sheriffCheckLabels().length > 0 && isEliminatedStatus(p?.status ?? null)
 }
 
 function isEliminatedStatus(status: string | null): boolean {
   const key = statusKey(status)
-  return key === 'killed' || key === 'voted' || key === 'deleted'
+  return key === 'killed' || key === 'voted' || key === 'deleted' || key === 'best-move'
 }
 
 function statusIcon(status: string | null): string {
@@ -86,6 +147,7 @@ function statusIcon(status: string | null): string {
   if (key === 'killed') return killedStatusIcon
   if (key === 'voted') return votedStatusIcon
   if (key === 'deleted') return deletedStatusIcon
+  if (key === 'best-move') return killedStatusIcon
   return ''
 }
 </script>
@@ -127,6 +189,19 @@ function statusIcon(status: string | null): string {
       class="overlay-card"
       :class="{ 'overlay-card--eliminated': isEliminatedStatus(p?.status ?? null) }"
     >
+      <div v-if="showSheriffChecksAbove(p)" class="overlay-card__checks">
+        <span class="overlay-card__checks-inner">
+          <span
+            v-for="(label, checkIdx) in sheriffCheckLabels()"
+            :key="`${seatKey(p, idx)}-check-${checkIdx}-${label}`"
+            class="overlay-card__check-num"
+            :class="{ 'overlay-card__check-num--mafia': isSheriffCheckMafiaLike(label) }"
+          >
+            {{ label }}
+          </span>
+        </span>
+      </div>
+
       <div v-if="!isEliminatedStatus(p?.status ?? null)" class="overlay-card__top">
         <span class="overlay-card__seat">{{ idx + 1 }}</span>
         <span class="overlay-card__role-wrap">
@@ -146,8 +221,15 @@ function statusIcon(status: string | null): string {
         <img v-if="rowPhoto(p)" :src="rowPhoto(p)" alt="" class="overlay-card__photo" />
         <div v-else class="overlay-card__photo overlay-card__photo--empty" />
       </div>
-      <div v-else class="overlay-card__meta-row">
-        <span class="overlay-card__meta-box">
+      <div
+        v-else
+        class="overlay-card__meta-row"
+        :class="{ 'overlay-card__meta-row--with-lh': isBestMoveSeat(p) && bestMoveLabels().length }"
+      >
+        <div
+          class="overlay-card__meta-role-group"
+          :class="{ 'overlay-card__meta-role-group--with-checks': showSheriffChecksInMeta(p) }"
+        >
           <img
             v-if="roleIcon(p?.game_role ?? null)"
             :src="roleIcon(p?.game_role ?? null)"
@@ -155,7 +237,33 @@ function statusIcon(status: string | null): string {
             class="overlay-card__meta-icon"
             :class="roleIconToneClass(p?.game_role ?? null)"
           />
-        </span>
+          <span v-if="showSheriffChecksInMeta(p)" class="overlay-card__meta-checks-text">
+            <span
+              v-for="(label, checkIdx) in sheriffCheckLabels()"
+              :key="`${seatKey(p, idx)}-meta-check-${checkIdx}-${label}`"
+              class="overlay-card__meta-check-num"
+              :class="{ 'overlay-card__meta-check-num--mafia': isSheriffCheckMafiaLike(label) }"
+            >
+              {{ label }}
+            </span>
+          </span>
+        </div>
+        <div
+          v-if="isBestMoveSeat(p) && bestMoveLabels().length"
+          class="overlay-card__meta-lh"
+        >
+          <span class="overlay-card__meta-lh-text">
+            <span class="overlay-card__meta-lh-label">ЛХ</span>
+            <span
+              v-for="(label, checkIdx) in bestMoveLabels()"
+              :key="`${seatKey(p, idx)}-best-move-${checkIdx}-${label}`"
+              class="overlay-card__meta-lh-num"
+              :class="{ 'overlay-card__meta-lh-num--mafia': isSheriffCheckMafiaLike(label) }"
+            >
+              {{ label }}
+            </span>
+          </span>
+        </div>
         <span class="overlay-card__meta-box overlay-card__meta-box--status">
           <img
             v-if="statusIcon(p?.status ?? null)"
@@ -194,9 +302,9 @@ function statusIcon(status: string | null): string {
   max-width: 88vw;
   margin: 0;
   padding: 9px 18px;
-  border-radius: 10px;
-  background: rgba(12, 14, 17, 0.9);
-  border: 1px solid rgba(203, 213, 225, 0.32);
+  border-radius: 5px;
+  background: #0c0e11;
+  border: none;
   color: #f8fafc;
   font-size: 24px;
   font-weight: 600;
@@ -215,9 +323,9 @@ function statusIcon(status: string | null): string {
   max-width: min(36vw, 680px);
   margin: 0;
   padding: 12px 16px;
-  border-radius: 12px;
-  background: rgba(15, 23, 42, 0.9);
-  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 5px;
+  background: #0c0e11;
+  border: none;
   color: #f8fafc;
   z-index: 210;
 }
@@ -345,24 +453,94 @@ function statusIcon(status: string | null): string {
   bottom: 47px;
   z-index: 3;
   display: flex;
-  align-items: center;
+  align-items: stretch;
+  width: 186px;
+  height: 40px;
 }
 
-.overlay-card__meta-box {
-  width: 40px;
-  height: 40px;
-  background: #0c0e11;
-  border-right: 1px solid #4b5563;
-  display: flex;
+.overlay-card__meta-role-group {
+  flex-shrink: 0;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  height: 40px;
+  min-width: 40px;
+  background: #0c0e11;
+  border-right: 1px solid #4b5563;
   border-radius: 5px 0 0 0;
 }
 
+.overlay-card__meta-role-group--with-checks {
+  justify-content: flex-start;
+  gap: 0.35rem;
+  padding: 0 8px;
+}
+
+.overlay-card__meta-lh {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: stretch;
+  justify-content: center;
+  background: #0c0e11;
+  border-right: 1px solid #4b5563;
+}
+
+.overlay-card__meta-lh-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: 40px;
+  padding: 0 0.35rem;
+  color: #f8fafc;
+  font-family: 'Neue Machina', 'Inter', 'Segoe UI', Roboto, Arial, sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.overlay-card__meta-lh-label {
+  text-transform: lowercase;
+}
+
+.overlay-card__meta-lh-num--mafia {
+  color: #c084fc;
+}
+
+.overlay-card__meta-checks-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #f8fafc;
+  font-family: 'Neue Machina', 'Inter', 'Segoe UI', Roboto, Arial, sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.overlay-card__meta-check-num--mafia {
+  color: #c084fc;
+}
+
 .overlay-card__meta-box--status {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
   background: #0c0e11;
   border: none;
   border-radius: 0 5px 0 0;
+  box-sizing: border-box;
+}
+
+.overlay-card__meta-row--with-lh .overlay-card__meta-box--status {
+  margin-left: auto;
+}
+
+.overlay-card__meta-row:not(.overlay-card__meta-row--with-lh) .overlay-card__meta-box--status {
+  margin-left: 0;
 }
 
 .overlay-card__meta-icon {
@@ -450,4 +628,47 @@ function statusIcon(status: string | null): string {
   color: #f8fafc;
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
 }
+
+.overlay-card__checks {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 3px);
+  z-index: 12;
+  display: inline-flex;
+  align-items: center;
+  pointer-events: none;
+}
+
+.overlay-card__checks-inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  min-height: 34px;
+  padding: 8px 14px;
+  border-radius: 5px;
+  background: rgba(12, 14, 17, 0.92);
+  color: #f8fafc;
+  font-family: 'Neue Machina', 'Inter', 'Segoe UI', Roboto, Arial, sans-serif;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.overlay-card__check-num:not(:last-child)::after {
+  content: '';
+  display: inline-block;
+  width: 3px;
+  height: 3px;
+  margin: 0 0.55rem;
+  border-radius: 50%;
+  background: #9ca3af;
+  opacity: 0.35;
+  vertical-align: middle;
+  transform: translateY(-1px);
+}
+
+.overlay-card__check-num--mafia {
+  color: #c084fc;
+}
+
 </style>
