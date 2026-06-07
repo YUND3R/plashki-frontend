@@ -1553,7 +1553,23 @@ async function saveCardDesign() {
               {{ rolesResetBusy ? 'Сброс…' : 'Сбросить роли и статусы' }}
             </button>
             <label class="lobby-manage__host-toggle">
-              <span class="lobby-manage__host-toggle-label">Режим ведущего</span>
+              <span class="lobby-manage__host-toggle-label-wrap">
+                <span class="lobby-manage__host-toggle-label">Режим ведущего</span>
+                <span
+                  class="lobby-manage__host-info"
+                  tabindex="0"
+                  role="note"
+                  aria-label="В режиме ведущего роли участников не отображаются. Это предотвращает случайное раскрытие игровой информации во время игры."
+                  @click.stop
+                  @mousedown.stop
+                >
+                  <span class="lobby-manage__host-info-icon" aria-hidden="true">i</span>
+                  <span class="lobby-manage__host-info-tip" role="tooltip">
+                    В режиме ведущего роли участников не отображаются. Это предотвращает случайное раскрытие
+                    игровой информации во время игры.
+                  </span>
+                </span>
+              </span>
               <span class="lobby-manage__host-switch" :class="{ 'lobby-manage__host-switch--on': hostMode }">
                 <input v-model="hostMode" type="checkbox" class="lobby-manage__host-switch-input" />
                 <span class="lobby-manage__host-switch-knob" />
@@ -3098,12 +3114,22 @@ async function saveCardDesign() {
   border-top: none;
 }
 
+.lobby-manage__main-actions > .lobby-manage__btn-foot,
+.lobby-manage__main-actions > .lobby-manage__host-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 2.25rem;
+  padding: 0 0.65rem;
+  line-height: 1;
+}
+
 .lobby-manage__host-toggle {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
-  min-height: 2rem;
-  padding: 0.35rem 0.65rem;
+  padding: 0 0.65rem;
   font: inherit;
   font-size: 0.75rem;
   font-weight: 500;
@@ -3116,9 +3142,91 @@ async function saveCardDesign() {
   box-sizing: border-box;
 }
 
+.lobby-manage__host-toggle-label-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
 .lobby-manage__host-toggle-label {
   font-weight: 500;
   white-space: nowrap;
+}
+
+.lobby-manage__host-info {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: help;
+  outline: none;
+}
+
+.lobby-manage__host-info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.2rem;
+  height: 1.2rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-style: italic;
+  line-height: 1;
+  color: #6b7280;
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+  border-radius: 50%;
+}
+
+.lobby-manage__host-info:focus-visible .lobby-manage__host-info-icon {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 3px #2f6feb;
+}
+
+.lobby-manage__host-info-tip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 0.45rem);
+  z-index: 20;
+  width: max-content;
+  max-width: 18rem;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 400;
+  font-style: normal;
+  line-height: 1.35;
+  color: #374151;
+  text-align: left;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(-50%) translateY(4px);
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease,
+    visibility 0.15s ease;
+}
+
+.lobby-manage__host-info-tip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -4px;
+  border: 4px solid transparent;
+  border-top-color: #f3f4f6;
+}
+
+.lobby-manage__host-info:hover .lobby-manage__host-info-tip,
+.lobby-manage__host-info:focus-visible .lobby-manage__host-info-tip,
+.lobby-manage__host-info:focus .lobby-manage__host-info-tip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
 }
 
 .lobby-manage__host-switch {
@@ -3164,6 +3272,7 @@ async function saveCardDesign() {
 
 .lobby-manage__btn-foot {
   padding: 0.4rem 0.65rem;
+  line-height: 1;
   font: inherit;
   font-size: 0.75rem;
   font-weight: 500;
