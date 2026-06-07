@@ -89,7 +89,7 @@ const router = createRouter({
           path: 'docs',
           name: 'docs',
           meta: { title: 'Документация' },
-          component: () => import('@/views/PagePlaceholder.vue'),
+          component: () => import('@/views/DocsView.vue'),
         },
         {
           path: 'contact',
