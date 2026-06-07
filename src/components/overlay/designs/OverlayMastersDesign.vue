@@ -4,6 +4,10 @@ import type { PropType } from 'vue'
 import type { LobbyPlayer } from '@/api/lobbies'
 import type { OverlayPopupMessage } from '@/utils/overlayPopupMessage'
 import type { OverlayTextTone } from '@/utils/overlayPersistentMessage'
+import {
+  photoFrameImgStyle,
+  resolveLobbyPlayerPhotoFrame,
+} from '@/utils/playerCardPhotoFrame'
 import mafiaRoleIcon from '../../../../mafia.svg?url'
 import donRoleIcon from '../../../../don.svg?url'
 import civilianRoleIcon from '../../../../civilian.svg?url'
@@ -68,6 +72,12 @@ function hasPhoto(p: LobbyPlayer | null): boolean {
   return !!rowPhoto(p)
 }
 
+function rowPhotoImgStyle(p: LobbyPlayer | null): Record<string, string> {
+  const u = rowPhoto(p)
+  if (!u || !p) return {}
+  return photoFrameImgStyle(resolveLobbyPlayerPhotoFrame(p, u))
+}
+
 function roleIcon(role: string | null): string {
   const value = (role ?? '').trim().toLowerCase()
   if (value === 'mafia') return mafiaRoleIcon
@@ -115,31 +125,6 @@ function displayNickname(p: LobbyPlayer | null): string {
   if (!p) return ''
   const maxLen = isEliminatedStatus(p.status) ? 10 : 12
   return trimNickname(p.nickname, maxLen)
-}
-
-function readNumeric(source: Record<string, unknown>, keys: string[]): number {
-  for (const key of keys) {
-    const raw = source[key]
-    if (typeof raw === 'number' && Number.isFinite(raw)) return raw
-    if (typeof raw === 'string') {
-      const parsed = Number(raw)
-      if (Number.isFinite(parsed)) return parsed
-    }
-  }
-  return 0
-}
-
-function photoMaskStyle(p: LobbyPlayer | null): Record<string, string> {
-  const source = (p ?? {}) as Record<string, unknown>
-  const offsetX = readNumeric(source, ['overlay_photo_offset_x', 'photo_offset_x'])
-  const offsetY = readNumeric(source, ['overlay_photo_offset_y', 'photo_offset_y'])
-  const scaleRaw = readNumeric(source, ['overlay_photo_scale', 'photo_scale'])
-  const scale = scaleRaw > 0 ? scaleRaw : 1.70
-  return {
-    '--photo-offset-x': `${offsetX + 32}px`,
-    '--photo-offset-y': `${offsetY + 20}px`,
-    '--photo-scale': `${scale}`,
-  }
 }
 
 function normalizedRole(role: string | null | undefined): string {
@@ -373,19 +358,24 @@ onUnmounted(() => {
         </span>
       </div>
 
-      <div class="overlay-masters-card__photo-mask" :style="photoMaskStyle(p)">
+      <div class="overlay-masters-card__photo-mask">
         <Transition name="overlay-masters-content-fade">
-          <img
+          <div
             v-if="hasPhoto(p) && showContent(stageOf(p, idx))"
-            :src="rowPhoto(p)"
-            alt=""
-            class="overlay-masters-card__photo"
-          />
+            class="overlay-masters-card__photo-stage"
+          >
+            <img
+              :src="rowPhoto(p)"
+              alt=""
+              class="overlay-masters-card__photo-inner"
+              :style="rowPhotoImgStyle(p)"
+            />
+          </div>
         </Transition>
         <Transition name="overlay-masters-content-fade">
           <div
             v-if="!hasPhoto(p) && showContent(stageOf(p, idx))"
-            class="overlay-masters-card__photo overlay-masters-card__photo--empty"
+            class="overlay-masters-card__photo-stage overlay-masters-card__photo-stage--empty"
           />
         </Transition>
       </div>
@@ -685,16 +675,25 @@ onUnmounted(() => {
   opacity: 0;
 }
 
-.overlay-masters-card__photo {
+.overlay-masters-card__photo-stage {
+  position: absolute;
+  inset: 0;
+  transform: translate(32px, 20px) scale(1.7);
+  transform-origin: center center;
+}
+
+.overlay-masters-card__photo-inner {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transform: translate(var(--photo-offset-x, 0px), var(--photo-offset-y, 0px))
-    scale(var(--photo-scale, 1));
   transform-origin: center center;
   display: block;
+}
+
+.overlay-masters-card__photo-stage--empty {
+  background: transparent;
 }
 
 .overlay-masters-card__photo-mask {
@@ -716,10 +715,6 @@ onUnmounted(() => {
 .overlay-masters-card--eliminated .overlay-masters-card__photo-mask {
   opacity: 0;
   transform: translateY(6px);
-}
-
-.overlay-masters-card__photo--empty {
-  background: transparent;
 }
 
 .overlay-masters-card__head {

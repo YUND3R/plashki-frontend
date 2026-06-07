@@ -199,7 +199,7 @@ export async function apiFetchFormData<T>(
 ): Promise<T> {
   const headers = new Headers(init?.headers)
   if (!headers.has('Accept')) headers.set('Accept', 'application/json')
-  const method = methodOf(init)
+  const method = methodOf({ method: init?.method ?? 'POST' })
   if (isMutatingMethod(method) && !headers.has(CSRF_HEADER_NAME)) {
     const csrfToken = getCookie(CSRF_COOKIE_NAME)
     if (csrfToken) headers.set(CSRF_HEADER_NAME, csrfToken)
@@ -207,7 +207,7 @@ export async function apiFetchFormData<T>(
   const requestInit = withAuthRequestInit(init)
   const res = await fetch(joinBase(path), {
     ...requestInit,
-    method: requestInit.method ?? 'POST',
+    method,
     body: form,
     headers,
   })
