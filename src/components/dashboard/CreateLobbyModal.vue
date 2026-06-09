@@ -517,7 +517,7 @@ onUnmounted(() => {
   min-height: auto;
 }
 
-/* До открытия состава — без отдельного скролла; при открытии — см. --with-roster */
+/* До открытия состава - без отдельного скролла; при открытии - см. --with-roster */
 .create-lobby-modal__split:not(.create-lobby-modal__split--with-roster) {
   flex: 1 1 auto;
   min-height: 0;
@@ -597,7 +597,7 @@ onUnmounted(() => {
     border-left: 1px solid #f3f4f6;
   }
 
-  /* Сетка слотов заполняет высоту колонки — без пустого места снизу, как справа у «Мои составы» */
+  /* Сетка слотов заполняет высоту колонки - без пустого места снизу, как справа у «Мои составы» */
   .create-lobby-modal__split--with-roster .create-lobby-modal__slots {
     flex: 1 1 auto;
     min-height: 0;

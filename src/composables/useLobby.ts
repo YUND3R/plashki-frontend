@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import { createLobby, getLobby, type GameLobby } from '@/api/lobbies'
 
-/** В API нет GET /lobbies — только создание и получение по id. */
+/** В API нет GET /lobbies - только создание и получение по id. */
 export function useLobby() {
   const lobby = ref<GameLobby | null>(null)
   const loading = ref(false)

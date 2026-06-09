@@ -1,5 +1,7 @@
 import { ApiError, apiFetch, apiFetchJson } from './client'
 import { me } from './auth'
+import type { PhotoLayouts } from './playerCards'
+import { normalizePhotoCrop, normalizePhotoLayouts, type PhotoCrop } from '@/utils/photoCrop'
 
 export type LobbyPlayer = {
   membership_id: string
@@ -7,9 +9,13 @@ export type LobbyPlayer = {
   user_id: string
   username: string
   nickname: string
-  /** Выбранное фото только для лобби; если нет — смотри photo_urls карточки. */
+  /** Выбранное фото только для лобби; если нет - смотри photo_urls карточки. */
   lobby_photo_url?: string | null
   photo_urls: string[]
+  /** Кадрирование по URL (с карточки; бэкенд должен прокидывать в игрока лобби). */
+  photo_layouts?: PhotoLayouts | null
+  /** Кадр для lobby_photo_url, если отличается от photo_layouts. */
+  display_photo_layout?: PhotoCrop | null
   game_role: string | null
   status?: string | null
   joined_at: string
@@ -161,10 +167,72 @@ export async function importGomafiaTournament(body: ImportGomafiaTournamentBody)
     const latest = mine.slice().sort((a, b) => lobbyCreatedAtMs(b) - lobbyCreatedAtMs(a))[0]
     if (latest) return latest
   } catch {
-    // если даже fallback не сработал — вернем исходную ошибку
+    // если даже fallback не сработал - вернем исходную ошибку
   }
 
   throw new Error('Некорректный ответ при импорте турнира из GoMafia')
+}
+
+function normalizePhotoUrls(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((u) => (typeof u === 'string' ? u.trim() : ''))
+    .filter(Boolean)
+}
+
+function normalizeLobbyPlayer(raw: unknown): LobbyPlayer | null {
+  if (!raw || typeof raw !== 'object') return null
+  const row = raw as Record<string, unknown>
+  const membershipId =
+    typeof row.membership_id === 'string'
+      ? row.membership_id.trim()
+      : typeof row.id === 'string'
+        ? row.id.trim()
+        : ''
+  if (!membershipId) return null
+
+  const nestedCard = row.player_card ?? row.playerCard
+  const cardRow =
+    nestedCard && typeof nestedCard === 'object' ? (nestedCard as Record<string, unknown>) : null
+
+  let photoLayouts = normalizePhotoLayouts(row.photo_layouts)
+  let photoUrls = normalizePhotoUrls(row.photo_urls)
+  let displayPhotoLayout: PhotoCrop | null = null
+
+  const rawDisplayLayout = row.display_photo_layout ?? row.displayPhotoLayout
+  if (rawDisplayLayout && typeof rawDisplayLayout === 'object') {
+    displayPhotoLayout = normalizePhotoCrop(rawDisplayLayout as Partial<PhotoCrop>)
+  }
+
+  if (cardRow) {
+    photoLayouts = photoLayouts ?? normalizePhotoLayouts(cardRow.photo_layouts)
+    if (!photoUrls.length) photoUrls = normalizePhotoUrls(cardRow.photo_urls)
+  }
+
+  const lobbyPhotoRaw = row.lobby_photo_url ?? row.lobbyPhotoUrl
+  const lobbyPhotoUrl =
+    typeof lobbyPhotoRaw === 'string' && lobbyPhotoRaw.trim() ? lobbyPhotoRaw.trim() : null
+
+  return {
+    membership_id: membershipId,
+    player_card_id:
+      typeof row.player_card_id === 'string'
+        ? row.player_card_id.trim()
+        : typeof cardRow?.id === 'string'
+          ? cardRow.id.trim()
+          : '',
+    user_id: typeof row.user_id === 'string' ? row.user_id.trim() : '',
+    username: typeof row.username === 'string' ? row.username : '',
+    nickname: typeof row.nickname === 'string' ? row.nickname : '',
+    lobby_photo_url: lobbyPhotoUrl,
+    photo_urls: photoUrls,
+    photo_layouts: photoLayouts,
+    display_photo_layout: displayPhotoLayout,
+    game_role:
+      typeof row.game_role === 'string' || row.game_role === null ? (row.game_role as string | null) : null,
+    status: typeof row.status === 'string' || row.status === null ? (row.status as string | null) : null,
+    joined_at: typeof row.joined_at === 'string' ? row.joined_at : '',
+  }
 }
 
 function toGameLobby(item: unknown): GameLobby | null {
@@ -175,7 +243,9 @@ function toGameLobby(item: unknown): GameLobby | null {
   const createdAt = typeof row.created_at === 'string' ? row.created_at : ''
   const maxPlayers = typeof row.max_players === 'number' ? row.max_players : 10
   const hostUserId = typeof row.host_user_id === 'string' || row.host_user_id === null ? row.host_user_id : null
-  const players = Array.isArray(row.players) ? (row.players as LobbyPlayer[]) : []
+  const players = Array.isArray(row.players)
+    ? row.players.map(normalizeLobbyPlayer).filter((x): x is LobbyPlayer => x !== null)
+    : []
   const sheriffCheck = Array.isArray(row.sheriff_check) ? (row.sheriff_check as string[]) : null
   const bestMove = Array.isArray(row.best_move) ? (row.best_move as string[]) : null
   const importedState = toImportedState(row.imported_state)
@@ -297,7 +367,7 @@ export function addCardToLobby(lobbyId: string, playerCardId: string) {
 
 export type SetGameRoleBody = { game_role: string }
 
-/** Роль на конкретном месте (membership_id из GET лобби) — нужно при дублях одной карточки. */
+/** Роль на конкретном месте (membership_id из GET лобби) - нужно при дублях одной карточки. */
 export function setLobbyMemberRole(lobbyId: string, membershipId: string, body: SetGameRoleBody) {
   const mid = encodeURIComponent(membershipId)
   return apiFetchJson<unknown>(`/lobbies/${lobbyId}/members/${mid}/game-role`, body, {
@@ -348,7 +418,7 @@ export function clearLobbyMemberStatus(lobbyId: string, membershipId: string) {
   })
 }
 
-/** @deprecated при дублях карточки — используйте setLobbyMemberRole */
+/** @deprecated при дублях карточки - используйте setLobbyMemberRole */
 export function setLobbyCardRole(lobbyId: string, playerCardId: string, body: SetGameRoleBody) {
   return apiFetchJson<unknown>(
     `/lobbies/${lobbyId}/player-cards/${playerCardId}/game-role`,
@@ -361,7 +431,7 @@ export function setLobbyCardRole(lobbyId: string, playerCardId: string, body: Se
   })
 }
 
-/** @deprecated при дублях карточки — используйте clearLobbyMemberRole */
+/** @deprecated при дублях карточки - используйте clearLobbyMemberRole */
 export function clearLobbyCardRole(lobbyId: string, playerCardId: string) {
   return apiFetch<unknown>(
     `/lobbies/${lobbyId}/player-cards/${playerCardId}/game-role`,
@@ -537,9 +607,9 @@ function extractImportedParticipantsArray(payload: unknown): unknown[] {
 function importedParticipantDisplayLine(item: unknown): string {
   if (typeof item === 'string' || typeof item === 'number') {
     const s = String(item).trim()
-    return s || '—'
+    return s || '-'
   }
-  if (!item || typeof item !== 'object') return '—'
+  if (!item || typeof item !== 'object') return '-'
   const o = item as Record<string, unknown>
   const nick = typeof o.nickname === 'string' ? o.nickname.trim() : ''
   const full = typeof o.full_name === 'string' ? o.full_name.trim() : ''
@@ -550,7 +620,7 @@ function importedParticipantDisplayLine(item: unknown): string {
     const v = o[k]
     if (typeof v === 'string' && v.trim()) return v.trim()
   }
-  return '—'
+  return '-'
 }
 
 /** Участники турнира из импорта GoMafia (только хост). GET /lobbies/{id}/imported-participants */

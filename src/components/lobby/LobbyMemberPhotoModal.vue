@@ -1,64 +1,65 @@
 <script setup lang="ts">
-import { computed, ref, useId, watch } from 'vue'
-import { getPlayerCard, patchPlayerCard, uploadPlayerCardPhoto } from '@/api/playerCards'
+import { computed, ref, watch } from 'vue'
+import PhotoCropModal from '@/components/photos/PhotoCropModal.vue'
+import {
+  getPlayerCard,
+  patchPlayerCard,
+  patchPlayerCardPhotoLayout,
+  uploadPlayerCardPhoto,
+} from '@/api/playerCards'
 import { setLobbyMemberDisplayPhoto, type GameLobby, type LobbyPlayer } from '@/api/lobbies'
-
-const fileInputId = useId()
+import { normalizeOverlayDesignCode } from '@/utils/overlayPersistentMessage'
+import { overlayPhotoSpecForDesign } from '@/utils/overlayPhotoSpec'
+import type { PhotoCrop } from '@/utils/photoCrop'
+import { resolveLobbyPlayerPhotoFrame } from '@/utils/playerCardPhotoFrame'
+import { writeCachedPhotoLayouts } from '@/utils/overlayPhotoLayoutBridge'
+import cropIcon from '../../../cadr.svg?url'
+import deleteIcon from '../../../delete.svg?url'
 
 const open = defineModel<boolean>({ default: false })
 
 const props = defineProps<{
   lobbyId: string
   player: LobbyPlayer | null
+  overlayDesign: string
 }>()
 
 const emit = defineEmits<{
   applied: [lobby: GameLobby]
 }>()
 
-/** Список URL с сервера (карточка / лобби). */
 const photoUrls = ref<string[]>([])
-/** Файлы, выбранные пользователем — на сервер уходят только по «Сохранить для лобби». */
-const pendingFiles = ref<File[]>([])
-/** Превью для pending (blob:); параллельно pendingFiles. */
-const pendingBlobUrls = ref<string[]>([])
-
+const photoLayouts = ref<Record<string, PhotoCrop>>({})
 const loading = ref(false)
 const loadError = ref<string | null>(null)
-const loadWarning = ref<string | null>(null)
 const selectedUrl = ref<string | null>(null)
 const saving = ref(false)
-const deletingUrl = ref<string | null>(null)
 const saveError = ref<string | null>(null)
-const deleteError = ref<string | null>(null)
-const uploadError = ref<string | null>(null)
+const deletingUrl = ref<string | null>(null)
 
-const gridUrls = computed(() => [...photoUrls.value, ...pendingBlobUrls.value])
+const cropModalOpen = ref(false)
+const cropImageSrc = ref('')
+const cropInitial = ref<PhotoCrop | null>(null)
+const pendingFile = ref<File | null>(null)
+const cropTargetUrl = ref<string | null>(null)
 
-const canUpload = computed(() => {
-  const pl = props.player
-  return !!(pl?.user_id && pl?.player_card_id)
+const cropSpec = computed(() => overlayPhotoSpecForDesign(props.overlayDesign))
+
+const designLabel = computed(() => {
+  const code = normalizeOverlayDesignCode(props.overlayDesign)
+  if (code === 'masters-yug25') return 'Masters'
+  if (code === 'plus') return 'Plus'
+  return 'Classic'
 })
 
-function revokePending() {
-  for (const u of pendingBlobUrls.value) {
-    URL.revokeObjectURL(u)
-  }
-  pendingFiles.value = []
-  pendingBlobUrls.value = []
-}
+const modalTitle = computed(() => {
+  const nick = props.player?.nickname?.trim()
+  return nick ? `Фото игрока ${nick}` : 'Фото игрока'
+})
 
 function close() {
   if (saving.value) return
-  revokePending()
   open.value = false
-}
-
-function pickUrl(url: string) {
-  const u = url.trim()
-  if (!u) return
-  selectedUrl.value = u
-  deleteError.value = null
 }
 
 function lobbyShownPhoto(pl: LobbyPlayer): string {
@@ -71,21 +72,21 @@ function lobbyShownPhoto(pl: LobbyPlayer): string {
 async function loadPhotos(pl: LobbyPlayer) {
   loading.value = true
   loadError.value = null
-  loadWarning.value = null
   photoUrls.value = []
   selectedUrl.value = null
   try {
     const c = await getPlayerCard(pl.user_id, pl.player_card_id)
-    photoUrls.value = (c.photo_urls ?? []).map((u) => (typeof u === 'string' ? u.trim() : '')).filter(Boolean)
-    loadWarning.value = null
+    photoUrls.value = (c.photo_urls ?? []).filter(Boolean)
+    photoLayouts.value = { ...(c.photo_layouts ?? {}) }
+    if (pl.player_card_id && Object.keys(photoLayouts.value).length) {
+      writeCachedPhotoLayouts(pl.player_card_id, photoLayouts.value)
+    }
   } catch (e) {
-    const fromLobby = (pl.photo_urls ?? [])
-      .map((u) => (typeof u === 'string' ? u.trim() : ''))
-      .filter(Boolean)
-    photoUrls.value = fromLobby
-    if (fromLobby.length) {
-      loadWarning.value =
-        'Не удалось загрузить карточку — показаны только фото из лобби. Для полного списка проверьте права доступа.'
+    photoUrls.value = (pl.photo_urls ?? []).map((u) => u.trim()).filter(Boolean)
+    photoLayouts.value = {}
+    if (photoUrls.value.length) {
+      loadError.value =
+        'Не удалось загрузить карточку - показаны фото из лобби. Кадрирование может быть недоступно.'
     } else {
       loadError.value = e instanceof Error ? e.message : String(e)
     }
@@ -105,18 +106,15 @@ watch(
   () => [open.value, props.player] as const,
   async ([isOpen, pl]) => {
     if (!isOpen) {
-      revokePending()
       photoUrls.value = []
       selectedUrl.value = null
       loadError.value = null
-      loadWarning.value = null
       saveError.value = null
-      deleteError.value = null
-      uploadError.value = null
+      cropModalOpen.value = false
+      pendingFile.value = null
       return
     }
     if (!pl?.membership_id || !props.lobbyId) return
-    revokePending()
     await loadPhotos(pl)
   },
 )
@@ -136,46 +134,77 @@ watch(open, (isOpen, _, onCleanup) => {
   }
 })
 
+function pickUrl(url: string) {
+  selectedUrl.value = url.trim() || null
+  saveError.value = null
+}
+
+function openCropForNew(file: File) {
+  pendingFile.value = file
+  cropTargetUrl.value = null
+  cropImageSrc.value = URL.createObjectURL(file)
+  cropInitial.value = null
+  cropModalOpen.value = true
+}
+
+function openCropForExisting(url: string) {
+  pendingFile.value = null
+  cropTargetUrl.value = url
+  cropImageSrc.value = url
+  cropInitial.value = photoLayouts.value[url] ?? resolveLobbyPlayerPhotoFrame(props.player, url)
+  cropModalOpen.value = true
+}
+
+function onAddPhoto(ev: Event) {
+  const input = ev.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  openCropForNew(file)
+}
+
+async function onCropSave(crop: PhotoCrop) {
+  const pl = props.player
+  if (!pl?.user_id || !pl.player_card_id) return
+  saving.value = true
+  saveError.value = null
+  try {
+    if (pendingFile.value) {
+      await uploadPlayerCardPhoto(pl.user_id, pl.player_card_id, pendingFile.value, crop)
+      pendingFile.value = null
+      await loadPhotos(pl)
+      selectedUrl.value = photoUrls.value[photoUrls.value.length - 1] ?? selectedUrl.value
+    } else if (cropTargetUrl.value) {
+      await patchPlayerCardPhotoLayout(
+        pl.user_id,
+        pl.player_card_id,
+        cropTargetUrl.value,
+        crop,
+        photoLayouts.value,
+      )
+      photoLayouts.value[cropTargetUrl.value] = crop
+      if (pl.player_card_id) writeCachedPhotoLayouts(pl.player_card_id, photoLayouts.value)
+    }
+    cropModalOpen.value = false
+  } catch (e) {
+    saveError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    saving.value = false
+  }
+}
+
 async function apply() {
   const pl = props.player
-  if (!pl?.membership_id || !props.lobbyId) return
   const chosen = selectedUrl.value?.trim()
-  if (!chosen) return
-  if (!gridUrls.value.includes(chosen)) return
-
-  const blobIdx = pendingBlobUrls.value.indexOf(chosen)
+  if (!pl?.membership_id || !props.lobbyId || !chosen) return
+  if (!photoUrls.value.includes(chosen)) return
 
   saving.value = true
-  deletingUrl.value = null
   saveError.value = null
-  uploadError.value = null
-  deleteError.value = null
   try {
-    const uploaded: string[] = []
-    for (const f of pendingFiles.value) {
-      uploaded.push((await uploadPlayerCardPhoto(pl.user_id, pl.player_card_id, f)).trim())
-    }
-
-    let displayUrl = chosen
-    if (blobIdx >= 0) {
-      displayUrl = uploaded[blobIdx] ?? uploaded[uploaded.length - 1] ?? ''
-    }
-
-    revokePending()
-
-    if (uploaded.length) {
-      await loadPhotos(pl)
-    }
-
-    if (!photoUrls.value.includes(displayUrl)) {
-      const fallback = uploaded.find((u) => photoUrls.value.includes(u)) ?? photoUrls.value[0] ?? ''
-      displayUrl = fallback
-    }
-    if (!displayUrl) {
-      throw new Error('Не удалось определить URL фото для лобби')
-    }
-
-    const updated = await setLobbyMemberDisplayPhoto(props.lobbyId, pl.membership_id, { photo_url: displayUrl })
+    const updated = await setLobbyMemberDisplayPhoto(props.lobbyId, pl.membership_id, {
+      photo_url: chosen,
+    })
     emit('applied', updated)
     open.value = false
   } catch (e) {
@@ -185,73 +214,33 @@ async function apply() {
   }
 }
 
-function removePendingAt(index: number) {
-  const nextFiles = pendingFiles.value.slice()
-  const nextBlobUrls = pendingBlobUrls.value.slice()
-  const removedUrl = nextBlobUrls[index] ?? ''
-  nextFiles.splice(index, 1)
-  nextBlobUrls.splice(index, 1)
-  pendingFiles.value = nextFiles
-  pendingBlobUrls.value = nextBlobUrls
-  if (removedUrl) URL.revokeObjectURL(removedUrl)
-  if (selectedUrl.value === removedUrl) {
-    selectedUrl.value = nextBlobUrls[nextBlobUrls.length - 1] ?? photoUrls.value[0] ?? null
-  }
-}
-
 async function deletePhoto(url: string) {
   const u = url.trim()
   if (!u || saving.value || deletingUrl.value) return
-  deleteError.value = null
-  saveError.value = null
-  uploadError.value = null
-
-  const pendingIdx = pendingBlobUrls.value.indexOf(u)
-  if (pendingIdx >= 0) {
-    removePendingAt(pendingIdx)
-    return
-  }
-
   const pl = props.player
   if (!pl?.user_id || !pl.player_card_id) return
 
   const idx = photoUrls.value.indexOf(u)
   if (idx < 0) return
 
-  const nextPhotoUrls = photoUrls.value.slice()
-  nextPhotoUrls.splice(idx, 1)
-  if (nextPhotoUrls.length < 1) {
-    deleteError.value = 'Нельзя удалить последнее фото карточки.'
+  const next = photoUrls.value.slice()
+  next.splice(idx, 1)
+  if (next.length < 1) {
+    saveError.value = 'Нельзя удалить последнее фото карточки.'
     return
   }
 
   deletingUrl.value = u
+  saveError.value = null
   try {
-    await patchPlayerCard(pl.user_id, pl.player_card_id, { photo_urls: nextPhotoUrls })
-    photoUrls.value = nextPhotoUrls
-    if (selectedUrl.value === u) {
-      selectedUrl.value = pendingBlobUrls.value[pendingBlobUrls.value.length - 1] ?? nextPhotoUrls[0] ?? null
-    }
+    await patchPlayerCard(pl.user_id, pl.player_card_id, { photo_urls: next })
+    photoUrls.value = next
+    if (selectedUrl.value === u) selectedUrl.value = next[0] ?? null
   } catch (e) {
-    deleteError.value = e instanceof Error ? e.message : String(e)
+    saveError.value = e instanceof Error ? e.message : String(e)
   } finally {
     deletingUrl.value = null
   }
-}
-
-function onPhotoFilesChange(ev: Event) {
-  const input = ev.target as HTMLInputElement
-  const files = Array.from(input.files || []).filter((f) => f.size > 0)
-  input.value = ''
-  if (!props.player?.user_id || !props.player.player_card_id || !files.length) return
-
-  uploadError.value = null
-  for (const f of files) {
-    pendingFiles.value.push(f)
-    pendingBlobUrls.value.push(URL.createObjectURL(f))
-  }
-  const last = pendingBlobUrls.value[pendingBlobUrls.value.length - 1]
-  if (last) selectedUrl.value = last
 }
 </script>
 
@@ -263,69 +252,84 @@ function onPhotoFilesChange(ev: Event) {
         <div class="app-modal__wrap lmp-modal__wrap" role="dialog" aria-modal="true" aria-labelledby="lmp-title">
           <div class="app-modal__panel">
             <div class="app-modal__head">
-              <h2 id="lmp-title" class="app-modal__title">Фото в лобби</h2>
+              <h2 id="lmp-title" class="app-modal__title">{{ modalTitle }}</h2>
               <button type="button" class="app-modal__close" aria-label="Закрыть" :disabled="saving" @click="close">
                 ×
               </button>
             </div>
 
-            <div class="app-modal__body app-modal__body--tight">
-              <p v-if="player" class="lmp__subtitle">{{ player.nickname }}</p>
-              <p class="lmp__lead">Выбранное фото будет основным только в игровом лобби и для плашки в Overlay. В разделе «Мои игроки» аватар останется прежним.</p>
-
+            <div class="app-modal__body app-modal__body--tight lmp__body">
               <p v-if="loading" class="lmp__status">Загрузка…</p>
               <template v-else>
                 <p v-if="loadError && !photoUrls.length" class="lmp__banner" role="alert">{{ loadError }}</p>
+                <p v-else-if="loadError" class="lmp__banner lmp__banner--soft" role="status">{{ loadError }}</p>
 
-                <p v-if="uploadError" class="lmp__banner" role="alert">{{ uploadError }}</p>
-                <p v-if="deleteError" class="lmp__banner" role="alert">{{ deleteError }}</p>
-
-                <p v-if="loadWarning" class="lmp__banner lmp__banner--soft" role="status">{{ loadWarning }}</p>
-
-                <div v-if="gridUrls.length" class="lmp__grid" :class="{ 'lmp__grid--spaced-bottom': !canUpload }">
+                <div v-if="photoUrls.length" class="lmp__grid">
                   <div
-                    v-for="(url, idx) in gridUrls"
+                    v-for="(url, idx) in photoUrls"
                     :key="`${url}-${idx}`"
                     class="lmp__cell"
-                    :class="{ 'lmp__cell--selected': selectedUrl === url, 'lmp__cell--pending': pendingBlobUrls.includes(url) }"
+                    :class="{ 'lmp__cell--selected': selectedUrl === url }"
                   >
-                    <button
-                      type="button"
-                      class="lmp__cell-select"
-                      :aria-pressed="selectedUrl === url"
-                      :aria-label="`Фото ${idx + 1}`"
-                      :disabled="saving || !!deletingUrl"
-                      @click="pickUrl(url)"
-                    >
-                      <img :src="url" alt="" class="lmp__img" />
-                    </button>
-                    <button
-                      type="button"
-                      class="lmp__cell-delete"
-                      :disabled="saving || !!deletingUrl"
-                      :aria-label="`Удалить фото ${idx + 1}`"
-                      @click.stop="deletePhoto(url)"
-                    >
-                      ×
-                    </button>
+                    <div class="lmp__cell-photo">
+                      <button
+                        type="button"
+                        class="lmp__cell-select"
+                        :aria-pressed="selectedUrl === url"
+                        :disabled="saving"
+                        @click="pickUrl(url)"
+                      >
+                        <img :src="url" alt="" class="lmp__img" />
+                      </button>
+                    </div>
+                    <div class="lmp__cell-actions">
+                      <button
+                        type="button"
+                        class="lmp__cell-action lmp__cell-action--crop"
+                        :disabled="saving"
+                        aria-label="Кадрирование"
+                        title="Кадрирование"
+                        @click.stop="openCropForExisting(url)"
+                      >
+                        <img
+                          :src="cropIcon"
+                          alt=""
+                          class="lmp__cell-action-icon lmp__cell-action-icon--crop"
+                          width="13"
+                          height="13"
+                        />
+                      </button>
+                      <button
+                        type="button"
+                        class="lmp__cell-action lmp__cell-action--delete"
+                        :disabled="saving || !!deletingUrl"
+                        aria-label="Удалить"
+                        title="Удалить"
+                        @click.stop="deletePhoto(url)"
+                      >
+                        <img
+                          :src="deleteIcon"
+                          alt=""
+                          class="lmp__cell-action-icon lmp__cell-action-icon--delete"
+                          width="13"
+                          height="16"
+                        />
+                      </button>
+                    </div>
                   </div>
                 </div>
-                <p v-else-if="!loadError" class="lmp__empty" :class="{ 'lmp__empty--no-add-below': !canUpload }">
-                  У игрока пока что нету добавленных фотографий.
-                </p>
+                <p v-else-if="!loadError" class="lmp__empty">У игрока пока нет фотографий.</p>
 
-                <div v-if="player && canUpload" class="lmp__add-row">
-                  <input
-                    :id="fileInputId"
-                    class="lmp__file-input"
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    :disabled="saving"
-                    @change="onPhotoFilesChange"
-                  />
-                  <label class="lmp__add-btn" :class="{ 'lmp__add-btn--disabled': saving }" :for="fileInputId">
-                    Добавить фото игрока
+                <div v-if="player" class="lmp__add-row">
+                  <label class="lmp__add-btn" :class="{ 'lmp__add-btn--disabled': saving }">
+                    Добавить фото
+                    <input
+                      class="lmp__file-input"
+                      type="file"
+                      accept="image/*"
+                      :disabled="saving"
+                      @change="onAddPhoto"
+                    />
                   </label>
                 </div>
 
@@ -334,7 +338,7 @@ function onPhotoFilesChange(ev: Event) {
                   <button
                     type="button"
                     class="app-modal__btn-primary"
-                    :disabled="saving || !selectedUrl || !gridUrls.length"
+                    :disabled="saving || !selectedUrl"
                     @click="apply"
                   >
                     {{ saving ? 'Сохранение…' : 'Сохранить для лобби' }}
@@ -350,87 +354,196 @@ function onPhotoFilesChange(ev: Event) {
       </div>
     </Transition>
   </Teleport>
+
+  <PhotoCropModal
+    v-model="cropModalOpen"
+    :image-src="cropImageSrc"
+    :spec="cropSpec"
+    :initial-crop="cropInitial"
+    :nickname="player?.nickname"
+    :saving="saving"
+    :title="`Кадрирование - ${designLabel}`"
+    @save="onCropSave"
+  />
 </template>
 
 <style scoped>
 .lmp-modal__wrap {
-  max-width: min(26rem, calc(100vw - 2rem));
+  max-width: min(28rem, calc(100vw - 2rem));
 }
 
-.lmp__subtitle {
-  margin: 0 0 0.35rem;
-  font-size: 0.9375rem;
-  font-weight: 600;
-  color: #111827;
+.lmp-modal__wrap .app-modal__head {
+  margin-bottom: 0.75rem;
 }
 
-.lmp__lead,
-.lmp__empty {
+.lmp__body {
+  padding-top: 0;
+  gap: 0.35rem;
+}
+
+.lmp__empty,
+.lmp__status {
   font-size: 0.8125rem;
   line-height: 1.45;
-  font-weight: 400;
   color: #6b7280;
 }
 
-.lmp__lead {
-  margin: 0 0 0.65rem;
+.lmp__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  gap: 0.65rem;
+  margin-bottom: 0;
+}
+
+.lmp__cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.5rem 0.55rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #f9fafb;
+}
+
+.lmp__cell--selected {
+  border-color: #2f6feb;
+  box-shadow: 0 0 0 1px rgba(47, 111, 235, 0.2);
+}
+
+.lmp__cell-photo {
+  position: relative;
+  width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #f3f4f6;
+}
+
+.lmp__cell-select {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.lmp__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.lmp__cell-actions {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  border-radius: 8px;
+  background: #f3f4f6;
+  overflow: hidden;
+}
+
+.lmp__cell-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-width: 0;
+  height: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: #6b7280;
+  background: transparent;
+  cursor: pointer;
+}
+
+.lmp__cell-action:hover:not(:disabled) {
+  background: #e9edf3;
+}
+
+.lmp__cell-action--crop:hover:not(:disabled) {
+  color: #374151;
+}
+
+.lmp__cell-action--delete:hover:not(:disabled) {
+  color: #b91c1c;
+  background: #feecec;
+}
+
+.lmp__cell-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.lmp__cell-action-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  display: block;
+}
+
+.lmp__cell-action-icon--crop {
+  width: 13px;
+  height: 13px;
+  object-fit: contain;
+}
+
+.lmp__cell-action-icon--delete {
+  width: 13px;
+  height: 16px;
+  object-fit: contain;
+  filter: brightness(0) saturate(100%) invert(50%) sepia(8%) saturate(120%) hue-rotate(177deg)
+    brightness(94%) contrast(91%);
+}
+
+.lmp__cell-action--delete:hover:not(:disabled) .lmp__cell-action-icon--delete {
+  filter: brightness(0) saturate(100%) invert(24%) sepia(86%) saturate(2476%) hue-rotate(346deg)
+    brightness(92%) contrast(93%);
 }
 
 .lmp__add-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-  margin-top: 0.75rem;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.35rem;
 }
 
 .lmp__file-input {
   position: absolute;
   width: 1px;
   height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .lmp__add-btn {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.5rem 0.95rem;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.55rem 0.95rem;
   font: inherit;
   font-size: 0.875rem;
   font-weight: 500;
-  color: #374151;
-  background: #fff;
-  border: 1px solid #e5e7eb;
+  color: #1e40af;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
   border-radius: 8px;
   cursor: pointer;
 }
 
 .lmp__add-btn:hover:not(.lmp__add-btn--disabled) {
-  background: #f9fafb;
-  border-color: #d1d5db;
+  background: #dbeafe;
+  border-color: #93c5fd;
 }
 
 .lmp__add-btn--disabled {
   opacity: 0.6;
-  cursor: not-allowed;
   pointer-events: none;
 }
 
-.lmp__status {
-  margin: 0;
-  font-size: 0.9375rem;
-  color: #6b7280;
-}
-
 .lmp__banner {
-  margin: 0 0 0.75rem;
+  margin: 0.75rem 0 0;
   padding: 0.65rem 0.75rem;
   font-size: 0.8125rem;
   color: #b91c1c;
@@ -443,101 +556,5 @@ function onPhotoFilesChange(ev: Event) {
   color: #92400e;
   background: #fffbeb;
   border-color: #fde68a;
-}
-
-.lmp__grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr));
-  gap: 0.5rem;
-  margin-bottom: 0;
-}
-
-.lmp__grid--spaced-bottom {
-  margin-bottom: 1rem;
-}
-
-.lmp__cell {
-  position: relative;
-  display: block;
-  width: 100%;
-  aspect-ratio: 1;
-  margin: 0;
-  border: 2px solid #e5e7eb;
-  border-radius: 10px;
-  overflow: hidden;
-  background: #f3f4f6;
-  box-sizing: border-box;
-}
-
-.lmp__cell--pending {
-  border-style: dashed;
-}
-
-.lmp__cell:hover:not(:disabled) {
-  border-color: #93c5fd;
-}
-
-.lmp__cell--selected {
-  border-color: #2f6feb;
-  box-shadow: 0 0 0 2px rgba(47, 111, 235, 0.35);
-}
-
-.lmp__img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.lmp__cell-select {
-  display: block;
-  width: 100%;
-  height: 100%;
-  padding: 0;
-  margin: 0;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-}
-
-.lmp__cell-select:disabled {
-  opacity: 0.65;
-  cursor: not-allowed;
-}
-
-.lmp__cell-delete {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 20px;
-  height: 20px;
-  border: 0;
-  border-radius: 999px;
-  background: rgba(17, 24, 39, 0.82);
-  color: #fff;
-  font: inherit;
-  font-size: 0.95rem;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-
-.lmp__cell-delete:hover:not(:disabled) {
-  background: rgba(185, 28, 28, 0.92);
-}
-
-.lmp__cell-delete:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.lmp__empty {
-  margin: 0 0 0.35rem;
-}
-
-.lmp__empty--no-add-below {
-  margin-bottom: 1rem;
 }
 </style>

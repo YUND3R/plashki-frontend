@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { getLobbyFresh, type GameLobby, type LobbyPlayer } from '@/api/lobbies'
+import { enrichLobbyPhotoLayouts } from '@/utils/overlayPhotoLayoutBridge'
 import OverlayClassicDesign from '@/components/overlay/designs/OverlayClassicDesign.vue'
 import OverlayMastersDesign from '@/components/overlay/designs/OverlayMastersDesign.vue'
 import OverlayPlusDesign from '@/components/overlay/designs/OverlayPlusDesign.vue'
@@ -87,7 +88,8 @@ async function loadLobby() {
   if (!lobby.value) loading.value = true
   error.value = null
   try {
-    lobby.value = await getLobbyFresh(lobbyId.value)
+    const fresh = await getLobbyFresh(lobbyId.value)
+    lobby.value = await enrichLobbyPhotoLayouts(fresh)
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   } finally {

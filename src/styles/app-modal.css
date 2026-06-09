@@ -130,7 +130,7 @@
 
 /**
  * Единый фокус для полей ввода во всех модалках (как PlayerCardCreate / настройки аккаунта).
- * Не распространяется на file/checkbox/radio — только текстовые поля и textarea/select.
+ * Не распространяется на file/checkbox/radio - только текстовые поля и textarea/select.
  */
 .app-modal textarea:focus,
 .app-modal textarea:focus-visible,

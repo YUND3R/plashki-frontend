@@ -4,10 +4,8 @@ import type { PropType } from 'vue'
 import type { LobbyPlayer } from '@/api/lobbies'
 import type { OverlayPopupMessage } from '@/utils/overlayPopupMessage'
 import type { OverlayTextTone } from '@/utils/overlayPersistentMessage'
-import {
-  photoFrameImgStyle,
-  resolveLobbyPlayerPhotoFrame,
-} from '@/utils/playerCardPhotoFrame'
+import { rowPhoto } from '@/utils/playerCardPhotoFrame'
+import OverlayPlayerPhoto from '@/components/overlay/OverlayPlayerPhoto.vue'
 import mafiaRoleIcon from '../../../../mafia.svg?url'
 import donRoleIcon from '../../../../don.svg?url'
 import civilianRoleIcon from '../../../../civilian.svg?url'
@@ -60,22 +58,14 @@ function textToneColor(tone: OverlayTextTone): string {
   return '#4ade80'
 }
 
-function rowPhoto(p: LobbyPlayer | null): string {
-  if (!p) return ''
-  const byLobby = typeof p.lobby_photo_url === 'string' ? p.lobby_photo_url.trim() : ''
-  if (byLobby) return byLobby
-  const first = p.photo_urls?.[0]
-  return typeof first === 'string' ? first.trim() : ''
+const MASTERS_DESIGN = 'masters-yug25'
+
+function photoUrl(p: LobbyPlayer | null): string {
+  return rowPhoto(p)
 }
 
 function hasPhoto(p: LobbyPlayer | null): boolean {
-  return !!rowPhoto(p)
-}
-
-function rowPhotoImgStyle(p: LobbyPlayer | null): Record<string, string> {
-  const u = rowPhoto(p)
-  if (!u || !p) return {}
-  return photoFrameImgStyle(resolveLobbyPlayerPhotoFrame(p, u))
+  return !!photoUrl(p)
 }
 
 function roleIcon(role: string | null): string {
@@ -364,11 +354,10 @@ onUnmounted(() => {
             v-if="hasPhoto(p) && showContent(stageOf(p, idx))"
             class="overlay-masters-card__photo-stage"
           >
-            <img
-              :src="rowPhoto(p)"
-              alt=""
-              class="overlay-masters-card__photo-inner"
-              :style="rowPhotoImgStyle(p)"
+            <OverlayPlayerPhoto
+              :player="p"
+              :design-code="MASTERS_DESIGN"
+              img-class="overlay-masters-card__photo-inner"
             />
           </div>
         </Transition>

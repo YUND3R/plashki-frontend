@@ -3,6 +3,8 @@ import type { PropType } from 'vue'
 import type { LobbyPlayer } from '@/api/lobbies'
 import type { OverlayPopupMessage } from '@/utils/overlayPopupMessage'
 import type { OverlayTextTone } from '@/utils/overlayPersistentMessage'
+import { rowPhoto } from '@/utils/playerCardPhotoFrame'
+import OverlayPlayerPhoto from '@/components/overlay/OverlayPlayerPhoto.vue'
 import mafiaRoleIcon from '../../../../mafia.svg?url'
 import donRoleIcon from '../../../../don.svg?url'
 import civilianRoleIcon from '../../../../civilian.svg?url'
@@ -45,12 +47,10 @@ function textToneColor(tone: OverlayTextTone): string {
   return '#4ade80'
 }
 
-function rowPhoto(p: LobbyPlayer | null): string {
-  if (!p) return ''
-  const byLobby = typeof p.lobby_photo_url === 'string' ? p.lobby_photo_url.trim() : ''
-  if (byLobby) return byLobby
-  const first = p.photo_urls?.[0]
-  return typeof first === 'string' ? first.trim() : ''
+const CLASSIC_DESIGN = 'classic'
+
+function photoUrl(p: LobbyPlayer | null): string {
+  return rowPhoto(p)
 }
 
 function roleLabel(role: string | null): string {
@@ -218,7 +218,12 @@ function statusIcon(status: string | null): string {
         </span>
       </div>
       <div v-if="!isEliminatedStatus(p?.status ?? null)" class="overlay-card__photo-float">
-        <img v-if="rowPhoto(p)" :src="rowPhoto(p)" alt="" class="overlay-card__photo" />
+        <OverlayPlayerPhoto
+          v-if="photoUrl(p)"
+          :player="p"
+          :design-code="CLASSIC_DESIGN"
+          img-class="overlay-card__photo"
+        />
         <div v-else class="overlay-card__photo overlay-card__photo--empty" />
       </div>
       <div
@@ -405,6 +410,8 @@ function statusIcon(status: string | null): string {
   transform: translateX(-50%);
   width: 186px;
   height: 126px;
+  overflow: hidden;
+  border-radius: 12px 12px 0 0;
   pointer-events: none;
   z-index: 1;
 }

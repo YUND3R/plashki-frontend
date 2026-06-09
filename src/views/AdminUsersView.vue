@@ -11,7 +11,7 @@ function fullName(u: AdminUser): string {
   const first = typeof u.first_name === 'string' ? u.first_name.trim() : ''
   const last = typeof u.last_name === 'string' ? u.last_name.trim() : ''
   const value = `${first} ${last}`.trim()
-  return value || '—'
+  return value || '-'
 }
 
 function roleLabel(raw: string | null | undefined): string {
@@ -24,11 +24,11 @@ function subscriptionLabel(raw: string | null | undefined): string {
   if (s === 'basic') return 'Базовый'
   if (s === 'standard') return 'Стандарт'
   if (s === 'premium') return 'Премиум'
-  return s ? s : '—'
+  return s ? s : '-'
 }
 
 function createdAtLabel(raw: string | null | undefined): string {
-  if (!raw) return '—'
+  if (!raw) return '-'
   const ms = Date.parse(raw)
   if (Number.isNaN(ms)) return raw
   return new Date(ms).toLocaleString('ru-RU')

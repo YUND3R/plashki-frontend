@@ -556,7 +556,7 @@ function onDocPointerDownReplace(e: PointerEvent) {
   if (replaceOpenSeatIndex.value === null) return
   const t = e.target
   if (!(t instanceof Element)) return
-  /** Вся ячейка ника строки с открытой заменой — не считаем «снаружи» (карандаш, поле, меню). */
+  /** Вся ячейка ника строки с открытой заменой - не считаем «снаружи» (карандаш, поле, меню). */
   if (t.closest('.lobby-manage__row-nick-cell--replace-open')) return
   closeReplace()
 }
@@ -1351,9 +1351,9 @@ async function saveCardDesign() {
                   "
                   :title="
                     isLobbyHost && p?.membership_id
-                      ? 'Зажмите и перетащите на другого игрока — поменять местами'
+                      ? 'Зажмите и перетащите на другого игрока - поменять местами'
                       : isLobbyHost
-                        ? 'Пустое место — сюда нельзя перетащить обмен'
+                        ? 'Пустое место - сюда нельзя перетащить обмен'
                         : 'Порядок может менять только хост лобби.'
                   "
                   @dragstart.stop="onDragStart($event, idx, p)"
@@ -1791,6 +1791,7 @@ async function saveCardDesign() {
         v-model="photoModalOpen"
         :lobby-id="lobby.id"
         :player="photoModalPlayer"
+        :overlay-design="selectedCardDesign || 'classic'"
         @applied="onPhotoModalApplied"
       />
 
@@ -2699,7 +2700,7 @@ async function saveCardDesign() {
 }
 
 /**
- * Редактирование в границах ячейки таблицы: без внутренней рамки/подчёркиваний —
+ * Редактирование в границах ячейки таблицы: без внутренней рамки/подчёркиваний -
  * обводка задаётся строкой (.lobby-manage__row--replace-open).
  */
 .lobby-manage__nick-input {

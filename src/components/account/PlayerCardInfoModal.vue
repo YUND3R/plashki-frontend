@@ -123,7 +123,7 @@ watch(open, (isOpen, _, onCleanup) => {
 
 function displayText(value: string | null | undefined): string {
   const t = value?.trim()
-  return t ? t : '—'
+  return t ? t : '-'
 }
 
 async function onPhotoFilesChange(ev: Event) {
@@ -231,7 +231,7 @@ async function onPhotoFilesChange(ev: Event) {
                         {{ card.gomafia_url.trim() }}
                       </a>
                     </p>
-                    <p v-else class="pim__value pim__value--empty">—</p>
+                    <p v-else class="pim__value pim__value--empty">-</p>
                   </div>
                 </div>
 

@@ -74,7 +74,7 @@ async function syncUserRole() {
   }
 }
 
-/** Только узкие экраны (телефоны): оверлей-меню. Планшет 640px+ — боковая панель всегда в потоке, без «гамбургера». */
+/** Только узкие экраны (телефоны): оверлей-меню. Планшет 640px+ - боковая панель всегда в потоке, без «гамбургера». */
 const MOBILE_MQ = '(max-width: 639px)'
 const isMobile = ref(
   typeof window !== 'undefined' && window.matchMedia(MOBILE_MQ).matches,
@@ -227,7 +227,7 @@ onUnmounted(() => {
 
 <style scoped>
 .shell {
-  /* Одна высота шапки на всех страницах (эталон — строка как у «Мои составы») */
+  /* Одна высота шапки на всех страницах (эталон - строка как у «Мои составы») */
   --shell-header-row-h: 2.375rem;
   --shell-header-pad-y: 0.75rem;
   display: flex;

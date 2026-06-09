@@ -141,7 +141,7 @@ function messageFromErrorBody(body: string): string {
       if (joined) return joined
     }
   } catch {
-    /* не JSON — вернём как есть */
+    /* не JSON - вернём как есть */
   }
   return raw
 }

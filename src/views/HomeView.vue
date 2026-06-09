@@ -42,7 +42,7 @@ function overlayDesignFallbackLabel(code: string): string {
 
 const router = useRouter()
 const dashboardUi = useDashboardUiStore()
-const apiBase = computed(() => import.meta.env.VITE_API_BASE_URL ?? '(не задан — скопируйте .env.example в .env)')
+const apiBase = computed(() => import.meta.env.VITE_API_BASE_URL ?? '(не задан - скопируйте .env.example в .env)')
 
 const modalOpen = ref(false)
 const importOpen = ref(false)
@@ -80,7 +80,7 @@ async function refreshLobbies() {
     const list = await listMyLobbies()
     const withDesign = await Promise.all(
       list.map(async (lobby): Promise<DashboardLobbyEntry> => {
-        let cardDesignLabel = '—'
+        let cardDesignLabel = '-'
         try {
           const data = await getLobbyOverlayDesigns(lobby.id)
           const code = (data.selected_overlay_design ?? '').trim()
@@ -88,7 +88,7 @@ async function refreshLobbies() {
           const title = typeof opt?.title === 'string' ? opt.title.trim() : ''
           cardDesignLabel = title || overlayDesignFallbackLabel(code)
         } catch {
-          cardDesignLabel = '—'
+          cardDesignLabel = '-'
         }
 
         let tournamentHumansCount: number | null = null
@@ -215,7 +215,7 @@ function closeImportForm() {
 
 const GOMAFIA_IMPORT_WRONG_URL_MSG = 'Вы указали неверную ссылку'
 
-/** Строго: https://gomafia.pro/tournament/<id>?tab=games (https, хост gomafia.pro, id — только цифры). */
+/** Строго: https://gomafia.pro/tournament/<id>?tab=games (https, хост gomafia.pro, id - только цифры). */
 function isValidGomafiaTournamentImportUrl(raw: string): boolean {
   let u: URL
   try {

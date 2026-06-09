@@ -215,7 +215,7 @@ onUnmounted(() => {
                     <div class="psv__avatar-wrap">
                       <img v-if="avatarDisplaySrc" :src="avatarDisplaySrc" alt="" class="psv__avatar-img" />
                       <div v-else class="psv__avatar-placeholder" aria-hidden="true">
-                        {{ avatarInitials || '—' }}
+                        {{ avatarInitials || '-' }}
                       </div>
                     </div>
                     <div class="psv__avatar-actions">

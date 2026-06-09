@@ -33,7 +33,7 @@ export type UserMe = {
   avatar_url?: string | null
   nickname: string
   role: string
-  /** Если бэкенд не шлёт — на фронте считаем «Базовый». */
+  /** Если бэкенд не шлёт - на фронте считаем «Базовый». */
   subscription_tier?: SubscriptionTier
 }
 

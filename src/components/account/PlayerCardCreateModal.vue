@@ -12,7 +12,7 @@ const open = defineModel<boolean>({ default: false })
 
 const props = withDefaults(
   defineProps<{
-    /** Если задан — режим редактирования (PATCH + догрузка фото на ту же карточку). */
+    /** Если задан - режим редактирования (PATCH + догрузка фото на ту же карточку). */
     editingCard?: PlayerCard | null
   }>(),
   { editingCard: null },

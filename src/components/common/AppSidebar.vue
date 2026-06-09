@@ -56,7 +56,7 @@ const adminSection = [{ to: '/admin/users', label: 'Пользователи', i
       'sidebar--admin': props.isAdmin,
     }"
   >
-    <RouterLink class="sidebar__logo" :to="{ name: 'landing' }" aria-label="plashki — на главную страницу">
+    <RouterLink class="sidebar__logo" :to="{ name: 'landing' }" aria-label="plashki - на главную страницу">
       <img
         class="sidebar__logo-img"
         :src="collapsed ? logoCompact : logoFull"
@@ -324,7 +324,7 @@ const adminSection = [{ to: '/admin/users', label: 'Пользователи', i
   opacity: 0.72;
 }
 
-/* #2f6feb — как цвет активной ссылки */
+/* #2f6feb - как цвет активной ссылки */
 .sidebar__link.router-link-active .sidebar__icon-img {
   opacity: 1;
   filter: brightness(0) saturate(100%) invert(40%) sepia(98%) saturate(2476%) hue-rotate(210deg)

@@ -1,11 +1,12 @@
 import type { LobbyPlayer } from '@/api/lobbies'
 import type { PlayerCard } from '@/api/playerCards'
+import { findPhotoLayoutForUrl } from '@/utils/photoCrop'
 
 /** Совпадает с полезной нагрузкой API для одного фото в кадре. */
 export type PlayerCardPhotoFrame = {
   x_pct: number
   y_pct: number
-  /** От 1 до 3 — «зум» поверх cover. */
+  /** От 1 до 3 - «зум» поверх cover. */
   zoom: number
 }
 
@@ -20,7 +21,7 @@ export const DEFAULT_PLAYER_CARD_PHOTO_FRAME: PlayerCardPhotoFrame = {
   zoom: 1,
 }
 
-/** Как в CSS `object-position`: чуть шире 0–100 помогает в превью. */
+/** Как в CSS `object-position`: чуть шире 0-100 помогает в превью. */
 export const PLAYER_CARD_OBJECT_POS_PCT_MIN = -42
 export const PLAYER_CARD_OBJECT_POS_PCT_MAX = 142
 
@@ -43,7 +44,7 @@ export function normalizePlayerCardPhotoFrame(
   }
 }
 
-/** Размеры контейнера и натуральное разрешение — для точного translate+scale при наличии meta. */
+/** Размеры контейнера и натуральное разрешение - для точного translate+scale при наличии meta. */
 export type PhotoFrameImgStyleMeta = {
   cw: number
   ch: number
@@ -51,7 +52,25 @@ export type PhotoFrameImgStyleMeta = {
   nh: number
 }
 
-function photoFramePanTranslatePx(f: PlayerCardPhotoFrame, meta: PhotoFrameImgStyleMeta): { tx: number; ty: number } {
+/**
+ * Полный диапазон pan по оси (px) - cover-запас + zoom + минимум на zoom 1.0,
+ * чтобы фото можно было двигать без предварительного увеличения.
+ */
+const PHOTO_FRAME_MIN_PAN_SLACK_FRAC = 0.5
+
+/** Замедление drag в кроппере: на zoom 1.0 мышь слишком чувствительна при мин. slack. */
+export function photoFramePanDragDamping(zoom: number): number {
+  const z = Math.min(3, Math.max(1, zoom))
+  if (z <= 1.01) return 3.25
+  if (z >= 2) return 1.1
+  const t = z - 1
+  return 3.25 + t * (1.1 - 3.25)
+}
+
+export function photoFramePanSlackPx(
+  f: PlayerCardPhotoFrame,
+  meta: PhotoFrameImgStyleMeta,
+): { slackX: number; slackY: number } {
   const z = Math.min(3, Math.max(1, f.zoom))
   const W = Math.max(1, meta.cw)
   const H = Math.max(1, meta.ch)
@@ -60,18 +79,28 @@ function photoFramePanTranslatePx(f: PlayerCardPhotoFrame, meta: PhotoFrameImgSt
   const sCover = Math.max(W / nw, H / nh)
   const Dw = nw * sCover
   const Dh = nh * sCover
-  const slackX = Math.max(0, Dw - W)
-  const slackY = Math.max(0, Dh - H)
+  const coverSlackX = Math.max(0, Dw - W)
+  const coverSlackY = Math.max(0, Dh - H)
   const zoomPadX = W * Math.max(z - 1, 0)
   const zoomPadY = H * Math.max(z - 1, 0)
-  const panHalfX = (slackX + zoomPadX) / 2
-  const panHalfY = (slackY + zoomPadY) / 2
+  const minSlackX = W * PHOTO_FRAME_MIN_PAN_SLACK_FRAC
+  const minSlackY = H * PHOTO_FRAME_MIN_PAN_SLACK_FRAC
+  return {
+    slackX: Math.max(coverSlackX + zoomPadX, minSlackX),
+    slackY: Math.max(coverSlackY + zoomPadY, minSlackY),
+  }
+}
+
+function photoFramePanTranslatePx(f: PlayerCardPhotoFrame, meta: PhotoFrameImgStyleMeta): { tx: number; ty: number } {
+  const { slackX, slackY } = photoFramePanSlackPx(f, meta)
+  const panHalfX = slackX / 2
+  const panHalfY = slackY / 2
   const tx = -((f.x_pct - 50) / 50) * panHalfX
   const ty = -((f.y_pct - 50) / 50) * panHalfY
   return { tx, ty }
 }
 
-/** Стили `<img>` в кропе (`overflow: hidden`). Без meta — браузерный object-position + scale. */
+/** Стили `<img>` в кропе (`overflow: hidden`). Без meta - браузерный object-position + scale. */
 export function photoFrameImgStyle(
   frame: PlayerCardPhotoFrame | null | undefined,
   meta?: PhotoFrameImgStyleMeta | null,
@@ -111,7 +140,7 @@ export function resolvePlayerCardMainPhotoFrame(
   if (!c?.photo_urls?.length) return DEFAULT_PLAYER_CARD_PHOTO_FRAME
   const url = (c.photo_urls[0] ?? '').trim()
   if (!url) return DEFAULT_PLAYER_CARD_PHOTO_FRAME
-  const fromMap = (c.photo_layouts as Record<string, PlayerCardPhotoFrame> | undefined)?.[url]
+  const fromMap = findPhotoLayoutForUrl(c.photo_layouts ?? null, url)
   return normalizePlayerCardPhotoFrame(fromMap ?? DEFAULT_PLAYER_CARD_PHOTO_FRAME)
 }
 
@@ -126,11 +155,31 @@ export function resolveLobbyPlayerPhotoFrame(
   const pl = p as LobbyPlayerWithLayouts
   const lobby = (pl.lobby_photo_url ?? '').trim()
   if (lobby && shown === lobby) {
-    return normalizePlayerCardPhotoFrame(
-      pl.display_photo_layout ?? pl.photo_layouts?.[shown] ?? DEFAULT_PLAYER_CARD_PHOTO_FRAME,
-    )
+    const fromDisplay =
+      pl.display_photo_layout ?? findPhotoLayoutForUrl(pl.photo_layouts ?? null, shown)
+    return normalizePlayerCardPhotoFrame(fromDisplay ?? DEFAULT_PLAYER_CARD_PHOTO_FRAME)
   }
-  const fromLayouts = pl.photo_layouts?.[shown]
+  const fromLayouts = findPhotoLayoutForUrl(pl.photo_layouts ?? null, shown)
   if (fromLayouts) return normalizePlayerCardPhotoFrame(fromLayouts)
   return DEFAULT_PLAYER_CARD_PHOTO_FRAME
+}
+
+/** Какой URL фото показывать в overlay / лобби. */
+export function rowPhoto(p: LobbyPlayer | null | undefined): string {
+  if (!p) return ''
+  const lobby = typeof p.lobby_photo_url === 'string' ? p.lobby_photo_url.trim() : ''
+  if (lobby) return lobby
+  const first = p.photo_urls?.[0]
+  return typeof first === 'string' ? first.trim() : ''
+}
+
+/** Стили кадрирования под конкретный overlay-дизайн (рамка из overlayPhotoSpec). */
+export function rowPhotoImgStyleForDesign(
+  p: LobbyPlayer | null | undefined,
+  _designCode: string,
+): Record<string, string> {
+  const url = rowPhoto(p)
+  if (!url || !p) return {}
+  const frame = resolveLobbyPlayerPhotoFrame(p, url)
+  return photoFrameImgStyle(frame)
 }
