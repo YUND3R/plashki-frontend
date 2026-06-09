@@ -519,7 +519,7 @@ function statusIcon(status: string | null): string {
 }
 
 .overlay-card__meta-lh-num--mafia {
-  color: #c084fc;
+  color: #b794f6;
 }
 
 .overlay-card__meta-checks-text {
@@ -534,7 +534,7 @@ function statusIcon(status: string | null): string {
 }
 
 .overlay-card__meta-check-num--mafia {
-  color: #c084fc;
+  color: #b794f6;
 }
 
 .overlay-card__meta-box--status {
@@ -591,23 +591,23 @@ function statusIcon(status: string | null): string {
 }
 
 .overlay-card__role-icon--peaceful {
-  filter: brightness(0) saturate(100%) invert(9%) sepia(98%) saturate(6182%) hue-rotate(336deg)
-    brightness(95%) contrast(111%);
+  filter: brightness(0) saturate(100%) invert(52%) sepia(42%) saturate(1400%) hue-rotate(328deg)
+    brightness(96%) contrast(94%);
 }
 
 .overlay-card__role-icon--sheriff {
-  filter: brightness(0) saturate(100%) invert(59%) sepia(97%) saturate(399%) hue-rotate(84deg)
-    brightness(94%) contrast(93%);
+  filter: brightness(0) saturate(100%) invert(48%) sepia(38%) saturate(950%) hue-rotate(186deg)
+    brightness(97%) contrast(93%);
 }
 
 .overlay-card__role-icon--don {
-  filter: brightness(0) saturate(100%) invert(53%) sepia(75%) saturate(1554%) hue-rotate(230deg)
-    brightness(99%) contrast(96%);
+  filter: brightness(0) saturate(100%) invert(55%) sepia(32%) saturate(1100%) hue-rotate(224deg)
+    brightness(97%) contrast(92%);
 }
 
 .overlay-card__role-icon--mafia {
-  filter: brightness(0) saturate(100%) invert(17%) sepia(59%) saturate(2852%) hue-rotate(254deg)
-    brightness(91%) contrast(102%);
+  filter: brightness(0) saturate(100%) invert(42%) sepia(28%) saturate(1600%) hue-rotate(252deg)
+    brightness(94%) contrast(96%);
 }
 
 .overlay-role-soft-enter-active {
@@ -683,7 +683,7 @@ function statusIcon(status: string | null): string {
 }
 
 .overlay-card__check-num--mafia {
-  color: #c084fc;
+  color: #b794f6;
 }
 
 </style>
