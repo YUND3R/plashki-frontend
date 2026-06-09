@@ -1589,6 +1589,14 @@ async function saveCardDesign() {
               :disabled="!canOpenSheriffChecks(sheriffSeatPlayer)"
               @click="openSheriffChecksModal(sheriffSeatPlayer)"
             >
+              <img
+                :src="sheriffRoleIcon"
+                alt=""
+                class="lobby-manage__sheriff-checks-btn-icon"
+                width="14"
+                height="14"
+                aria-hidden="true"
+              />
               Проверки шерифа
             </button>
             <div v-if="hasImportedSelection" ref="importedSwitcherRef" class="lobby-manage__imported-switcher">
@@ -3097,6 +3105,9 @@ async function saveCardDesign() {
 }
 
 .lobby-manage__sheriff-checks-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   height: var(--lobby-dot-size);
   padding: 0 0.65rem;
   border: 1px solid #e5e7eb;
@@ -3110,10 +3121,24 @@ async function saveCardDesign() {
   cursor: pointer;
 }
 
+.lobby-manage__sheriff-checks-btn-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  object-fit: contain;
+  filter: brightness(0) saturate(100%) invert(48%) sepia(38%) saturate(950%) hue-rotate(186deg)
+    brightness(97%) contrast(93%);
+}
+
 .lobby-manage__sheriff-checks-btn:hover:not(:disabled) {
   border-color: #93c5fd;
   background: #eff6ff;
   color: #1d4ed8;
+}
+
+.lobby-manage__sheriff-checks-btn:hover:not(:disabled) .lobby-manage__sheriff-checks-btn-icon {
+  filter: brightness(0) saturate(100%) invert(39%) sepia(98%) saturate(1845%) hue-rotate(208deg)
+    brightness(97%) contrast(98%);
 }
 
 .lobby-manage__sheriff-checks-btn:disabled {
