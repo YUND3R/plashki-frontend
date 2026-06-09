@@ -283,6 +283,13 @@ const isReplacePanelOpen = computed(() => replaceOpenSeatIndex.value !== null)
 /** Режим ведущего: скрывает подсветку ролей (для трансляции). Статусы всегда отображаются. */
 const hideRoleMarks = computed(() => hostMode.value)
 
+const sheriffSeatPlayer = computed(() => {
+  for (const p of seatRows.value) {
+    if (p && isRoleActive(p, 'sheriff')) return p
+  }
+  return null
+})
+
 function flashHostModeRoleClick(membershipId: string, role: LobbyRoleValue) {
   clearRoleHostFlashTimers()
   const key = `${membershipId}:${role}`
@@ -1504,7 +1511,7 @@ async function saveCardDesign() {
                       <img :src="role.icon" :alt="role.label" class="lobby-manage__role-icon" />
                     </button>
                     <button
-                      v-if="role.value === 'sheriff' && isRoleActive(p, 'sheriff')"
+                      v-if="!hideRoleMarks && role.value === 'sheriff' && isRoleActive(p, 'sheriff')"
                       type="button"
                       class="lobby-manage__sheriff-checks-btn"
                       :disabled="!canOpenSheriffChecks(p)"
@@ -1575,6 +1582,15 @@ async function saveCardDesign() {
                 <span class="lobby-manage__host-switch-knob" />
               </span>
             </label>
+            <button
+              v-if="hideRoleMarks && sheriffSeatPlayer"
+              type="button"
+              class="lobby-manage__sheriff-checks-btn lobby-manage__sheriff-checks-btn--foot"
+              :disabled="!canOpenSheriffChecks(sheriffSeatPlayer)"
+              @click="openSheriffChecksModal(sheriffSeatPlayer)"
+            >
+              Проверки шерифа
+            </button>
             <div v-if="hasImportedSelection" ref="importedSwitcherRef" class="lobby-manage__imported-switcher">
               <div class="lobby-manage__imported-group">
                 <div class="lobby-manage__imported-picker">
@@ -3102,6 +3118,10 @@ async function saveCardDesign() {
 .lobby-manage__sheriff-checks-btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+.lobby-manage__sheriff-checks-btn--foot {
+  height: 2.25rem;
 }
 
 .lobby-manage__main-actions {
