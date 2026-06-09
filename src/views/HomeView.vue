@@ -10,8 +10,8 @@ import {
   listMyLobbies,
 } from '@/api/lobbies'
 import { useDashboardUiStore } from '@/stores/dashboardUi'
-import deleteLobbyIcon from '../../delete.svg?url'
-import goLobbyIcon from '../../GO.svg?url'
+import deleteLobbyIcon from '@/assets/icons/delete.svg?url'
+import goLobbyIcon from '@/assets/icons/go.svg?url'
 import CreateLobbyModal from '@/components/dashboard/CreateLobbyModal.vue'
 
 type DashboardLobbyEntry = {

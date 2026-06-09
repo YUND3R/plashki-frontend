@@ -13,8 +13,8 @@ import { overlayPhotoSpecForDesign } from '@/utils/overlayPhotoSpec'
 import type { PhotoCrop } from '@/utils/photoCrop'
 import { resolveLobbyPlayerPhotoFrame } from '@/utils/playerCardPhotoFrame'
 import { writeCachedPhotoLayouts } from '@/utils/overlayPhotoLayoutBridge'
-import cropIcon from '../../../cadr.svg?url'
-import deleteIcon from '../../../delete.svg?url'
+import cropIcon from '@/assets/icons/cadr.svg?url'
+import deleteIcon from '@/assets/icons/delete.svg?url'
 
 const open = defineModel<boolean>({ default: false })
 
