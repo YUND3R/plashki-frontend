@@ -303,8 +303,12 @@ function statusIcon(status: string | null): string {
   margin: 0;
   padding: 9px 18px;
   border-radius: 5px;
-  background: #0c0e11;
   border: none;
+  outline: none;
+  box-shadow: none;
+  background:
+    radial-gradient(ellipse 220% 160% at 100% 100%, rgba(75, 85, 99, 0.22) 0%, transparent 72%),
+    #0c0e11;
   color: #f8fafc;
   font-size: 24px;
   font-weight: 600;
@@ -324,8 +328,12 @@ function statusIcon(status: string | null): string {
   margin: 0;
   padding: 12px 16px;
   border-radius: 5px;
-  background: #0c0e11;
   border: none;
+  outline: none;
+  box-shadow: none;
+  background:
+    radial-gradient(ellipse 220% 160% at 100% 100%, rgba(75, 85, 99, 0.22) 0%, transparent 72%),
+    #0c0e11;
   color: #f8fafc;
   z-index: 210;
 }

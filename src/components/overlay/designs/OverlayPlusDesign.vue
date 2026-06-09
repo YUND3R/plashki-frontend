@@ -102,10 +102,12 @@ function textToneColor(tone: OverlayTextTone): string {
   max-width: 88vw;
   margin: 0;
   padding: 10px 20px;
-  border-radius: 12px;
-  background: rgba(6, 78, 59, 0.86);
-  border: 1px solid rgba(52, 211, 153, 0.5);
-  color: #ecfdf5;
+  border-radius: 5px;
+  border: none;
+  background:
+    radial-gradient(ellipse 220% 160% at 100% 100%, rgba(75, 85, 99, 0.22) 0%, transparent 72%),
+    #0c0e11;
+  color: #f8fafc;
   font-size: 22px;
   font-weight: 700;
   line-height: 1.12;
@@ -123,10 +125,14 @@ function textToneColor(tone: OverlayTextTone): string {
   max-width: min(36vw, 680px);
   margin: 0;
   padding: 12px 16px;
-  border-radius: 12px;
-  background: rgba(6, 78, 59, 0.92);
-  border: 1px solid rgba(110, 231, 183, 0.48);
-  color: #ecfdf5;
+  border-radius: 5px;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  background:
+    radial-gradient(ellipse 220% 160% at 100% 100%, rgba(75, 85, 99, 0.22) 0%, transparent 72%),
+    #0c0e11;
+  color: #f8fafc;
   z-index: 210;
 }
 

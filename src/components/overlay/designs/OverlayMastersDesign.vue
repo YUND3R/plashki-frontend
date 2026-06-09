@@ -442,9 +442,11 @@ onUnmounted(() => {
   max-width: 88vw;
   margin: 0;
   padding: 8px 18px;
-  border-radius: 8px;
-  border: 1px solid rgba(148, 163, 184, 0.38);
-  background: rgba(10, 10, 10, 0.9);
+  border-radius: 5px;
+  border: none;
+  background:
+    radial-gradient(ellipse 220% 160% at 100% 100%, rgba(75, 85, 99, 0.2) 0%, transparent 72%),
+    #0a0a0a;
   color: #f8fafc;
   font-family: 'Neue Machina', 'Inter', 'Segoe UI', Roboto, Arial, sans-serif;
   font-size: 22px;
@@ -464,9 +466,13 @@ onUnmounted(() => {
   max-width: min(36vw, 680px);
   margin: 0;
   padding: 11px 16px;
-  border-radius: 10px;
-  border: 1px solid rgba(148, 163, 184, 0.45);
-  background: rgba(10, 10, 10, 0.9);
+  border-radius: 5px;
+  border: none;
+  outline: none;
+  box-shadow: none;
+  background:
+    radial-gradient(ellipse 220% 160% at 100% 100%, rgba(75, 85, 99, 0.2) 0%, transparent 72%),
+    #0a0a0a;
   color: #f8fafc;
   z-index: 210;
 }
