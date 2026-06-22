@@ -2427,7 +2427,10 @@ async function saveCardDesign() {
   display: flex;
   flex-direction: column;
   gap: 0;
-  border-top: 1px solid #e5e7eb;
+  border-top: none;
+  border-radius: 12px;
+  margin-top: 10px;
+  margin-left: 10px;
   overflow-x: auto;
   min-width: 0;
   max-width: 100%;
@@ -2436,6 +2439,8 @@ async function saveCardDesign() {
 .lobby-manage__table-wrap--replace {
   overflow-x: visible;
   overflow-y: visible;
+  gap: 0;
+  border-radius: 12px;
 }
 
 .lobby-manage__row {
@@ -2450,20 +2455,28 @@ async function saveCardDesign() {
   min-width: 0;
   box-sizing: border-box;
   position: relative;
-  border: none;
-  background: transparent;
+  border: 1px solid #e5e7eb;
+  border-radius: 0;
+  background: #fff;
+  overflow: hidden;
+}
+
+.lobby-manage__table-wrap > .lobby-manage__row:first-child {
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+}
+
+.lobby-manage__table-wrap > .lobby-manage__row:last-child {
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
+}
+
+.lobby-manage__table-wrap > .lobby-manage__row + .lobby-manage__row {
+  margin-top: -1px;
 }
 
 .lobby-manage__row::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 1px;
-  background: #e5e7eb;
-  pointer-events: none;
-  z-index: 0;
+  display: none;
 }
 
 /* Рамка grab/drag: border на ::before поверх ячеек (inset-тень родителя уходит под фон детей). */
@@ -2509,19 +2522,19 @@ async function saveCardDesign() {
 
 /** Внутренние линии сетки в тон рамке: и периметр (#2f6feb), и разделители между колонками. */
 .lobby-manage__row--drag-source > .lobby-manage__row-num-cell {
-  box-shadow: inset 1px 0 0 #93c5fd;
+  box-shadow: none;
 }
 
 .lobby-manage__row--drag-source > .lobby-manage__row-drag-cell {
-  box-shadow: inset 1px 0 0 #93c5fd, inset -1px 0 0 #93c5fd;
+  box-shadow: none;
 }
 
 .lobby-manage__row--drag-source > .lobby-manage__row-nick-cell {
-  box-shadow: inset 1px 0 0 #93c5fd, inset -1px 0 0 #93c5fd;
+  box-shadow: none;
 }
 
 .lobby-manage__row--drag-source > .lobby-manage__row-dots-cell {
-  border-right: 1px solid #93c5fd;
+  border-right: none;
 }
 
 /** Иначе .lobby-manage__dot-rect с белым фоном «режет» подсветку строки при grab/drag. */
@@ -2530,7 +2543,7 @@ async function saveCardDesign() {
 }
 
 .lobby-manage__row--drag-source .lobby-manage__dot-rect:first-child {
-  box-shadow: inset -1px 0 0 #93c5fd;
+  box-shadow: none;
 }
 
 .lobby-manage__row--drag-source .lobby-manage__avatar-ph {
@@ -2571,19 +2584,19 @@ async function saveCardDesign() {
 }
 
 .lobby-manage__row--drag-over:not(.lobby-manage__row--drag-source) > .lobby-manage__row-num-cell {
-  box-shadow: inset 1px 0 0 #38bdf8;
+  box-shadow: none;
 }
 
 .lobby-manage__row--drag-over:not(.lobby-manage__row--drag-source) > .lobby-manage__row-drag-cell {
-  box-shadow: inset 1px 0 0 #38bdf8, inset -1px 0 0 #38bdf8;
+  box-shadow: none;
 }
 
 .lobby-manage__row--drag-over:not(.lobby-manage__row--drag-source) > .lobby-manage__row-nick-cell {
-  box-shadow: inset 1px 0 0 #38bdf8, inset -1px 0 0 #38bdf8;
+  box-shadow: none;
 }
 
 .lobby-manage__row--drag-over:not(.lobby-manage__row--drag-source) > .lobby-manage__row-dots-cell {
-  border-right: 1px solid #38bdf8;
+  border-right: none;
 }
 
 .lobby-manage__row--drag-over:not(.lobby-manage__row--drag-source) .lobby-manage__dot-rect {
@@ -2591,7 +2604,7 @@ async function saveCardDesign() {
 }
 
 .lobby-manage__row--drag-over:not(.lobby-manage__row--drag-source) .lobby-manage__dot-rect:first-child {
-  box-shadow: inset -1px 0 0 #38bdf8;
+  box-shadow: none;
 }
 
 .lobby-manage__row--drag-over:not(.lobby-manage__row--drag-source) .lobby-manage__avatar-ph {
@@ -2608,6 +2621,7 @@ async function saveCardDesign() {
   z-index: 5;
   outline: none;
   box-shadow: inset 0 0 0 2px #2f6feb;
+  overflow: visible;
 }
 
 .lobby-manage__row--drag-source.lobby-manage__row--replace-open {
@@ -2659,8 +2673,9 @@ async function saveCardDesign() {
   align-items: center;
   justify-content: center;
   border: none;
+  border-right: 1px solid #e5e7eb;
   background: #fff;
-  box-shadow: inset 1px 0 0 #e5e7eb;
+  box-shadow: none;
 }
 
 .lobby-manage__row-num-cell--drag-active {
@@ -2698,7 +2713,7 @@ async function saveCardDesign() {
   flex-shrink: 0;
   align-self: stretch;
   background: #fff;
-  box-shadow: inset 1px 0 0 #e5e7eb, inset -1px 0 0 #e5e7eb;
+  box-shadow: none;
 }
 
 .lobby-manage__row-drag {
@@ -2781,8 +2796,9 @@ async function saveCardDesign() {
   justify-content: center;
   padding: 0 0.5rem;
   box-sizing: border-box;
+  border-right: 1px solid #e5e7eb;
   background: #fff;
-  box-shadow: inset 1px 0 0 #e5e7eb, inset -1px 0 0 #e5e7eb;
+  box-shadow: none;
 }
 
 .lobby-manage__row-nick-cell--replace-open {
@@ -3061,7 +3077,7 @@ async function saveCardDesign() {
   flex-shrink: 0;
   box-sizing: border-box;
   background: #fff;
-  border-right: 1px solid #e5e7eb;
+  border-right: none;
   justify-self: end;
 }
 
@@ -3942,7 +3958,7 @@ async function saveCardDesign() {
   .lobby-manage__table-wrap {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.55rem;
+    gap: 0.4rem;
     border-top: none;
     overflow: visible;
     margin: 10px 10px 0;
@@ -3951,11 +3967,19 @@ async function saveCardDesign() {
   .lobby-manage__table-wrap--replace {
     display: flex;
     flex-direction: column;
-    gap: 0;
+    gap: 0.4rem;
     border-top: 1px solid #e5e7eb;
     overflow-x: visible;
     overflow-y: visible;
     margin: 10px 10px 0;
+  }
+
+  .lobby-manage__table-wrap > .lobby-manage__row + .lobby-manage__row {
+    margin-top: 0;
+  }
+
+  .lobby-manage__table-wrap--replace > .lobby-manage__row + .lobby-manage__row {
+    margin-top: 0;
   }
 
   .lobby-manage__aside {
@@ -3982,6 +4006,10 @@ async function saveCardDesign() {
   .lobby-manage__row-nick-cell {
     height: 64px;
     box-shadow: none;
+  }
+
+  .lobby-manage__row-nick-cell {
+    border-right: none;
   }
 
   .lobby-manage__row-drag-cell {
@@ -4092,9 +4120,13 @@ async function saveCardDesign() {
   .lobby-manage__table-wrap {
     display: flex;
     flex-direction: column;
-    gap: 0.55rem;
+    gap: 0;
     border-top: none;
     overflow-x: visible;
+  }
+
+  .lobby-manage__table-wrap > .lobby-manage__row + .lobby-manage__row {
+    margin-top: -1px;
   }
 
   .lobby-manage__row {
@@ -4114,6 +4146,10 @@ async function saveCardDesign() {
   .lobby-manage__row-avatar,
   .lobby-manage__row-nick-cell {
     height: 60px;
+  }
+
+  .lobby-manage__row-nick-cell {
+    border-right: none;
   }
 
   .lobby-manage__row-num-cell {
