@@ -729,8 +729,8 @@ async function confirmDeleteLobby() {
 }
 
 .dashboard-lobby-card__icon--gomafia {
-  background: rgba(137, 119, 254, 0.12);
-  color: #8977fe;
+  background: rgba(137, 119, 254, 0.08);
+  color: #8977FE;
 }
 
 .dashboard-lobby-card__go-icon {
@@ -742,8 +742,9 @@ async function confirmDeleteLobby() {
 }
 
 .dashboard-lobby-card__icon--import {
-  background: #f5f3ff;
-  color: #7c3aed;
+  background: rgba(137, 119, 254, 0.22);
+  border: 1px solid rgba(137, 119, 254, 0.3);
+  color: #8977FE;
 }
 
 .dashboard-lobby-card__text {

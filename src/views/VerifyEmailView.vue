@@ -130,7 +130,7 @@ onUnmounted(() => {
   box-sizing: border-box;
   background:
     radial-gradient(circle at 20% 20%, #dbeafe 0%, transparent 32%),
-    radial-gradient(circle at 85% 0%, #ede9fe 0%, transparent 34%),
+    radial-gradient(circle at 85% 0%, #8977FE 0%, transparent 34%),
     #dddddd;
   font-family: 'Inter', system-ui, sans-serif;
 }

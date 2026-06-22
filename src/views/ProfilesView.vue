@@ -11,14 +11,13 @@ import { useProfilesUiStore } from '@/stores/profilesUi'
 
 const { token } = storeToRefs(useAuthStore())
 const profilesUi = useProfilesUiStore()
-const { searchQuery } = storeToRefs(profilesUi)
+const { searchQuery, viewMode } = storeToRefs(profilesUi)
 
 const cards = ref<PlayerCard[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
 const selectedId = ref<string | null>(null)
 const menuOpenId = ref<string | null>(null)
-const viewMode = ref<'grid' | 'compact'>('grid')
 const cardModalOpen = ref(false)
 const cardModalEditTarget = ref<PlayerCard | null>(null)
 const infoModalOpen = ref(false)
@@ -28,7 +27,6 @@ const deleteLoading = ref(false)
 const deleteButtonReady = ref(false)
 const deleteCountdown = ref(0)
 let deleteReadyInterval: ReturnType<typeof setInterval> | null = null
-const VIEW_MODE_STORAGE_KEY = 'plashki:profiles:view-mode'
 
 watch(cardModalOpen, (open) => {
   if (!open) cardModalEditTarget.value = null
@@ -181,25 +179,8 @@ function onDocClick() {
   menuOpenId.value = null
 }
 
-function setViewMode(mode: 'grid' | 'compact') {
-  viewMode.value = mode
-  if (typeof localStorage === 'undefined') return
-  try {
-    localStorage.setItem(VIEW_MODE_STORAGE_KEY, mode)
-  } catch {
-    // ignore storage errors
-  }
-}
-
 onMounted(() => {
-  if (typeof localStorage !== 'undefined') {
-    try {
-      const raw = localStorage.getItem(VIEW_MODE_STORAGE_KEY)
-      if (raw === 'grid' || raw === 'compact') viewMode.value = raw
-    } catch {
-      viewMode.value = 'grid'
-    }
-  }
+  profilesUi.hydrateViewMode()
   document.addEventListener('click', onDocClick)
   profilesUi.setOpenCreateHandler(openCreateModal)
 })
@@ -299,25 +280,6 @@ function hasGomafia(c: PlayerCard): boolean {
     <template v-else>
       <p v-if="loading" class="profiles__status">Загрузка…</p>
       <p v-else-if="error" class="profiles__status profiles__status--error" role="alert">{{ error }}</p>
-
-      <div v-else-if="filteredCards.length" class="profiles__view-switch" role="toolbar" aria-label="Режим отображения">
-        <button
-          type="button"
-          class="profiles__view-btn"
-          :class="{ 'profiles__view-btn--active': viewMode === 'grid' }"
-          @click="setViewMode('grid')"
-        >
-          Плитка
-        </button>
-        <button
-          type="button"
-          class="profiles__view-btn"
-          :class="{ 'profiles__view-btn--active': viewMode === 'compact' }"
-          @click="setViewMode('compact')"
-        >
-          Список
-        </button>
-      </div>
 
       <div v-if="filteredCards.length && viewMode === 'grid'" class="profiles__grid">
         <article
@@ -599,30 +561,6 @@ function hasGomafia(c: PlayerCard): boolean {
   overflow: visible;
 }
 
-.profiles__view-switch {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-}
-
-.profiles__view-btn {
-  height: 1.9rem;
-  padding: 0 0.7rem;
-  font: inherit;
-  font-size: 0.75rem;
-  color: #4b5563;
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-.profiles__view-btn--active {
-  color: #1d4ed8;
-  border-color: #93c5fd;
-  background: #eff6ff;
-}
-
 .profiles__compact-list {
   display: flex;
   flex-direction: column;
@@ -700,11 +638,11 @@ function hasGomafia(c: PlayerCard): boolean {
   font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.01em;
-  color: #6d28d9;
+  color: #8977FE;
   text-decoration: none;
-  border: 1px solid #ddd6fe;
+  border: 1px solid rgba(137, 119, 254, 0.3);
   border-radius: 6px;
-  background: #f5f3ff;
+  background: rgba(137, 119, 254, 0.22);
 }
 
 .profiles__compact-gm--muted {
@@ -841,19 +779,19 @@ function hasGomafia(c: PlayerCard): boolean {
   font-size: 0.75rem;
   font-weight: 500;
   line-height: 1;
-  color: #6d28d9;
+  color: #8977FE;
   text-decoration: none;
-  border: 1px solid #ddd6fe;
+  border: 1px solid rgba(137, 119, 254, 0.3);
   border-radius: 6px;
-  background: #f5f3ff;
+  background: rgba(137, 119, 254, 0.22);
   box-sizing: border-box;
   transform: translateX(-2px);
 }
 
 .profiles__gomafia-link:hover {
-  color: #5b21b6;
-  border-color: #c4b5fd;
-  background: #ede9fe;
+  color: #8977FE;
+  border-color: rgba(137, 119, 254, 0.4);
+  background: rgba(137, 119, 254, 0.3);
 }
 
 .profiles__menu-wrap {

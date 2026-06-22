@@ -568,7 +568,7 @@ onUnmounted(() => {
 }
 
 .overlay-masters-card__check-badge--mafia {
-  color: #9333ea;
+  color: #8977FE;
 }
 
 .overlay-masters-card__check-prefix {

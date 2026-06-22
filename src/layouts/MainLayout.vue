@@ -6,6 +6,8 @@ import { logout as apiLogout, me } from '@/api/auth'
 import AppSidebar from '@/components/common/AppSidebar.vue'
 import ProfileSettingsModal from '@/components/account/ProfileSettingsModal.vue'
 import LobbyManageHeaderToolbar from '@/components/lobby/LobbyManageHeaderToolbar.vue'
+import profilesListIcon from '@/assets/icons/spisok.svg'
+import profilesGridIcon from '@/assets/icons/plitka.svg'
 import { useAuthStore } from '@/stores/auth'
 import { useDashboardUiStore } from '@/stores/dashboardUi'
 import type { DashboardLobbyFilter } from '@/stores/dashboardUi'
@@ -16,7 +18,11 @@ const router = useRouter()
 const auth = useAuthStore()
 const { token } = storeToRefs(auth)
 const profilesUi = useProfilesUiStore()
-const { searchQuery: profilesToolbarSearch, playerCardsTotal: profilesPlayerTotal } = storeToRefs(profilesUi)
+const {
+  searchQuery: profilesToolbarSearch,
+  playerCardsTotal: profilesPlayerTotal,
+  viewMode: profilesViewMode,
+} = storeToRefs(profilesUi)
 const dashboardUi = useDashboardUiStore()
 const { lobbyFilter } = storeToRefs(dashboardUi)
 const userRole = ref('')
@@ -113,6 +119,7 @@ watch(token, () => {
 }, { immediate: true })
 
 onMounted(() => {
+  profilesUi.hydrateViewMode()
   mq = window.matchMedia(COMPACT_NAV_MQ)
   syncMobile()
   mq.addEventListener('change', syncMobile)
@@ -179,6 +186,28 @@ onUnmounted(() => {
               <span class="shell-profiles-create-plus" aria-hidden="true">+</span>
               Создать профиль
             </button>
+            <div class="shell-profiles-view-switch" role="toolbar" aria-label="Режим отображения карточек игроков">
+              <button
+                type="button"
+                class="shell-profiles-view-btn"
+                :class="{ 'shell-profiles-view-btn--active': profilesViewMode === 'grid' }"
+                aria-label="Плитка"
+                title="Плитка"
+                @click="profilesUi.setViewMode('grid')"
+              >
+                <img class="shell-profiles-view-btn__icon" :src="profilesGridIcon" alt="" aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                class="shell-profiles-view-btn"
+                :class="{ 'shell-profiles-view-btn--active': profilesViewMode === 'compact' }"
+                aria-label="Список"
+                title="Список"
+                @click="profilesUi.setViewMode('compact')"
+              >
+                <img class="shell-profiles-view-btn__icon" :src="profilesListIcon" alt="" aria-hidden="true" />
+              </button>
+            </div>
           </div>
           <div
             v-else-if="showDashboardHeader"
@@ -457,6 +486,54 @@ onUnmounted(() => {
   font-size: 1.1rem;
   font-weight: 500;
   line-height: 1;
+}
+
+.shell-profiles-view-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.shell-profiles-view-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--shell-header-row-h);
+  height: var(--shell-header-row-h);
+  min-height: var(--shell-header-row-h);
+  padding: 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.shell-profiles-view-btn:hover {
+  background: #f9fafb;
+  border-color: #d1d5db;
+}
+
+.shell-profiles-view-btn:focus-visible {
+  outline: 2px solid #2f6feb;
+  outline-offset: 2px;
+}
+
+.shell-profiles-view-btn--active {
+  background: #eff6ff;
+  border-color: #93c5fd;
+}
+
+.shell-profiles-view-btn__icon {
+  width: 1rem;
+  height: 1rem;
+  display: block;
+  filter: brightness(0) saturate(100%) invert(37%) sepia(7%) saturate(981%) hue-rotate(182deg) brightness(97%)
+    contrast(89%);
+}
+
+.shell-profiles-view-btn--active .shell-profiles-view-btn__icon {
+  filter: brightness(0) saturate(100%) invert(36%) sepia(70%) saturate(3975%) hue-rotate(210deg) brightness(98%)
+    contrast(95%);
 }
 
 .shell__title {
@@ -762,6 +839,10 @@ onUnmounted(() => {
 .shell--mobile .shell-profiles-create {
   flex: 0 0 auto;
   white-space: nowrap;
+}
+
+.shell--mobile .shell-profiles-view-switch {
+  flex: 0 0 auto;
 }
 
 .shell--mobile .shell__body {

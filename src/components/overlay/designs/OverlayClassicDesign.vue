@@ -519,7 +519,7 @@ function statusIcon(status: string | null): string {
 }
 
 .overlay-card__meta-lh-num--mafia {
-  color: #b794f6;
+  color: #8977FE;
 }
 
 .overlay-card__meta-checks-text {
@@ -534,7 +534,7 @@ function statusIcon(status: string | null): string {
 }
 
 .overlay-card__meta-check-num--mafia {
-  color: #b794f6;
+  color: #8977FE;
 }
 
 .overlay-card__meta-box--status {
@@ -683,7 +683,7 @@ function statusIcon(status: string | null): string {
 }
 
 .overlay-card__check-num--mafia {
-  color: #b794f6;
+  color: #8977FE;
 }
 
 </style>

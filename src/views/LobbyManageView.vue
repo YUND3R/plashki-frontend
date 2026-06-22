@@ -3341,6 +3341,8 @@ async function saveCardDesign() {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
+  position: relative;
+  z-index: 40;
   padding: 0 0.65rem;
   font: inherit;
   font-size: 0.75rem;
@@ -3370,6 +3372,7 @@ async function saveCardDesign() {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  z-index: 60;
   flex-shrink: 0;
   cursor: help;
   outline: none;
@@ -3399,7 +3402,7 @@ async function saveCardDesign() {
   position: absolute;
   left: 50%;
   bottom: calc(100% + 0.45rem);
-  z-index: 20;
+  z-index: 120;
   width: max-content;
   max-width: 18rem;
   padding: 0.5rem 0.65rem;
@@ -4086,9 +4089,11 @@ async function saveCardDesign() {
     gap: 0.45rem 0.55rem;
     flex-wrap: nowrap;
     overflow-x: auto;
-    overflow-y: hidden;
+    overflow-y: visible;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: thin;
+    position: relative;
+    z-index: 12;
   }
 
   .lobby-manage__main-actions > * {

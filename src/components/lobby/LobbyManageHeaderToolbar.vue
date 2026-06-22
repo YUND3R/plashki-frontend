@@ -4,6 +4,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getLobbyOverlayDesigns } from '@/api/lobbies'
 import { useLobbyManageUiStore } from '@/stores/lobbyManageUi'
+import deleteIcon from '@/assets/icons/delete.svg?url'
 
 const route = useRoute()
 const router = useRouter()
@@ -175,15 +176,7 @@ watch(designChangedToken, () => {
       @click="lobbyManageUi.requestOpenDeleteConfirm"
     >
       <span class="shell-lobby-toolbar__obs-icon" aria-hidden="true">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path
-            d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m2 0v14a2 2 0 01-2 2H8a2 2 0 01-2-2V6h12Z"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
+        <span class="shell-lobby-toolbar__delete-icon" />
       </span>
       <span class="shell-lobby-toolbar__label-wide">Удалить лобби</span>
     </button>
@@ -267,6 +260,20 @@ watch(designChangedToken, () => {
 .shell-lobby-toolbar__obs-icon {
   display: flex;
   color: #6b7280;
+}
+
+.shell-lobby-toolbar__delete-icon {
+  width: 14px;
+  height: 14px;
+  background-color: currentColor;
+  -webkit-mask-image: url(v-bind(deleteIcon));
+  mask-image: url(v-bind(deleteIcon));
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
 }
 
 .shell-lobby-toolbar__obs--design-main {
