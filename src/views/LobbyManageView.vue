@@ -1121,6 +1121,20 @@ function subscriptionLabel(raw: string): string {
   return raw
 }
 
+function designPreviewVariant(rawCode: string): 'classic' | 'masters-yug25' | 'plus' {
+  const code = normalizeOverlayDesignCode(rawCode)
+  if (code === 'masters-yug25') return 'masters-yug25'
+  if (code === 'plus') return 'plus'
+  return 'classic'
+}
+
+function designMockPrice(rawCode: string): string {
+  const variant = designPreviewVariant(rawCode)
+  if (variant === 'plus') return '499 RUB'
+  if (variant === 'masters-yug25') return '799 RUB'
+  return '299 RUB'
+}
+
 async function loadCardDesignOptions() {
   if (!lobbyId.value) return
   cardDesignLoading.value = true
@@ -1989,7 +2003,7 @@ async function saveCardDesign() {
         aria-modal="true"
         aria-label="Выбор дизайна карточек"
       >
-        <div class="lobby-manage__modal-card">
+        <div class="lobby-manage__modal-card lobby-manage__modal-card--design-picker">
           <div class="lobby-manage__modal-head">
             <h3 class="lobby-manage__modal-title">Выбрать дизайн карточек</h3>
             <button
@@ -2027,8 +2041,22 @@ async function saveCardDesign() {
                 :value="item.code"
                 :disabled="!item.selectable || cardDesignSaving"
               />
+              <span
+                class="lobby-manage__design-preview"
+                :class="`lobby-manage__design-preview--${designPreviewVariant(item.code)}`"
+                aria-hidden="true"
+              >
+                <span class="lobby-manage__design-preview-photos">
+                  <span class="lobby-manage__design-preview-photo-block" />
+                  <span class="lobby-manage__design-preview-photo-block" />
+                  <span class="lobby-manage__design-preview-photo-block" />
+                </span>
+              </span>
               <span class="lobby-manage__design-text">
-                <span class="lobby-manage__design-name">{{ item.title }}</span>
+                <span class="lobby-manage__design-headline">
+                  <span class="lobby-manage__design-name">{{ item.title }}</span>
+                  <span class="lobby-manage__design-price">{{ designMockPrice(item.code) }}</span>
+                </span>
                 <span class="lobby-manage__design-meta">
                   Подписка: {{ subscriptionLabel(item.required_subscription) }} · Анимации:
                   {{ item.animation_supported ? 'Да' : 'Нет' }}
@@ -3747,6 +3775,12 @@ async function saveCardDesign() {
   width: min(560px, 100%);
 }
 
+.lobby-manage__modal-card--design-picker {
+  width: min(920px, 100%);
+  max-height: none;
+  overflow: visible;
+}
+
 .lobby-manage__nick-input--modal {
   width: 100%;
   margin-top: 0.7rem;
@@ -3823,17 +3857,27 @@ async function saveCardDesign() {
 .lobby-manage__design-list {
   margin-top: 0.85rem;
   display: grid;
+  grid-template-columns: repeat(3, 280px);
+  grid-auto-rows: 1fr;
+  justify-content: center;
   gap: 0.55rem;
 }
 
 .lobby-manage__design-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.6rem;
-  padding: 0.55rem 0.65rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-content: start;
+  justify-items: start;
+  align-items: start;
+  width: 280px;
+  gap: 0.65rem;
+  padding: 0.6rem 0.7rem;
+  height: 100%;
   border: 1px solid #e5e7eb;
   border-radius: 10px;
   cursor: pointer;
+  box-sizing: border-box;
 }
 
 .lobby-manage__design-item:has(.lobby-manage__design-radio:checked) {
@@ -3847,18 +3891,88 @@ async function saveCardDesign() {
 }
 
 .lobby-manage__design-radio {
-  margin-top: 0.1rem;
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.lobby-manage__design-preview {
+  position: relative;
+  width: 100%;
+  max-width: none;
+  height: 156px;
+  border-radius: 10px;
+  border: 1px solid #d1d5db;
+  overflow: hidden;
+  background: #0b1220;
+}
+
+.lobby-manage__design-preview-photos {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  height: 100%;
+  padding: 0.55rem;
+  box-sizing: border-box;
+}
+
+.lobby-manage__design-preview-photo-block {
+  width: 100%;
+  height: 100%;
+  min-height: 5.8rem;
+  border-radius: 6px;
+  border: 1px dashed rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.lobby-manage__design-preview--classic {
+  background: linear-gradient(180deg, #111827 0%, #0f172a 100%);
+}
+
+.lobby-manage__design-preview--masters-yug25 {
+  background: linear-gradient(180deg, #141414 0%, #0a0a0a 100%);
+}
+
+.lobby-manage__design-preview--plus {
+  background: linear-gradient(135deg, #0f172a 0%, #0b1220 42%, #1e293b 100%);
 }
 
 .lobby-manage__design-text {
   display: grid;
   gap: 0.2rem;
+  width: 100%;
+  min-height: 3.4rem;
+}
+
+.lobby-manage__design-headline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .lobby-manage__design-name {
-  font-size: 0.9rem;
+  font-size: 1.08rem;
   font-weight: 600;
   color: #111827;
+}
+
+.lobby-manage__design-price {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.45rem;
+  padding: 0 0.48rem;
+  border: 1px dashed #d1d5db;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #6b7280;
+  background: #f9fafb;
 }
 
 .lobby-manage__design-meta {
@@ -4114,6 +4228,25 @@ async function saveCardDesign() {
     max-height: min(88dvh, 900px);
     border-radius: 14px 14px 0 0;
     padding: 0.85rem 0.9rem calc(0.85rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .lobby-manage__modal-card--design-picker {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .lobby-manage__design-item {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lobby-manage__design-preview {
+    grid-column: 1;
+    width: min(100%, 280px);
+    height: 156px;
+  }
+
+  .lobby-manage__design-text {
+    grid-column: 1;
   }
 
   .lobby-manage__sheriff-checks-form {

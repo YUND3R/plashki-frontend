@@ -6,6 +6,7 @@ import {
   setLobbyOverlayDesign,
   type LobbyOverlayDesignOption,
 } from '@/api/lobbies'
+import { normalizeOverlayDesignCode } from '@/utils/overlayPersistentMessage'
 
 type DashboardLobbyEntry = {
   id: string
@@ -39,6 +40,20 @@ function subscriptionLabel(raw: string): string {
   if (s === 'premium') return 'Premium'
   if (s === 'standard') return 'Standard'
   return raw
+}
+
+function designPreviewVariant(rawCode: string): 'classic' | 'masters-yug25' | 'plus' {
+  const code = normalizeOverlayDesignCode(rawCode)
+  if (code === 'masters-yug25') return 'masters-yug25'
+  if (code === 'plus') return 'plus'
+  return 'classic'
+}
+
+function designMockPrice(rawCode: string): string {
+  const variant = designPreviewVariant(rawCode)
+  if (variant === 'plus') return '499 RUB'
+  if (variant === 'masters-yug25') return '799 RUB'
+  return '299 RUB'
 }
 
 function lobbyTitle(id: string, names: Array<string | null | undefined>): string {
@@ -149,8 +164,22 @@ watch(selectedLobbyId, () => {
             :value="item.code"
             :disabled="!item.selectable || saving"
           />
+          <span
+            class="card-design__preview"
+            :class="`card-design__preview--${designPreviewVariant(item.code)}`"
+            aria-hidden="true"
+          >
+            <span class="card-design__preview-photos">
+              <span class="card-design__preview-photo-block" />
+              <span class="card-design__preview-photo-block" />
+              <span class="card-design__preview-photo-block" />
+            </span>
+          </span>
           <span class="card-design__option-body">
-            <span class="card-design__option-title">{{ item.title }}</span>
+            <span class="card-design__option-headline">
+              <span class="card-design__option-title">{{ item.title }}</span>
+              <span class="card-design__option-price">{{ designMockPrice(item.code) }}</span>
+            </span>
             <span class="card-design__option-meta">
               Подписка: {{ subscriptionLabel(item.required_subscription) }}
               <span class="card-design__sep">•</span>
@@ -174,13 +203,13 @@ watch(selectedLobbyId, () => {
 
 <style scoped>
 .card-design {
-  max-width: 840px;
+  max-width: 940px;
   margin: 0 auto;
   padding: 0.25rem 0 0.75rem;
 }
 
 .card-design__panel {
-  border: 1px solid #e5e7eb;
+  border: none;
   border-radius: 14px;
   background: #fff;
   padding: 0.95rem;
@@ -232,17 +261,27 @@ watch(selectedLobbyId, () => {
 .card-design__list {
   margin-top: 0.9rem;
   display: grid;
+  grid-template-columns: repeat(3, 280px);
+  grid-auto-rows: 1fr;
+  justify-content: start;
   gap: 0.55rem;
 }
 
 .card-design__option {
-  display: flex;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-content: start;
+  justify-items: start;
+  align-items: start;
+  width: 280px;
   gap: 0.65rem;
   padding: 0.65rem 0.75rem;
+  height: 100%;
   border: 1px solid #e5e7eb;
   border-radius: 10px;
   cursor: pointer;
+  box-sizing: border-box;
 }
 
 .card-design__option:has(.card-design__radio:checked) {
@@ -256,18 +295,88 @@ watch(selectedLobbyId, () => {
 }
 
 .card-design__radio {
-  margin-top: 0.15rem;
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.card-design__preview {
+  position: relative;
+  width: 100%;
+  max-width: none;
+  height: 156px;
+  border-radius: 10px;
+  border: 1px solid #d1d5db;
+  overflow: hidden;
+  background: #0b1220;
+}
+
+.card-design__preview-photos {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  height: 100%;
+  padding: 0.55rem;
+  box-sizing: border-box;
+}
+
+.card-design__preview-photo-block {
+  width: 100%;
+  height: 100%;
+  min-height: 5.8rem;
+  border-radius: 6px;
+  border: 1px dashed rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.card-design__preview--classic {
+  background: linear-gradient(180deg, #111827 0%, #0f172a 100%);
+}
+
+.card-design__preview--masters-yug25 {
+  background: linear-gradient(180deg, #141414 0%, #0a0a0a 100%);
+}
+
+.card-design__preview--plus {
+  background: linear-gradient(135deg, #0f172a 0%, #0b1220 42%, #1e293b 100%);
 }
 
 .card-design__option-body {
   display: grid;
   gap: 0.2rem;
+  width: 100%;
+  min-height: 3.4rem;
+}
+
+.card-design__option-headline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .card-design__option-title {
-  font-size: 0.9375rem;
+  font-size: 1.08rem;
   color: #111827;
   font-weight: 600;
+}
+
+.card-design__option-price {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.45rem;
+  padding: 0 0.48rem;
+  border: 1px dashed #d1d5db;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #6b7280;
+  background: #f9fafb;
 }
 
 .card-design__option-meta {
@@ -306,5 +415,16 @@ watch(selectedLobbyId, () => {
   margin: 0;
   font-size: 0.8125rem;
   color: #1d4ed8;
+}
+
+@media (max-width: 1024px) {
+  .card-design__list {
+    grid-template-columns: repeat(2, 280px);
+  }
+
+  .card-design__preview {
+    width: min(100%, 280px);
+    height: 156px;
+  }
 }
 </style>
