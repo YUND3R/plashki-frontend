@@ -32,6 +32,8 @@ export type GameLobby = {
   sheriff_check?: string[] | null
   best_move?: string[] | null
   imported_state?: LobbyImportedState | null
+  /** Выбранный overlay-дизайн (Classic, masters-yug25, plus и т.д.). */
+  overlay_design?: string | null
 }
 
 export type LobbyImportedVariant = {
@@ -253,6 +255,10 @@ function toGameLobby(item: unknown): GameLobby | null {
     (value) => typeof value === 'string' && value.trim(),
   )
   const name = typeof nameRaw === 'string' ? nameRaw.trim() : null
+  const overlayDesignRaw = [row.overlay_design, row.selected_overlay_design].find(
+    (value) => typeof value === 'string' && value.trim(),
+  )
+  const overlayDesign = typeof overlayDesignRaw === 'string' ? overlayDesignRaw.trim() : null
   return {
     id,
     max_players: maxPlayers,
@@ -264,6 +270,7 @@ function toGameLobby(item: unknown): GameLobby | null {
     sheriff_check: sheriffCheck,
     best_move: bestMove,
     imported_state: importedState,
+    overlay_design: overlayDesign,
   }
 }
 

@@ -10,7 +10,10 @@ const router = useRouter()
 const lobbyManageUi = useLobbyManageUiStore()
 const { designChangedToken } = storeToRefs(lobbyManageUi)
 const previewBusy = ref(false)
+const copyOverlayBusy = ref(false)
+const overlayLinkCopied = ref(false)
 const selectedDesign = ref('classic')
+let overlayLinkCopiedTimer: ReturnType<typeof setTimeout> | null = null
 
 const lobbyId = computed(() => String(route.params.lobbyId ?? '').trim())
 
@@ -38,19 +41,48 @@ async function loadSelectedDesign() {
   }
 }
 
+function overlayAbsoluteUrl(): string {
+  const resolved = router.resolve({
+    name: 'overlay-lobby',
+    params: { lobbyId: lobbyId.value },
+  })
+  if (typeof window === 'undefined') return resolved.href
+  if (/^https?:\/\//i.test(resolved.href)) return resolved.href
+  return `${window.location.origin}${resolved.href}`
+}
+
 async function openDesignPreview() {
   if (!lobbyId.value || previewBusy.value) return
   previewBusy.value = true
   try {
     await loadSelectedDesign()
-    const design = selectedDesign.value
     const resolved = router.resolve({
-      name: 'overlay-design',
-      params: { design, lobbyId: lobbyId.value },
+      name: 'overlay-lobby',
+      params: { lobbyId: lobbyId.value },
     })
     window.open(resolved.href, '_blank', 'noopener,noreferrer')
   } finally {
     previewBusy.value = false
+  }
+}
+
+async function copyOverlayLink() {
+  if (!lobbyId.value || copyOverlayBusy.value) return
+  copyOverlayBusy.value = true
+  try {
+    await loadSelectedDesign()
+    const url = overlayAbsoluteUrl()
+    await navigator.clipboard.writeText(url)
+    overlayLinkCopied.value = true
+    if (overlayLinkCopiedTimer) clearTimeout(overlayLinkCopiedTimer)
+    overlayLinkCopiedTimer = setTimeout(() => {
+      overlayLinkCopied.value = false
+      overlayLinkCopiedTimer = null
+    }, 2000)
+  } catch {
+    window.prompt('Скопируйте ссылку overlay для OBS:', overlayAbsoluteUrl())
+  } finally {
+    copyOverlayBusy.value = false
   }
 }
 
@@ -87,23 +119,37 @@ watch(designChangedToken, () => {
     >
       {{ previewBusy ? 'Overlay…' : 'Overlay' }}
     </button>
-    <button
-      type="button"
-      class="shell-lobby-toolbar__obs"
-      title="Управлять прямо из OBS"
-    >
-      <span class="shell-lobby-toolbar__obs-icon" aria-hidden="true">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect x="9" y="9" width="13" height="13" rx="2" stroke="currentColor" stroke-width="2" />
-          <path
-            d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"
-            stroke="currentColor"
-            stroke-width="2"
-          />
-        </svg>
-      </span>
-      Док-панель OBS
-    </button>
+    <div class="shell-lobby-toolbar__obs-wrap">
+      <Transition name="shell-lobby-toolbar__toast">
+        <span
+          v-if="overlayLinkCopied"
+          class="shell-lobby-toolbar__toast"
+          role="status"
+          aria-live="polite"
+        >
+          Ссылка скопирована
+        </span>
+      </Transition>
+      <button
+        type="button"
+        class="shell-lobby-toolbar__obs"
+        :disabled="!lobbyId || copyOverlayBusy"
+        title="Скопировать ссылку overlay для OBS. Дизайн подтягивается автоматически при смене в лобби"
+        @click="copyOverlayLink"
+      >
+        <span class="shell-lobby-toolbar__obs-icon" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="9" y="9" width="13" height="13" rx="2" stroke="currentColor" stroke-width="2" />
+            <path
+              d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"
+              stroke="currentColor"
+              stroke-width="2"
+            />
+          </svg>
+        </span>
+        Док-панель OBS
+      </button>
+    </div>
     <button
       type="button"
       class="shell-lobby-toolbar__obs shell-lobby-toolbar__obs--danger"
@@ -124,6 +170,51 @@ watch(designChangedToken, () => {
   justify-content: flex-end;
   gap: 0.65rem;
   min-height: var(--shell-header-row-h, 2.375rem);
+}
+
+.shell-lobby-toolbar__obs-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.shell-lobby-toolbar__toast {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 0.45rem);
+  transform: translateX(-50%);
+  z-index: 2;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  color: #166534;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12);
+  pointer-events: none;
+}
+
+.shell-lobby-toolbar__toast::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: #a7f3d0;
+}
+
+.shell-lobby-toolbar__toast-enter-active,
+.shell-lobby-toolbar__toast-leave-active {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.shell-lobby-toolbar__toast-enter-from,
+.shell-lobby-toolbar__toast-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(4px);
 }
 
 .shell-lobby-toolbar__obs {

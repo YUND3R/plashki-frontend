@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { getLobbyFresh, type GameLobby, type LobbyPlayer } from '@/api/lobbies'
+import { getLobbyFresh, getLobbyOverlayDesigns, type GameLobby, type LobbyPlayer } from '@/api/lobbies'
 import { enrichLobbyPhotoLayouts } from '@/utils/overlayPhotoLayoutBridge'
 import OverlayClassicDesign from '@/components/overlay/designs/OverlayClassicDesign.vue'
 import OverlayMastersDesign from '@/components/overlay/designs/OverlayMastersDesign.vue'
@@ -24,7 +24,23 @@ const error = ref<string | null>(null)
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
 const lobbyId = computed(() => String(route.params.lobbyId ?? '').trim())
-const designCode = computed(() => String(route.params.design ?? 'classic').trim().toLowerCase())
+const isAutoDesignRoute = computed(() => route.name === 'overlay-lobby')
+
+const routeDesignCode = computed(() => {
+  if (route.name !== 'overlay-design') return ''
+  return String(route.params.design ?? 'classic').trim().toLowerCase()
+})
+
+const lobbyDesignCode = computed(() => {
+  const raw = lobby.value?.overlay_design
+  if (typeof raw === 'string' && raw.trim()) return raw.trim().toLowerCase()
+  return ''
+})
+
+const designCode = computed(() => {
+  if (isAutoDesignRoute.value) return lobbyDesignCode.value || 'classic'
+  return routeDesignCode.value || lobbyDesignCode.value || 'classic'
+})
 const prevDocumentTitle = ref('')
 const persistentMessage = ref('')
 const persistentMessageColor = ref<OverlayTextTone>('green')
@@ -88,8 +104,21 @@ async function loadLobby() {
   if (!lobby.value) loading.value = true
   error.value = null
   try {
-    const fresh = await getLobbyFresh(lobbyId.value)
-    lobby.value = await enrichLobbyPhotoLayouts(fresh)
+    const freshPromise = getLobbyFresh(lobbyId.value)
+    const designsPromise = isAutoDesignRoute.value
+      ? getLobbyOverlayDesigns(lobbyId.value).catch(() => null)
+      : Promise.resolve(null)
+    const [fresh, designs] = await Promise.all([freshPromise, designsPromise])
+    const overlayDesign =
+      (designs?.selected_overlay_design ?? '').trim() ||
+      (fresh.overlay_design ?? '').trim() ||
+      null
+    const merged = overlayDesign ? { ...fresh, overlay_design: overlayDesign } : fresh
+    try {
+      lobby.value = await enrichLobbyPhotoLayouts(merged)
+    } catch {
+      lobby.value = merged
+    }
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -151,6 +180,8 @@ function startPolling() {
 
 onMounted(async () => {
   prevDocumentTitle.value = document.title
+  document.documentElement.classList.add('overlay-page')
+  document.body.classList.add('overlay-page')
   applyDocumentTitle()
   loadPersistentMessage()
   loadPopupMessage()
@@ -159,15 +190,21 @@ onMounted(async () => {
   startPolling()
 })
 
-watch([lobbyId, designCode], async () => {
+watch(lobbyId, async () => {
+  setActivePopupMessage(null)
+  lastPopupMessageId.value = ''
+  lobby.value = null
+  await loadLobby()
+  startPolling()
+})
+
+watch(designCode, (next, prev) => {
+  if (next === prev) return
   applyDocumentTitle()
   setActivePopupMessage(null)
   lastPopupMessageId.value = ''
   loadPersistentMessage()
   loadPopupMessage()
-  lobby.value = null
-  await loadLobby()
-  startPolling()
 })
 
 function onStorageChanged(e: StorageEvent) {
@@ -180,14 +217,28 @@ onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer)
   clearPopupHideTimer()
   window.removeEventListener('storage', onStorageChanged)
+  document.documentElement.classList.remove('overlay-page')
+  document.body.classList.remove('overlay-page')
   if (prevDocumentTitle.value) document.title = prevDocumentTitle.value
 })
 </script>
 
 <template>
   <main class="overlay">
-    <p v-if="loading" class="overlay__status">Загрузка…</p>
-    <p v-else-if="error" class="overlay__status overlay__status--error">{{ error }}</p>
+    <div v-if="loading" class="overlay__state">
+      <p class="overlay__state-title">Загрузка overlay…</p>
+      <p class="overlay__state-hint">Лобби: {{ lobbyId || '—' }}</p>
+    </div>
+    <div v-else-if="error" class="overlay__state overlay__state--error" role="alert">
+      <p class="overlay__state-title">Overlay не загрузился</p>
+      <p class="overlay__state-text">{{ error }}</p>
+      <ul class="overlay__state-list">
+        <li>Бэкенд доступен по адресу из <code>VITE_API_BASE_URL</code></li>
+        <li><code>GET /lobbies/{{ lobbyId }}</code> открыт для overlay (без 401)</li>
+        <li>В OBS Browser Source включите прозрачный фон</li>
+        <li>URL должен открываться в обычном браузере на этом же ПК</li>
+      </ul>
+    </div>
     <OverlayMastersDesign
       v-else-if="designCode === 'masters-yug25' || designCode === 'masters'"
       :seats="visibleSeatRows"
@@ -220,20 +271,60 @@ onUnmounted(() => {
   font-family: Inter, 'Segoe UI', Roboto, Arial, sans-serif;
   display: flex;
   align-items: flex-end;
+  background: transparent;
 }
 
-.overlay__status {
+.overlay__state {
   position: fixed;
-  top: 8px;
-  left: 8px;
-  margin: 0;
-  padding: 4px 8px;
-  font-size: 13px;
-  border-radius: 6px;
-  background: rgba(15, 23, 42, 0.7);
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  text-align: center;
+  background: rgba(15, 23, 42, 0.92);
 }
 
-.overlay__status--error {
+.overlay__state-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+.overlay__state-hint,
+.overlay__state-text {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #cbd5e1;
+}
+
+.overlay__state-list {
+  margin: 0.85rem 0 0;
+  padding-left: 1.1rem;
+  max-width: 28rem;
+  text-align: left;
+  font-size: 0.8125rem;
+  color: #94a3b8;
+  line-height: 1.45;
+}
+
+.overlay__state-list code {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.75rem;
+  color: #e2e8f0;
+}
+
+.overlay__state--error .overlay__state-title {
   color: #fca5a5;
+}
+</style>
+
+<style>
+html.overlay-page,
+body.overlay-page,
+body.overlay-page #app {
+  background: transparent !important;
 }
 </style>
