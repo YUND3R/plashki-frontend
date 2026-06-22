@@ -4,7 +4,8 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getLobbyOverlayDesigns } from '@/api/lobbies'
 import { useLobbyManageUiStore } from '@/stores/lobbyManageUi'
-import deleteIcon from '@/assets/icons/delete.svg?url'
+import overlayPreviewIcon from '@/assets/icons/overlay-prewiev.svg?url'
+import copyIcon from '@/assets/icons/copy.svg?url'
 
 const route = useRoute()
 const router = useRouter()
@@ -122,18 +123,9 @@ watch(designChangedToken, () => {
       @click="openDesignPreview"
     >
       <span class="shell-lobby-toolbar__obs-icon" aria-hidden="true">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path
-            d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-          <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" />
-        </svg>
+        <img class="shell-lobby-toolbar__overlay-preview-icon" :src="overlayPreviewIcon" alt="" width="16" height="16" />
       </span>
-      <span class="shell-lobby-toolbar__label-wide">{{ previewBusy ? 'Overlay…' : 'Overlay' }}</span>
+      <span class="shell-lobby-toolbar__label-wide">{{ previewBusy ? 'Превью…' : 'Превью' }}</span>
     </button>
     <div class="shell-lobby-toolbar__obs-wrap">
       <Transition name="shell-lobby-toolbar__toast">
@@ -155,28 +147,32 @@ watch(designChangedToken, () => {
         @click="copyOverlayLink"
       >
         <span class="shell-lobby-toolbar__obs-icon" aria-hidden="true">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect x="9" y="9" width="13" height="13" rx="2" stroke="currentColor" stroke-width="2" />
-            <path
-              d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"
-              stroke="currentColor"
-              stroke-width="2"
-            />
-          </svg>
+          <img class="shell-lobby-toolbar__copy-icon" :src="copyIcon" alt="" width="16" height="16" />
         </span>
         <span class="shell-lobby-toolbar__label-wide">Док-панель OBS</span>
       </button>
     </div>
     <button
       type="button"
-      class="shell-lobby-toolbar__obs shell-lobby-toolbar__obs--danger shell-lobby-toolbar__obs--icon"
+      class="shell-lobby-toolbar__obs shell-lobby-toolbar__obs--icon"
       :disabled="!lobbyId"
       title="Удалить текущее лобби"
       aria-label="Удалить лобби"
       @click="lobbyManageUi.requestOpenDeleteConfirm"
     >
       <span class="shell-lobby-toolbar__obs-icon" aria-hidden="true">
-        <span class="shell-lobby-toolbar__delete-icon" />
+        <svg width="14" height="14" viewBox="0 0 16 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path
+            d="M5 0.75C5 0.335786 5.33579 0 5.75 0H9.75C10.1642 0 10.5 0.335786 10.5 0.75V1.5H14.75C15.1642 1.5 15.5 1.83579 15.5 2.25C15.5 2.66421 15.1642 3 14.75 3H0.75C0.335786 3 0 2.66421 0 2.25C0 1.83579 0.335786 1.5 0.75 1.5H5V0.75Z"
+            fill="currentColor"
+          />
+          <path
+            fill-rule="evenodd"
+            clip-rule="evenodd"
+            d="M1.9899 5.69478C2.01803 5.44157 2.23206 5.25 2.48684 5.25H13.0132C13.2679 5.25 13.482 5.44157 13.5101 5.69478L13.7102 7.49613C14.071 10.7431 14.071 14.0201 13.7102 17.267L13.6905 17.4444C13.5591 18.6269 12.6426 19.5699 11.4643 19.7349C9.0001 20.0799 6.49989 20.0799 4.03574 19.7349C2.85737 19.5699 1.94085 18.6269 1.80945 17.4444L1.78975 17.267C1.42897 14.0201 1.42897 10.7431 1.78975 7.49613L1.9899 5.69478ZM10.2803 10.2197C10.5732 10.5126 10.5732 10.9874 10.2803 11.2803L8.81066 12.75L10.2803 14.2197C10.5732 14.5126 10.5732 14.9874 10.2803 15.2803C9.98744 15.5732 9.51256 15.5732 9.21967 15.2803L7.75 13.8107L6.28034 15.2803C5.98745 15.5732 5.51257 15.5732 5.21968 15.2803C4.92678 14.9874 4.92678 14.5126 5.21968 14.2197L6.68934 12.75L5.21967 11.2803C4.92678 10.9874 4.92678 10.5126 5.21967 10.2197C5.51256 9.92678 5.98744 9.92678 6.28033 10.2197L7.75 11.6893L9.21968 10.2197C9.51257 9.92678 9.98745 9.92678 10.2803 10.2197Z"
+            fill="currentColor"
+          />
+        </svg>
       </span>
       <span class="shell-lobby-toolbar__label-wide">Удалить лобби</span>
     </button>
@@ -262,18 +258,22 @@ watch(designChangedToken, () => {
   color: #6b7280;
 }
 
-.shell-lobby-toolbar__delete-icon {
-  width: 14px;
-  height: 14px;
-  background-color: currentColor;
-  -webkit-mask-image: url(v-bind(deleteIcon));
-  mask-image: url(v-bind(deleteIcon));
-  -webkit-mask-repeat: no-repeat;
-  mask-repeat: no-repeat;
-  -webkit-mask-position: center;
-  mask-position: center;
-  -webkit-mask-size: contain;
-  mask-size: contain;
+.shell-lobby-toolbar__overlay-preview-icon {
+  width: 16px;
+  height: 16px;
+  display: block;
+  /* Keep the same neutral icon tone as before. */
+  filter: brightness(0) saturate(100%) invert(43%) sepia(9%) saturate(486%) hue-rotate(182deg) brightness(92%)
+    contrast(88%);
+}
+
+.shell-lobby-toolbar__copy-icon {
+  width: 16px;
+  height: 16px;
+  display: block;
+  /* Keep the same neutral icon tone as before. */
+  filter: brightness(0) saturate(100%) invert(43%) sepia(9%) saturate(486%) hue-rotate(182deg) brightness(92%)
+    contrast(88%);
 }
 
 .shell-lobby-toolbar__obs--design-main {
