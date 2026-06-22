@@ -18,6 +18,7 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 const selectedId = ref<string | null>(null)
 const menuOpenId = ref<string | null>(null)
+const viewMode = ref<'grid' | 'compact'>('grid')
 const cardModalOpen = ref(false)
 const cardModalEditTarget = ref<PlayerCard | null>(null)
 const infoModalOpen = ref(false)
@@ -27,6 +28,7 @@ const deleteLoading = ref(false)
 const deleteButtonReady = ref(false)
 const deleteCountdown = ref(0)
 let deleteReadyInterval: ReturnType<typeof setInterval> | null = null
+const VIEW_MODE_STORAGE_KEY = 'plashki:profiles:view-mode'
 
 watch(cardModalOpen, (open) => {
   if (!open) cardModalEditTarget.value = null
@@ -179,7 +181,25 @@ function onDocClick() {
   menuOpenId.value = null
 }
 
+function setViewMode(mode: 'grid' | 'compact') {
+  viewMode.value = mode
+  if (typeof localStorage === 'undefined') return
+  try {
+    localStorage.setItem(VIEW_MODE_STORAGE_KEY, mode)
+  } catch {
+    // ignore storage errors
+  }
+}
+
 onMounted(() => {
+  if (typeof localStorage !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(VIEW_MODE_STORAGE_KEY)
+      if (raw === 'grid' || raw === 'compact') viewMode.value = raw
+    } catch {
+      viewMode.value = 'grid'
+    }
+  }
   document.addEventListener('click', onDocClick)
   profilesUi.setOpenCreateHandler(openCreateModal)
 })
@@ -197,6 +217,10 @@ onUnmounted(() => {
 function cardPhoto(c: PlayerCard): string {
   const u = c.photo_urls?.[0]
   return typeof u === 'string' && u.trim() ? u.trim() : ''
+}
+
+function hasGomafia(c: PlayerCard): boolean {
+  return !!c.gomafia_url?.trim()
 }
 
 </script>
@@ -276,7 +300,26 @@ function cardPhoto(c: PlayerCard): string {
       <p v-if="loading" class="profiles__status">Загрузка…</p>
       <p v-else-if="error" class="profiles__status profiles__status--error" role="alert">{{ error }}</p>
 
-      <div v-else-if="filteredCards.length" class="profiles__grid">
+      <div v-else-if="filteredCards.length" class="profiles__view-switch" role="toolbar" aria-label="Режим отображения">
+        <button
+          type="button"
+          class="profiles__view-btn"
+          :class="{ 'profiles__view-btn--active': viewMode === 'grid' }"
+          @click="setViewMode('grid')"
+        >
+          Плитка
+        </button>
+        <button
+          type="button"
+          class="profiles__view-btn"
+          :class="{ 'profiles__view-btn--active': viewMode === 'compact' }"
+          @click="setViewMode('compact')"
+        >
+          Список
+        </button>
+      </div>
+
+      <div v-if="filteredCards.length && viewMode === 'grid'" class="profiles__grid">
         <article
           v-for="c in filteredCards"
           :key="c.id"
@@ -292,8 +335,6 @@ function cardPhoto(c: PlayerCard): string {
           </div>
           <div class="profiles__card-body">
             <div class="profiles__card-info">
-              <span class="profiles__nick">{{ c.nickname }}</span>
-              <span class="profiles__full-name">{{ c.first_name }} {{ c.last_name }}</span>
               <template v-if="c.gomafia_url?.trim()">
                 <a
                   class="profiles__gomafia-link"
@@ -303,12 +344,89 @@ function cardPhoto(c: PlayerCard): string {
                   :title="c.gomafia_url.trim()"
                   @click.stop
                 >
-                  {{ c.gomafia_url.trim() }}
+                  gomafia
                 </a>
               </template>
-              <span v-else class="profiles__gomafia-muted">Нет аккаунта на GoMafia</span>
+              <span v-else class="profiles__gomafia-muted">gomafia</span>
+              <span class="profiles__nick">{{ c.nickname }}</span>
+              <span class="profiles__full-name">{{ c.first_name }} {{ c.last_name }}</span>
             </div>
             <div class="profiles__menu-wrap" @click.stop>
+              <button
+                type="button"
+                class="profiles__menu-trigger"
+                aria-label="Меню профиля"
+                aria-haspopup="true"
+                :aria-expanded="menuOpenId === c.id"
+                @click.stop="toggleMenu(c.id)"
+              >
+                ⋮
+              </button>
+              <div v-if="menuOpenId === c.id" class="profiles__menu" role="menu">
+                <button
+                  type="button"
+                  class="profiles__menu-item profiles__menu-item--edit"
+                  role="menuitem"
+                  @click="openInfoModal(c)"
+                >
+                  Информация о игроке
+                </button>
+                <button
+                  type="button"
+                  class="profiles__menu-item profiles__menu-item--edit"
+                  role="menuitem"
+                  @click="openEditModal(c)"
+                >
+                  Редактировать
+                </button>
+                <button
+                  type="button"
+                  class="profiles__menu-item profiles__menu-item--danger"
+                  role="menuitem"
+                  @click="openDeleteConfirm(c)"
+                >
+                  Удалить
+                </button>
+              </div>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <div v-else-if="filteredCards.length && viewMode === 'compact'" class="profiles__compact-list">
+        <article
+          v-for="c in filteredCards"
+          :key="c.id"
+          class="profiles__compact-item"
+          :class="{
+            'profiles__compact-item--selected': selectedId === c.id,
+            'profiles__compact-item--menu-open': menuOpenId === c.id,
+          }"
+          @click="onCardClick(c)"
+        >
+          <div class="profiles__compact-main">
+            <div class="profiles__compact-photo">
+              <img v-if="cardPhoto(c)" :src="cardPhoto(c)" alt="" class="profiles__compact-photo-img" />
+            </div>
+            <div class="profiles__compact-text">
+              <span class="profiles__compact-nick">{{ c.nickname }}</span>
+              <span class="profiles__compact-name">{{ c.first_name }} {{ c.last_name }}</span>
+            </div>
+          </div>
+          <div class="profiles__compact-actions" @click.stop>
+            <a
+              v-if="hasGomafia(c)"
+              class="profiles__compact-gm"
+              :href="c.gomafia_url!.trim()"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Профиль GoMafia"
+              aria-label="Открыть профиль GoMafia"
+            >
+              gomafia
+            </a>
+            <span v-else class="profiles__compact-gm profiles__compact-gm--muted" title="Нет аккаунта GoMafia">gomafia</span>
+            <div class="profiles__menu-wrap">
               <button
                 type="button"
                 class="profiles__menu-trigger"
@@ -481,6 +599,136 @@ function cardPhoto(c: PlayerCard): string {
   overflow: visible;
 }
 
+.profiles__view-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.profiles__view-btn {
+  height: 1.9rem;
+  padding: 0 0.7rem;
+  font: inherit;
+  font-size: 0.75rem;
+  color: #4b5563;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.profiles__view-btn--active {
+  color: #1d4ed8;
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
+.profiles__compact-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.profiles__compact-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.45rem 0.6rem 0.45rem 0.7rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.profiles__compact-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.profiles__compact-item--selected {
+  border-color: #2f6feb;
+  box-shadow: 0 0 0 2px #2f6feb;
+}
+
+.profiles__compact-item--menu-open {
+  z-index: 40;
+}
+
+.profiles__compact-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.profiles__compact-nick {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profiles__compact-name {
+  margin-top: 0.02rem;
+  font-size: 0.75rem;
+  color: #6b7280;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profiles__compact-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.profiles__compact-gm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 4.4rem;
+  height: 1.45rem;
+  padding: 0 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: #6d28d9;
+  text-decoration: none;
+  border: 1px solid #ddd6fe;
+  border-radius: 6px;
+  background: #f5f3ff;
+}
+
+.profiles__compact-gm--muted {
+  color: #6b7280;
+  border-color: #e5e7eb;
+  background: #f3f4f6;
+}
+
+.profiles__compact-photo {
+  width: 2.3125rem;
+  height: 2.3125rem;
+  border-radius: 999px;
+  background: #f3f4f6;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.profiles__compact-photo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
 .profiles__card {
   display: flex;
   flex-direction: column;
@@ -539,7 +787,7 @@ function cardPhoto(c: PlayerCard): string {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 0.22rem;
+  gap: 0.36rem;
   min-width: 0;
 }
 
@@ -566,29 +814,46 @@ function cardPhoto(c: PlayerCard): string {
 }
 
 .profiles__gomafia-muted {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 4.6rem;
+  height: 1.5rem;
+  padding: 0 0.65rem;
   font-size: 0.75rem;
-  font-weight: 400;
-  color: #9ca3af;
-  line-height: 1.3;
-  max-width: 100%;
+  font-weight: 500;
+  color: #6b7280;
+  line-height: 1;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #f3f4f6;
+  box-sizing: border-box;
+  transform: translateX(-2px);
 }
 
 .profiles__gomafia-link {
-  display: block;
-  max-width: 100%;
-  font-size: 0.875rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 4.6rem;
+  height: 1.5rem;
+  padding: 0 0.65rem;
+  font-size: 0.75rem;
   font-weight: 500;
-  line-height: 1.35;
-  color: #2f6feb;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1;
+  color: #6d28d9;
+  text-decoration: none;
+  border: 1px solid #ddd6fe;
+  border-radius: 6px;
+  background: #f5f3ff;
+  box-sizing: border-box;
+  transform: translateX(-2px);
 }
 
 .profiles__gomafia-link:hover {
-  color: #2563d4;
+  color: #5b21b6;
+  border-color: #c4b5fd;
+  background: #ede9fe;
 }
 
 .profiles__menu-wrap {
@@ -600,20 +865,22 @@ function cardPhoto(c: PlayerCard): string {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 1.9rem;
-  height: 1.9rem;
+  width: 1.5rem;
+  height: 1.5rem;
   padding: 0;
-  font-size: 1.15rem;
+  font-size: 1rem;
   line-height: 1;
   color: #6b7280;
-  background: transparent;
-  border: none;
+  background: #fff;
+  border: 1px solid transparent;
   border-radius: 6px;
   cursor: pointer;
+  box-sizing: border-box;
 }
 
 .profiles__menu-trigger:hover {
-  background: #f3f4f6;
+  background: #f9fafb;
+  border-color: #e5e7eb;
   color: #111827;
 }
 
