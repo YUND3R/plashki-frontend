@@ -74,10 +74,10 @@ async function syncUserRole() {
   }
 }
 
-/** Только узкие экраны (телефоны): оверлей-меню. Планшет 640px+ - боковая панель всегда в потоке, без «гамбургера». */
-const MOBILE_MQ = '(max-width: 639px)'
+/** Планшеты и телефоны: выдвижное меню, контент на всю ширину. Десктоп 1025px+ — боковая панель в потоке. */
+const COMPACT_NAV_MQ = '(max-width: 1024px)'
 const isMobile = ref(
-  typeof window !== 'undefined' && window.matchMedia(MOBILE_MQ).matches,
+  typeof window !== 'undefined' && window.matchMedia(COMPACT_NAV_MQ).matches,
 )
 const mobileNavOpen = ref(false)
 let mq: MediaQueryList | null = null
@@ -113,7 +113,7 @@ watch(token, () => {
 }, { immediate: true })
 
 onMounted(() => {
-  mq = window.matchMedia(MOBILE_MQ)
+  mq = window.matchMedia(COMPACT_NAV_MQ)
   syncMobile()
   mq.addEventListener('change', syncMobile)
   document.addEventListener('keydown', onGlobalKeydown)
@@ -651,6 +651,26 @@ onUnmounted(() => {
 
 .shell--mobile .shell__header:has(.shell__logout) .shell__header-actions {
   width: auto;
+  flex-wrap: nowrap;
+}
+
+.shell--mobile .shell__header:has(.shell__header-actions--lobby-manage) {
+  grid-template-columns: var(--shell-header-row-h) minmax(0, 1fr) auto;
+  grid-template-rows: auto;
+  grid-template-areas: 'menu title actions';
+}
+
+.shell--mobile .shell__header:has(.shell__header-actions--lobby-manage) .shell__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 1.125rem;
+}
+
+.shell--mobile .shell__header:has(.shell__header-actions--lobby-manage) .shell__header-actions {
+  width: auto;
+  flex: 0 0 auto;
   flex-wrap: nowrap;
 }
 

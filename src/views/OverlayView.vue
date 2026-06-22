@@ -22,6 +22,9 @@ const lobby = ref<GameLobby | null>(null)
 const loading = ref(true)
 const error = ref<string | null>(null)
 let pollTimer: ReturnType<typeof setInterval> | null = null
+let loadSeq = 0
+let designsPollTick = 0
+const DESIGNS_POLL_EVERY = 10
 
 const lobbyId = computed(() => String(route.params.lobbyId ?? '').trim())
 const isAutoDesignRoute = computed(() => route.name === 'overlay-lobby')
@@ -95,34 +98,72 @@ const currentDesignComponent = computed(() => {
   return OverlayClassicDesign
 })
 
+function lobbyDataSignature(value: GameLobby): string {
+  return JSON.stringify({
+    design: value.overlay_design ?? '',
+    sheriff: value.sheriff_check ?? null,
+    best: value.best_move ?? null,
+    players: value.players.map((p) => ({
+      id: p.membership_id,
+      nick: p.nickname,
+      role: p.game_role,
+      status: p.status,
+      photo: p.lobby_photo_url ?? p.photo_urls?.[0] ?? '',
+      card: p.player_card_id,
+    })),
+  })
+}
+
+function mergeOverlayDesign(fresh: GameLobby, designs: Awaited<ReturnType<typeof getLobbyOverlayDesigns>> | null): GameLobby {
+  const overlayDesign =
+    (designs?.selected_overlay_design ?? '').trim() ||
+    (fresh.overlay_design ?? '').trim() ||
+    null
+  return overlayDesign ? { ...fresh, overlay_design: overlayDesign } : fresh
+}
+
+async function enrichLobbyInBackground(merged: GameLobby, seq: number) {
+  try {
+    const enriched = await enrichLobbyPhotoLayouts(merged)
+    if (seq !== loadSeq) return
+    if (lobbyDataSignature(enriched) !== lobbyDataSignature(merged)) return
+    lobby.value = enriched
+  } catch {
+    // overlay показывает данные лобби и без доп. кадрирования
+  }
+}
+
 async function loadLobby() {
   if (!lobbyId.value) {
     loading.value = false
     error.value = 'Не указан lobbyId'
     return
   }
-  if (!lobby.value) loading.value = true
-  error.value = null
+  const seq = ++loadSeq
+  const isInitialLoad = !lobby.value
+  if (isInitialLoad) loading.value = true
   try {
+    const shouldFetchDesigns =
+      isAutoDesignRoute.value &&
+      (designsPollTick++ % DESIGNS_POLL_EVERY === 0 || !lobby.value?.overlay_design)
     const freshPromise = getLobbyFresh(lobbyId.value)
-    const designsPromise = isAutoDesignRoute.value
+    const designsPromise = shouldFetchDesigns
       ? getLobbyOverlayDesigns(lobbyId.value).catch(() => null)
       : Promise.resolve(null)
     const [fresh, designs] = await Promise.all([freshPromise, designsPromise])
-    const overlayDesign =
-      (designs?.selected_overlay_design ?? '').trim() ||
-      (fresh.overlay_design ?? '').trim() ||
-      null
-    const merged = overlayDesign ? { ...fresh, overlay_design: overlayDesign } : fresh
-    try {
-      lobby.value = await enrichLobbyPhotoLayouts(merged)
-    } catch {
-      lobby.value = merged
-    }
+    if (seq !== loadSeq) return
+
+    const merged = mergeOverlayDesign(fresh, designs)
+    lobby.value = merged
+    error.value = null
+    void enrichLobbyInBackground(merged, seq)
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    if (seq !== loadSeq) return
+    if (!lobby.value) {
+      error.value = e instanceof Error ? e.message : String(e)
+    }
   } finally {
-    loading.value = false
+    if (seq === loadSeq) loading.value = false
   }
 }
 
@@ -178,6 +219,16 @@ function startPolling() {
   }, 1000)
 }
 
+async function restartForLobbyChange() {
+  loadSeq += 1
+  designsPollTick = 0
+  setActivePopupMessage(null)
+  lastPopupMessageId.value = ''
+  lobby.value = null
+  await loadLobby()
+  startPolling()
+}
+
 onMounted(async () => {
   prevDocumentTitle.value = document.title
   document.documentElement.classList.add('overlay-page')
@@ -191,11 +242,7 @@ onMounted(async () => {
 })
 
 watch(lobbyId, async () => {
-  setActivePopupMessage(null)
-  lastPopupMessageId.value = ''
-  lobby.value = null
-  await loadLobby()
-  startPolling()
+  await restartForLobbyChange()
 })
 
 watch(designCode, (next, prev) => {

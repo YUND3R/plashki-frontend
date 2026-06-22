@@ -183,4 +183,10 @@ onMounted(() => {
   font-size: 0.75rem;
   color: #475569;
 }
+
+@media (max-width: 1024px) {
+  .admin-users__table {
+    min-width: 720px;
+  }
+}
 </style>

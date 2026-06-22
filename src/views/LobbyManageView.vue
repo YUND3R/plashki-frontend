@@ -83,6 +83,8 @@ const rosterLoadError = ref<string | null>(null)
 const replaceRosterLoading = ref(false)
 const replaceSubmitting = ref(false)
 const replaceSearchInputRef = ref<HTMLInputElement | null>(null)
+const isTabletLayout = ref(false)
+let tabletMq: MediaQueryList | null = null
 const roleSubmittingMembershipId = ref<string | null>(null)
 const statusSubmittingMembershipId = ref<string | null>(null)
 const rolesResetBusy = ref(false)
@@ -216,6 +218,13 @@ watch(lobbyId, load)
 onMounted(() => {
   document.addEventListener('pointerdown', onDocPointerDownImported, true)
   window.addEventListener('keydown', onImportedEscapeKey)
+  tabletMq = window.matchMedia('(max-width: 1024px)')
+  isTabletLayout.value = tabletMq.matches
+  if (typeof tabletMq.addEventListener === 'function') {
+    tabletMq.addEventListener('change', onTabletMqChange)
+  } else {
+    tabletMq.addListener(onTabletMqChange)
+  }
 })
 
 function clearRoleHostFlashTimers() {
@@ -241,6 +250,13 @@ onUnmounted(() => {
   window.removeEventListener('pointermove', onTouchDragMove)
   window.removeEventListener('pointerup', onTouchDragEnd)
   window.removeEventListener('pointercancel', onTouchDragCancel)
+  if (tabletMq) {
+    if (typeof tabletMq.removeEventListener === 'function') {
+      tabletMq.removeEventListener('change', onTabletMqChange)
+    } else {
+      tabletMq.removeListener(onTabletMqChange)
+    }
+  }
 })
 
 const seatCount = computed(() => lobby.value?.max_players ?? 10)
@@ -252,6 +268,14 @@ const seatRows = computed(() => {
   for (let i = 0; i < n; i++) rows.push(list[i] ?? null)
   return rows
 })
+
+const replaceTargetPlayer = computed(() => {
+  const idx = replaceOpenSeatIndex.value
+  if (idx === null) return null
+  return seatRows.value[idx] ?? null
+})
+
+const replaceTargetLabel = computed(() => replaceTargetPlayer.value?.nickname?.trim() || 'игрока')
 
 const isLobbyHost = computed(() => {
   const hid = lobby.value?.host_user_id
@@ -553,11 +577,17 @@ function onReplaceEscapeKey(e: KeyboardEvent) {
 }
 
 function onDocPointerDownReplace(e: PointerEvent) {
+  if (isTabletLayout.value) return
   if (replaceOpenSeatIndex.value === null) return
   const t = e.target
   if (!(t instanceof Element)) return
   /** Вся ячейка ника строки с открытой заменой - не считаем «снаружи» (карандаш, поле, меню). */
   if (t.closest('.lobby-manage__row-nick-cell--replace-open')) return
+  closeReplace()
+}
+
+function onTabletMqChange(e: MediaQueryListEvent) {
+  isTabletLayout.value = e.matches
   closeReplace()
 }
 
@@ -883,6 +913,14 @@ async function openReplace(seatIdx: number, p: LobbyPlayer) {
     await nextTick()
     replaceSearchInputRef.value?.focus()
   }
+}
+
+async function toggleReplace(seatIdx: number, p: LobbyPlayer) {
+  if (replaceOpenSeatIndex.value === seatIdx) {
+    closeReplace()
+    return
+  }
+  await openReplace(seatIdx, p)
 }
 
 async function pickReplaceCard(card: PlayerCard) {
@@ -1331,7 +1369,31 @@ async function saveCardDesign() {
               @dragover="onDragOver($event, idx)"
               @drop="onDrop($event, idx)"
             >
-              <div class="lobby-manage__row-num-cell">
+              <div
+                class="lobby-manage__row-num-cell"
+                :class="{
+                  'lobby-manage__row-num-cell--drag-active':
+                    isLobbyHost && !!p?.membership_id && !swapBusy && !rolesResetBusy,
+                }"
+                :draggable="isLobbyHost && !!p?.membership_id && !swapBusy && !rolesResetBusy"
+                role="button"
+                :tabindex="isLobbyHost && p?.membership_id && !swapBusy && !rolesResetBusy ? 0 : -1"
+                :aria-label="
+                  isLobbyHost && p?.membership_id
+                    ? 'Перетащите на другую строку с игроком, чтобы поменять местами'
+                    : 'Место в составе'
+                "
+                :title="
+                  isLobbyHost && p?.membership_id
+                    ? 'Зажмите и перетащите на другого игрока - поменять местами'
+                    : isLobbyHost
+                      ? 'Пустое место - сюда нельзя перетащить обмен'
+                      : 'Порядок может менять только хост лобби.'
+                "
+                @dragstart.stop="onDragStart($event, idx, p)"
+                @dragend.stop="onDragEnd"
+                @pointerdown.stop="onTouchDragStart($event, idx, p)"
+              >
                 <span class="lobby-manage__row-num">{{ idx + 1 }}</span>
               </div>
               <div class="lobby-manage__row-drag-cell">
@@ -1407,9 +1469,9 @@ async function saveCardDesign() {
               >
                 <div
                   class="lobby-manage__nick-line"
-                  :class="{ 'lobby-manage__nick-line--replace': replaceOpenSeatIndex === idx && p }"
+                  :class="{ 'lobby-manage__nick-line--replace': replaceOpenSeatIndex === idx && p && !isTabletLayout }"
                 >
-                  <template v-if="replaceOpenSeatIndex === idx && p">
+                  <template v-if="replaceOpenSeatIndex === idx && p && !isTabletLayout">
                     <div class="lobby-manage__nick-replace-col">
                       <input
                         ref="replaceSearchInputRef"
@@ -1470,7 +1532,7 @@ async function saveCardDesign() {
                     :disabled="swapBusy || rolesResetBusy || replaceSubmitting"
                     title="Заменить игрока из «Мои составы»"
                     aria-label="Заменить игрока"
-                    @click.stop="replaceOpenSeatIndex === idx ? closeReplace() : openReplace(idx, p)"
+                    @click.stop="toggleReplace(idx, p)"
                   >
                     <svg class="lobby-manage__nick-edit-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                       <path
@@ -1785,6 +1847,78 @@ async function saveCardDesign() {
             </p>
           </article>
         </aside>
+      </div>
+
+      <div
+        v-if="isTabletLayout && replaceOpenSeatIndex !== null"
+        class="lobby-manage__modal-overlay"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Замена игрока"
+        @click.self="closeReplace"
+      >
+        <div class="lobby-manage__modal-card lobby-manage__modal-card--replace">
+          <div class="lobby-manage__modal-head">
+            <h3 class="lobby-manage__modal-title">Заменить игрока: {{ replaceTargetLabel }}</h3>
+            <button
+              type="button"
+              class="lobby-manage__modal-close"
+              aria-label="Закрыть"
+              title="Закрыть"
+              :disabled="replaceSubmitting"
+              @click="closeReplace"
+            >
+              ×
+            </button>
+          </div>
+          <input
+            ref="replaceSearchInputRef"
+            v-model="replaceSearchQuery"
+            class="lobby-manage__nick-input lobby-manage__nick-input--modal"
+            type="text"
+            autocomplete="off"
+            placeholder="Введите никнейм игрока"
+            aria-label="Поиск карточки по никнейму"
+            :disabled="replaceSubmitting"
+            @keydown.escape.stop.prevent="closeReplace"
+          />
+          <div class="lobby-manage__replace-modal-list" role="group" aria-label="Карточки из моих составов">
+            <p v-if="replaceRosterLoading" class="lobby-manage__replace-dropdown-msg">Загрузка…</p>
+            <p v-else-if="rosterLoadError" class="lobby-manage__replace-err" role="alert">{{ rosterLoadError }}</p>
+            <template v-else>
+              <ul v-if="!rosterCards.length" class="lobby-manage__replace-list lobby-manage__replace-list--flat" role="presentation">
+                <li class="lobby-manage__replace-empty">В «Мои составы» пока нет карточек.</li>
+              </ul>
+              <ul
+                v-else-if="!filteredReplaceCards.length"
+                class="lobby-manage__replace-list lobby-manage__replace-list--flat"
+                role="presentation"
+              >
+                <li class="lobby-manage__replace-empty">Все карточки уже заняты в других местах лобби.</li>
+              </ul>
+              <ul v-else class="lobby-manage__replace-list" role="listbox">
+                <li v-for="c in filteredReplaceCards" :key="c.id" class="lobby-manage__replace-item-wrap">
+                  <button
+                    type="button"
+                    class="lobby-manage__replace-item"
+                    role="option"
+                    :disabled="replaceSubmitting"
+                    @click="pickReplaceCard(c)"
+                  >
+                    <span class="lobby-manage__replace-thumb" aria-hidden="true">
+                      <img v-if="cardThumb(c)" :src="cardThumb(c)" alt="" class="lobby-manage__replace-thumb-img" />
+                      <span v-else class="lobby-manage__replace-thumb-ph">{{ c.nickname?.[0] ?? '?' }}</span>
+                    </span>
+                    <span class="lobby-manage__replace-item-text">
+                      <span class="lobby-manage__replace-item-nick">{{ c.nickname }}</span>
+                      <span v-if="cardFullName(c)" class="lobby-manage__replace-item-name">{{ cardFullName(c) }}</span>
+                    </span>
+                  </button>
+                </li>
+              </ul>
+            </template>
+          </div>
+        </div>
       </div>
 
       <p class="lobby-manage__meta">
@@ -2340,6 +2474,7 @@ async function saveCardDesign() {
   inset: 0;
   box-sizing: border-box;
   border: 3px solid #2f6feb;
+  border-radius: 12px;
   pointer-events: none;
   z-index: 1;
 }
@@ -2526,6 +2661,21 @@ async function saveCardDesign() {
   border: none;
   background: #fff;
   box-shadow: inset 1px 0 0 #e5e7eb;
+}
+
+.lobby-manage__row-num-cell--drag-active {
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.lobby-manage__row-num-cell--drag-active:active {
+  cursor: grabbing;
+}
+
+.lobby-manage__row-num-cell--drag-active:focus-visible {
+  outline: 2px solid #2f6feb;
+  outline-offset: 2px;
 }
 
 .lobby-manage__row-num {
@@ -3574,6 +3724,36 @@ async function saveCardDesign() {
   width: min(500px, 100%);
 }
 
+.lobby-manage__modal-card--replace {
+  width: min(560px, 100%);
+}
+
+.lobby-manage__nick-input--modal {
+  width: 100%;
+  margin-top: 0.7rem;
+  min-height: 2.5rem;
+  padding: 0.45rem 0.7rem;
+  font-size: 0.95rem;
+  line-height: 1.35;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  box-sizing: border-box;
+}
+
+.lobby-manage__nick-input--modal:focus,
+.lobby-manage__nick-input--modal:focus-visible {
+  border: 1px solid #d1d5db;
+  outline: none;
+  box-shadow: none;
+}
+
+.lobby-manage__replace-modal-list {
+  margin-top: 0.6rem;
+  max-height: min(50dvh, 420px);
+  overflow: auto;
+}
+
 .lobby-manage__imported-participants-open {
   flex: 1 1 auto;
   min-width: min(100%, 14rem);
@@ -3752,6 +3932,214 @@ async function saveCardDesign() {
   margin: 0;
   font-size: 0.8125rem;
   color: #1d4ed8;
+}
+
+@media (max-width: 1024px) {
+  .lobby-manage__card.lobby-manage__card--side {
+    padding: 0.75rem 0.8rem;
+  }
+
+  .lobby-manage__table-wrap {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.55rem;
+    border-top: none;
+    overflow: visible;
+    margin: 10px 10px 0;
+  }
+
+  .lobby-manage__table-wrap--replace {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border-top: 1px solid #e5e7eb;
+    overflow-x: visible;
+    overflow-y: visible;
+    margin: 10px 10px 0;
+  }
+
+  .lobby-manage__aside {
+    padding: 10px 10px 0 10px;
+  }
+
+  .lobby-manage__row {
+    grid-template-columns: 56px 56px minmax(0, 1fr);
+    grid-template-rows: 64px auto;
+    height: auto;
+    min-height: 64px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #fff;
+    overflow: hidden;
+  }
+
+  .lobby-manage__row::after {
+    display: none;
+  }
+
+  .lobby-manage__row-num-cell,
+  .lobby-manage__row-avatar,
+  .lobby-manage__row-nick-cell {
+    height: 64px;
+    box-shadow: none;
+  }
+
+  .lobby-manage__row-drag-cell {
+    display: none;
+  }
+
+  .lobby-manage__row-num-cell {
+    display: grid;
+    place-items: center;
+    padding: 0;
+    min-width: 56px;
+    width: 56px;
+  }
+
+  .lobby-manage__row-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    line-height: 1;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    background: #f9fafb;
+  }
+
+  .lobby-manage__row-num-cell--drag-active .lobby-manage__row-num {
+    border-width: 2px;
+    border-style: dashed;
+    border-color: #9ca3af;
+  }
+
+  .lobby-manage__row-dots-cell {
+    --lobby-dot-size: 36px;
+    --lobby-dot-gap: 0.3rem;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-items: stretch;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    height: auto;
+    min-height: 52px;
+    padding: 0.15rem 0;
+    border-right: none;
+    border-top: 1px solid #e5e7eb;
+    gap: 0;
+  }
+
+  .lobby-manage__dot-rect {
+    width: 100%;
+    min-width: 0;
+    justify-content: flex-start;
+    padding: 0.25rem 0.35rem;
+  }
+
+  .lobby-manage__dot-rect:first-child {
+    padding-right: 0.35rem;
+    margin-right: 0;
+    box-shadow: inset 0 -1px 0 #e5e7eb;
+  }
+
+  .lobby-manage__avatar-btn,
+  .lobby-manage__avatar-img,
+  .lobby-manage__avatar-ph {
+    border-radius: 0;
+  }
+
+  .lobby-manage__main-actions {
+    margin: 12px 10px 0;
+    gap: 0.45rem 0.55rem;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  .lobby-manage__main-actions > * {
+    flex: 0 0 auto;
+  }
+
+  .lobby-manage__sheriff-checks-btn--foot {
+    flex: 0 0 auto;
+  }
+
+  .lobby-manage__modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .lobby-manage__modal-card {
+    width: 100%;
+    max-height: min(88dvh, 900px);
+    border-radius: 14px 14px 0 0;
+    padding: 0.85rem 0.9rem calc(0.85rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .lobby-manage__sheriff-checks-form {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 500px) {
+  .lobby-manage__table-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    border-top: none;
+    overflow-x: visible;
+  }
+
+  .lobby-manage__row {
+    grid-template-columns: 48px 52px minmax(0, 1fr);
+    grid-template-rows: 60px auto;
+    min-height: 60px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .lobby-manage__row::after {
+    display: none;
+  }
+
+  .lobby-manage__row-num-cell,
+  .lobby-manage__row-avatar,
+  .lobby-manage__row-nick-cell {
+    height: 60px;
+  }
+
+  .lobby-manage__row-num-cell {
+    display: grid;
+    place-items: center;
+  }
+
+  .lobby-manage__row-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .lobby-manage__row-dots-cell {
+    --lobby-dot-size: 34px;
+  }
+
+  .lobby-manage__sheriff-checks-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .lobby-manage__best-move-form {
+    grid-template-columns: 1fr;
+  }
 }
 
 </style>

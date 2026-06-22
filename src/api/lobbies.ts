@@ -87,6 +87,12 @@ function extractImportedLobby(payload: unknown): GameLobby | null {
   return null
 }
 
+function parseLobbyResponse(payload: unknown, errorMessage: string): GameLobby {
+  const lobby = extractImportedLobby(payload)
+  if (!lobby) throw new Error(errorMessage)
+  return lobby
+}
+
 function extractImportedLobbyId(payload: unknown): string | null {
   if (!payload || typeof payload !== 'object') return null
   const row = payload as Record<string, unknown>
@@ -333,11 +339,9 @@ export async function listMyLobbies(): Promise<GameLobby[]> {
 }
 
 export function getLobby(lobbyId: string) {
-  return apiFetch<unknown>(`/lobbies/${lobbyId}`).then((payload) => {
-    const lobby = toGameLobby(payload)
-    if (!lobby) throw new Error('Некорректный ответ при загрузке лобби')
-    return lobby
-  })
+  return apiFetch<unknown>(`/lobbies/${lobbyId}`).then((payload) =>
+    parseLobbyResponse(payload, 'Некорректный ответ при загрузке лобби'),
+  )
 }
 
 /** Удалить лобби (только хост). */
@@ -354,11 +358,7 @@ export function getLobbyFresh(lobbyId: string) {
       Pragma: 'no-cache',
       Expires: '0',
     },
-  }).then((payload) => {
-    const lobby = toGameLobby(payload)
-    if (!lobby) throw new Error('Некорректный ответ при загрузке лобби')
-    return lobby
-  })
+  }).then((payload) => parseLobbyResponse(payload, 'Некорректный ответ при загрузке лобби'))
 }
 
 export function addCardToLobby(lobbyId: string, playerCardId: string) {
@@ -642,9 +642,5 @@ export function getLobbyImportedParticipants(lobbyId: string): Promise<string[]>
 export function setLobbyImportedSelection(lobbyId: string, body: SetLobbyImportedSelectionBody) {
   return apiFetchJson<unknown>(`/lobbies/${lobbyId}/imported-selection`, body, {
     method: 'PATCH',
-  }).then((payload) => {
-    const lobby = toGameLobby(payload)
-    if (!lobby) throw new Error('Некорректный ответ при переключении тура/стола')
-    return lobby
-  })
+  }).then((payload) => parseLobbyResponse(payload, 'Некорректный ответ при переключении тура/стола'))
 }

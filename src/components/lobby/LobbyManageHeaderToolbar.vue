@@ -105,19 +105,34 @@ watch(designChangedToken, () => {
       type="button"
       class="shell-lobby-toolbar__obs shell-lobby-toolbar__obs--design-main"
       :title="`Выбранный дизайн: ${selectedDesignLabel}`"
+      aria-label="Выбрать дизайн плашек"
       @click="lobbyManageUi.requestOpenDesignPicker"
     >
-      Дизайн плашек <span class="shell-lobby-toolbar__design-inline-sep" aria-hidden="true">•</span>
+      <span class="shell-lobby-toolbar__label-wide">Дизайн плашек</span>
+      <span class="shell-lobby-toolbar__design-inline-sep shell-lobby-toolbar__label-wide" aria-hidden="true">•</span>
       <strong class="shell-lobby-toolbar__design-inline-name">{{ selectedDesignLabel }}</strong>
     </button>
     <button
       type="button"
-      class="shell-lobby-toolbar__obs"
+      class="shell-lobby-toolbar__obs shell-lobby-toolbar__obs--icon"
       :disabled="!lobbyId || previewBusy"
       title="Открыть предпросмотр текущего дизайна"
+      aria-label="Открыть предпросмотр overlay"
       @click="openDesignPreview"
     >
-      {{ previewBusy ? 'Overlay…' : 'Overlay' }}
+      <span class="shell-lobby-toolbar__obs-icon" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path
+            d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+          <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" />
+        </svg>
+      </span>
+      <span class="shell-lobby-toolbar__label-wide">{{ previewBusy ? 'Overlay…' : 'Overlay' }}</span>
     </button>
     <div class="shell-lobby-toolbar__obs-wrap">
       <Transition name="shell-lobby-toolbar__toast">
@@ -132,9 +147,10 @@ watch(designChangedToken, () => {
       </Transition>
       <button
         type="button"
-        class="shell-lobby-toolbar__obs"
+        class="shell-lobby-toolbar__obs shell-lobby-toolbar__obs--icon"
         :disabled="!lobbyId || copyOverlayBusy"
-        title="Скопировать ссылку overlay для OBS. Дизайн подтягивается автоматически при смене в лобби"
+        title="Скопировать ссылку overlay для OBS"
+        aria-label="Скопировать ссылку для OBS"
         @click="copyOverlayLink"
       >
         <span class="shell-lobby-toolbar__obs-icon" aria-hidden="true">
@@ -147,17 +163,29 @@ watch(designChangedToken, () => {
             />
           </svg>
         </span>
-        Док-панель OBS
+        <span class="shell-lobby-toolbar__label-wide">Док-панель OBS</span>
       </button>
     </div>
     <button
       type="button"
-      class="shell-lobby-toolbar__obs shell-lobby-toolbar__obs--danger"
+      class="shell-lobby-toolbar__obs shell-lobby-toolbar__obs--danger shell-lobby-toolbar__obs--icon"
       :disabled="!lobbyId"
       title="Удалить текущее лобби"
+      aria-label="Удалить лобби"
       @click="lobbyManageUi.requestOpenDeleteConfirm"
     >
-      Удалить лобби
+      <span class="shell-lobby-toolbar__obs-icon" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path
+            d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m2 0v14a2 2 0 01-2 2H8a2 2 0 01-2-2V6h12Z"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </span>
+      <span class="shell-lobby-toolbar__label-wide">Удалить лобби</span>
     </button>
   </div>
 </template>
@@ -266,5 +294,37 @@ watch(designChangedToken, () => {
   color: #991b1b;
   background: #fee2e2;
   border-color: #fca5a5;
+}
+
+@media (max-width: 1024px) {
+  .shell-lobby-toolbar {
+    flex-wrap: nowrap;
+    gap: 0.35rem;
+  }
+
+  .shell-lobby-toolbar__label-wide {
+    display: none;
+  }
+
+  .shell-lobby-toolbar__obs {
+    padding: 0 0.5rem;
+    min-width: var(--shell-header-row-h, 2.375rem);
+  }
+
+  .shell-lobby-toolbar__obs--design-main {
+    max-width: 7.5rem;
+    padding: 0 0.55rem;
+  }
+
+  .shell-lobby-toolbar__design-inline-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .shell-lobby-toolbar__obs--icon {
+    width: var(--shell-header-row-h, 2.375rem);
+    padding: 0;
+  }
 }
 </style>
