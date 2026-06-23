@@ -34,6 +34,8 @@ export type GameLobby = {
   imported_state?: LobbyImportedState | null
   /** Выбранный overlay-дизайн (Classic, masters-yug25, plus и т.д.). */
   overlay_design?: string | null
+  /** Активный экран в OBS overlay (lobby, roles и т.д.). */
+  active_overlay_screen?: string | null
 }
 
 export type LobbyImportedVariant = {
@@ -265,6 +267,11 @@ function toGameLobby(item: unknown): GameLobby | null {
     (value) => typeof value === 'string' && value.trim(),
   )
   const overlayDesign = typeof overlayDesignRaw === 'string' ? overlayDesignRaw.trim() : null
+  const activeOverlayScreenRaw = row.active_overlay_screen
+  const activeOverlayScreen =
+    typeof activeOverlayScreenRaw === 'string' && activeOverlayScreenRaw.trim()
+      ? activeOverlayScreenRaw.trim()
+      : null
   return {
     id,
     max_players: maxPlayers,
@@ -277,6 +284,7 @@ function toGameLobby(item: unknown): GameLobby | null {
     best_move: bestMove,
     imported_state: importedState,
     overlay_design: overlayDesign,
+    active_overlay_screen: activeOverlayScreen,
   }
 }
 
@@ -585,6 +593,31 @@ export type SetLobbyOverlayDesignBody = {
   overlay_design: string
 }
 
+export type SetLobbyOverlayScreenBody = {
+  screen_key: string
+}
+
+export type LobbyOverlayStateResponse = {
+  lobby_id: string
+  selected_overlay_design?: string | null
+  active_overlay_screen?: string | null
+}
+
+export type OverlayGlobalStateResponse = {
+  active_lobby_id: string | null
+  active_overlay_screen: string | null
+  selected_overlay_design: string | null
+}
+
+export type SetOverlayActiveLobbyBody = {
+  lobby_id: string
+}
+
+export type SetOverlayActiveLobbyResponse = {
+  active_lobby_id: string
+  updated_at: string
+}
+
 /** Получить список доступных overlay-дизайнов для лобби. */
 export function getLobbyOverlayDesigns(lobbyId: string) {
   return apiFetch<LobbyOverlayDesignsResponse>(`/lobbies/${lobbyId}/overlay-designs`)
@@ -593,6 +626,98 @@ export function getLobbyOverlayDesigns(lobbyId: string) {
 /** Выбрать overlay-дизайн карточек для лобби (только хост). */
 export function setLobbyOverlayDesign(lobbyId: string, body: SetLobbyOverlayDesignBody) {
   return apiFetchJson<GameLobby>(`/lobbies/${lobbyId}/overlay-design`, body, {
+    method: 'PATCH',
+  })
+}
+
+/** Переключить активный экран OBS overlay (только хост). */
+export function setLobbyOverlayScreen(lobbyId: string, body: SetLobbyOverlayScreenBody) {
+  const screenKey = (body.screen_key ?? '').trim()
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(screenKey)) {
+    return Promise.reject(new Error('Некорректный screen_key'))
+  }
+  return apiFetchJson<unknown>(`/lobbies/${lobbyId}/overlay-screen`, body, {
+    method: 'PATCH',
+  }).then((payload) => parseLobbyResponse(payload, 'Некорректный ответ при переключении экрана overlay'))
+}
+
+/** Получить состояние overlay для OBS (дизайн + активный экран). */
+export function getLobbyOverlayState(lobbyId: string) {
+  return apiFetch<unknown>(`/lobbies/${lobbyId}/overlay-state`).then((payload) => {
+    if (!payload || typeof payload !== 'object') {
+      throw new Error('Некорректный ответ overlay-state')
+    }
+    const row = payload as Record<string, unknown>
+    const lobbyIdValue = typeof row.lobby_id === 'string' ? row.lobby_id.trim() : lobbyId
+    const selectedOverlayDesign =
+      typeof row.selected_overlay_design === 'string' && row.selected_overlay_design.trim()
+        ? row.selected_overlay_design.trim()
+        : null
+    const activeOverlayScreen =
+      typeof row.active_overlay_screen === 'string' && row.active_overlay_screen.trim()
+        ? row.active_overlay_screen.trim()
+        : null
+    return {
+      lobby_id: lobbyIdValue,
+      selected_overlay_design: selectedOverlayDesign,
+      active_overlay_screen: activeOverlayScreen,
+    } satisfies LobbyOverlayStateResponse
+  })
+}
+
+/** Текущее глобальное overlay-состояние (активное лобби/экран/дизайн). */
+export function getOverlayState() {
+  return apiFetch<unknown>('/overlay/state').then((payload) => {
+    if (!payload || typeof payload !== 'object') {
+      throw new Error('Некорректный ответ /overlay/state')
+    }
+    const row = payload as Record<string, unknown>
+    const activeLobbyId =
+      typeof row.active_lobby_id === 'string' && row.active_lobby_id.trim() ? row.active_lobby_id.trim() : null
+    const activeOverlayScreen =
+      typeof row.active_overlay_screen === 'string' && row.active_overlay_screen.trim()
+        ? row.active_overlay_screen.trim()
+        : null
+    const selectedOverlayDesign =
+      typeof row.selected_overlay_design === 'string' && row.selected_overlay_design.trim()
+        ? row.selected_overlay_design.trim()
+        : null
+    return {
+      active_lobby_id: activeLobbyId,
+      active_overlay_screen: activeOverlayScreen,
+      selected_overlay_design: selectedOverlayDesign,
+    } satisfies OverlayGlobalStateResponse
+  })
+}
+
+/** Live endpoint для OBS (стабильная точка с тем же форматом, что /overlay/state). */
+export function getOverlayLive() {
+  return apiFetch<unknown>('/overlay/live').then((payload) => {
+    if (!payload || typeof payload !== 'object') {
+      throw new Error('Некорректный ответ /overlay/live')
+    }
+    const row = payload as Record<string, unknown>
+    const activeLobbyId =
+      typeof row.active_lobby_id === 'string' && row.active_lobby_id.trim() ? row.active_lobby_id.trim() : null
+    const activeOverlayScreen =
+      typeof row.active_overlay_screen === 'string' && row.active_overlay_screen.trim()
+        ? row.active_overlay_screen.trim()
+        : null
+    const selectedOverlayDesign =
+      typeof row.selected_overlay_design === 'string' && row.selected_overlay_design.trim()
+        ? row.selected_overlay_design.trim()
+        : null
+    return {
+      active_lobby_id: activeLobbyId,
+      active_overlay_screen: activeOverlayScreen,
+      selected_overlay_design: selectedOverlayDesign,
+    } satisfies OverlayGlobalStateResponse
+  })
+}
+
+/** Сделать текущее лобби активным для OBS live-ссылки. */
+export function setOverlayActiveLobby(body: SetOverlayActiveLobbyBody) {
+  return apiFetchJson<SetOverlayActiveLobbyResponse>('/overlay/active-lobby', body, {
     method: 'PATCH',
   })
 }

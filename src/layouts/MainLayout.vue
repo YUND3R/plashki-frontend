@@ -308,6 +308,9 @@ onUnmounted(() => {
   border-bottom: 1px solid #f3f4f6;
   box-sizing: border-box;
   min-height: calc(var(--shell-header-row-h) + 2 * var(--shell-header-pad-y));
+  overflow: visible;
+  position: relative;
+  z-index: 40;
 }
 
 .shell__header-actions {
@@ -316,12 +319,16 @@ onUnmounted(() => {
   align-items: center;
   gap: 0.5rem;
   min-height: var(--shell-header-row-h);
+  overflow: visible;
 }
 
 .shell__header-actions--lobby-manage {
   margin-left: auto;
   justify-content: flex-end;
   max-width: 100%;
+  overflow: visible;
+  position: relative;
+  z-index: 60;
 }
 
 .shell__logout {

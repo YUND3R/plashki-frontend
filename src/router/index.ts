@@ -42,6 +42,12 @@ const router = createRouter({
       component: () => import('@/views/ResetPasswordView.vue'),
     },
     {
+      path: '/overlay/live',
+      name: 'overlay-live',
+      meta: { title: 'Overlay Live' },
+      component: () => import('@/views/OverlayView.vue'),
+    },
+    {
       path: '/overlay/:lobbyId',
       name: 'overlay-lobby',
       meta: { title: 'Overlay' },

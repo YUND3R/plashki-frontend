@@ -443,6 +443,7 @@ const canApplyImportedSelection = computed(() => {
   if (!key) return false
   return key !== importedCurrentKey.value
 })
+const isImportedAnyMenuOpen = computed(() => importedTourMenuOpen.value || importedTableMenuOpen.value)
 
 const importedSelectionSignature = computed(() => {
   const keys = importedVariants.value.map((variant) => variant.key).join('|')
@@ -1626,7 +1627,10 @@ async function saveCardDesign() {
             </div>
           </div>
 
-          <div class="lobby-manage__main-actions">
+          <div
+            class="lobby-manage__main-actions"
+            :class="{ 'lobby-manage__main-actions--imported-open': isImportedAnyMenuOpen }"
+          >
             <button
               type="button"
               class="lobby-manage__btn-foot"
@@ -2286,6 +2290,7 @@ async function saveCardDesign() {
 
 .lobby-manage__imported-picker {
   position: relative;
+  z-index: 140;
 }
 
 .lobby-manage__imported-select-btn {
@@ -2336,7 +2341,7 @@ async function saveCardDesign() {
   width: 145px;
   max-height: min(28.5rem, calc(100vh - 8rem));
   overflow-y: auto;
-  z-index: 30;
+  z-index: 180;
   border: 1px solid #d1d5db;
   border-radius: 6px;
   background: #fff;
@@ -4201,16 +4206,65 @@ async function saveCardDesign() {
   .lobby-manage__main-actions {
     margin: 12px 10px 0;
     gap: 0.45rem 0.55rem;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    overflow-y: visible;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
+    flex-wrap: wrap;
+    overflow: visible;
     position: relative;
     z-index: 12;
   }
 
+  .lobby-manage__main-actions--imported-open {
+    overflow: visible;
+  }
+
   .lobby-manage__main-actions > * {
+    flex: 0 0 auto;
+  }
+
+  .lobby-manage__main-actions > .lobby-manage__btn-foot:first-child {
+    order: 1;
+  }
+
+  .lobby-manage__main-actions > .lobby-manage__host-toggle {
+    order: 2;
+  }
+
+  .lobby-manage__main-actions > .lobby-manage__sheriff-checks-btn--foot {
+    order: 3;
+    white-space: nowrap;
+  }
+
+  .lobby-manage__main-actions > .lobby-manage__imported-switcher {
+    order: 20;
+    flex: 1 0 100%;
+    width: 100%;
+    justify-content: flex-start;
+    margin-top: 0.2rem;
+    gap: 0.45rem;
+    display: grid;
+    grid-template-columns: auto auto auto;
+    align-items: start;
+  }
+
+  .lobby-manage__main-actions > .lobby-manage__imported-switcher .lobby-manage__imported-group {
+    flex: 0 0 auto;
+  }
+
+  .lobby-manage__main-actions > .lobby-manage__imported-switcher .lobby-manage__imported-select-btn {
+    width: 128px;
+  }
+
+  .lobby-manage__main-actions > .lobby-manage__imported-switcher .lobby-manage__imported-menu {
+    width: 128px;
+  }
+
+  .lobby-manage__main-actions > .lobby-manage__imported-switcher .lobby-manage__imported-btn--apply {
+    min-width: 76px;
+    grid-column: auto;
+    justify-self: start;
+  }
+
+  .lobby-manage__main-actions > .lobby-manage__imported-participants-open {
+    order: 21;
     flex: 0 0 auto;
   }
 

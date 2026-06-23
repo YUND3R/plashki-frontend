@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { getLobbyFresh, getLobbyOverlayDesigns, type GameLobby, type LobbyPlayer } from '@/api/lobbies'
+import {
+  getLobbyFresh,
+  getLobbyOverlayDesigns,
+  getOverlayLive,
+  type GameLobby,
+  type OverlayGlobalStateResponse,
+  type LobbyPlayer,
+} from '@/api/lobbies'
 import { enrichLobbyPhotoLayouts } from '@/utils/overlayPhotoLayoutBridge'
 import OverlayClassicDesign from '@/components/overlay/designs/OverlayClassicDesign.vue'
 import OverlayMastersDesign from '@/components/overlay/designs/OverlayMastersDesign.vue'
@@ -26,8 +33,11 @@ let loadSeq = 0
 let designsPollTick = 0
 const DESIGNS_POLL_EVERY = 10
 
-const lobbyId = computed(() => String(route.params.lobbyId ?? '').trim())
-const isAutoDesignRoute = computed(() => route.name === 'overlay-lobby')
+const isLiveRoute = computed(() => route.name === 'overlay-live')
+const routeLobbyId = computed(() => String(route.params.lobbyId ?? '').trim())
+const isAutoDesignRoute = computed(() => route.name === 'overlay-lobby' || isLiveRoute.value)
+const overlayLiveState = ref<OverlayGlobalStateResponse | null>(null)
+const liveActiveLobbyId = ref('')
 
 const routeDesignCode = computed(() => {
   if (route.name !== 'overlay-design') return ''
@@ -40,7 +50,13 @@ const lobbyDesignCode = computed(() => {
   return ''
 })
 
+const liveDesignCode = computed(() => {
+  const raw = overlayLiveState.value?.selected_overlay_design
+  return typeof raw === 'string' && raw.trim() ? raw.trim().toLowerCase() : ''
+})
+
 const designCode = computed(() => {
+  if (isLiveRoute.value) return liveDesignCode.value || lobbyDesignCode.value || 'classic'
   if (isAutoDesignRoute.value) return lobbyDesignCode.value || 'classic'
   return routeDesignCode.value || lobbyDesignCode.value || 'classic'
 })
@@ -59,6 +75,10 @@ const designTitle = computed(() => {
 })
 
 const normalizedDesignCode = computed(() => normalizeOverlayDesignCode(designCode.value))
+const effectiveLobbyId = computed(() => (isLiveRoute.value ? liveActiveLobbyId.value : routeLobbyId.value))
+const noActiveLiveLobby = computed(
+  () => isLiveRoute.value && !loading.value && !error.value && !effectiveLobbyId.value,
+)
 
 function applyDocumentTitle() {
   document.title = `Overlay - ${designTitle.value}`
@@ -122,6 +142,19 @@ function mergeOverlayDesign(fresh: GameLobby, designs: Awaited<ReturnType<typeof
   return overlayDesign ? { ...fresh, overlay_design: overlayDesign } : fresh
 }
 
+function mergeOverlayState(
+  fresh: GameLobby,
+  state: OverlayGlobalStateResponse | null,
+): GameLobby {
+  if (!state) return fresh
+  const overlayDesign =
+    (state.selected_overlay_design ?? '').trim() || (fresh.overlay_design ?? '').trim() || null
+  return {
+    ...fresh,
+    overlay_design: overlayDesign,
+  }
+}
+
 async function enrichLobbyInBackground(merged: GameLobby, seq: number) {
   try {
     const enriched = await enrichLobbyPhotoLayouts(merged)
@@ -134,7 +167,7 @@ async function enrichLobbyInBackground(merged: GameLobby, seq: number) {
 }
 
 async function loadLobby() {
-  if (!lobbyId.value) {
+  if (!effectiveLobbyId.value && !isLiveRoute.value) {
     loading.value = false
     error.value = 'Не указан lobbyId'
     return
@@ -143,12 +176,31 @@ async function loadLobby() {
   const isInitialLoad = !lobby.value
   if (isInitialLoad) loading.value = true
   try {
+    if (isLiveRoute.value) {
+      const liveState = await getOverlayLive()
+      if (seq !== loadSeq) return
+      overlayLiveState.value = liveState
+      liveActiveLobbyId.value = liveState.active_lobby_id ?? ''
+      if (!liveActiveLobbyId.value) {
+        lobby.value = null
+        error.value = null
+        return
+      }
+      const fresh = await getLobbyFresh(liveActiveLobbyId.value)
+      if (seq !== loadSeq) return
+      const merged = mergeOverlayState(fresh, liveState)
+      lobby.value = merged
+      error.value = null
+      void enrichLobbyInBackground(merged, seq)
+      return
+    }
+
     const shouldFetchDesigns =
       isAutoDesignRoute.value &&
       (designsPollTick++ % DESIGNS_POLL_EVERY === 0 || !lobby.value?.overlay_design)
-    const freshPromise = getLobbyFresh(lobbyId.value)
+    const freshPromise = getLobbyFresh(effectiveLobbyId.value)
     const designsPromise = shouldFetchDesigns
-      ? getLobbyOverlayDesigns(lobbyId.value).catch(() => null)
+      ? getLobbyOverlayDesigns(effectiveLobbyId.value).catch(() => null)
       : Promise.resolve(null)
     const [fresh, designs] = await Promise.all([freshPromise, designsPromise])
     if (seq !== loadSeq) return
@@ -168,12 +220,12 @@ async function loadLobby() {
 }
 
 function loadPersistentMessage() {
-  if (!lobbyId.value) {
+  if (!effectiveLobbyId.value) {
     persistentMessage.value = ''
     persistentMessageColor.value = 'green'
     return
   }
-  const data = readOverlayPersistentMessage(lobbyId.value, normalizedDesignCode.value)
+  const data = readOverlayPersistentMessage(effectiveLobbyId.value, normalizedDesignCode.value)
   persistentMessage.value = data.text
   persistentMessageColor.value = data.color
 }
@@ -201,11 +253,11 @@ function setActivePopupMessage(next: OverlayPopupMessage | null) {
 }
 
 function loadPopupMessage() {
-  if (!lobbyId.value) {
+  if (!effectiveLobbyId.value) {
     setActivePopupMessage(null)
     return
   }
-  const next = readOverlayPopupMessage(lobbyId.value, normalizedDesignCode.value)
+  const next = readOverlayPopupMessage(effectiveLobbyId.value, normalizedDesignCode.value)
   if (!next) return
   if (next.id === lastPopupMessageId.value) return
   lastPopupMessageId.value = next.id
@@ -241,9 +293,12 @@ onMounted(async () => {
   startPolling()
 })
 
-watch(lobbyId, async () => {
-  await restartForLobbyChange()
-})
+watch(
+  () => route.fullPath,
+  async () => {
+    await restartForLobbyChange()
+  },
+)
 
 watch(designCode, (next, prev) => {
   if (next === prev) return
@@ -255,7 +310,7 @@ watch(designCode, (next, prev) => {
 })
 
 function onStorageChanged(e: StorageEvent) {
-  if (!e.key || !lobbyId.value) return
+  if (!e.key || !effectiveLobbyId.value) return
   loadPersistentMessage()
   loadPopupMessage()
 }
@@ -274,14 +329,18 @@ onUnmounted(() => {
   <main class="overlay">
     <div v-if="loading" class="overlay__state">
       <p class="overlay__state-title">Загрузка overlay…</p>
-      <p class="overlay__state-hint">Лобби: {{ lobbyId || '—' }}</p>
+      <p class="overlay__state-hint">Лобби: {{ effectiveLobbyId || '—' }}</p>
+    </div>
+    <div v-else-if="noActiveLiveLobby" class="overlay__state">
+      <p class="overlay__state-title">Нет активного лобби</p>
+      <p class="overlay__state-hint">Нажмите «Вывести в OBS» в панели управления лобби.</p>
     </div>
     <div v-else-if="error" class="overlay__state overlay__state--error" role="alert">
       <p class="overlay__state-title">Overlay не загрузился</p>
       <p class="overlay__state-text">{{ error }}</p>
       <ul class="overlay__state-list">
         <li>Бэкенд доступен по адресу из <code>VITE_API_BASE_URL</code></li>
-        <li><code>GET /lobbies/{{ lobbyId }}</code> открыт для overlay (без 401)</li>
+        <li><code>GET /lobbies/{{ effectiveLobbyId }}</code> открыт для overlay (без 401)</li>
         <li>В OBS Browser Source включите прозрачный фон</li>
         <li>URL должен открываться в обычном браузере на этом же ПК</li>
       </ul>
@@ -366,6 +425,7 @@ onUnmounted(() => {
 .overlay__state--error .overlay__state-title {
   color: #fca5a5;
 }
+
 </style>
 
 <style>
