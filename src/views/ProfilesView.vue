@@ -207,7 +207,7 @@ function hasGomafia(c: PlayerCard): boolean {
 </script>
 
 <template>
-  <section class="profiles">
+  <section class="profiles" :class="{ 'profiles--compact-layout': !!token && viewMode === 'compact' }">
     <PlayerCardCreateModal
       v-model="cardModalOpen"
       :editing-card="cardModalEditTarget"
@@ -447,6 +447,11 @@ function hasGomafia(c: PlayerCard): boolean {
   padding: 0 0 1rem;
   box-sizing: border-box;
   overflow: visible;
+}
+
+.profiles--compact-layout {
+  max-width: 760px;
+  margin: 0 auto;
 }
 
 .profiles__guest {

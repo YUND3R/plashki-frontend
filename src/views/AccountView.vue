@@ -3,6 +3,8 @@ import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { RouterLink, useRouter } from 'vue-router'
 import { me, type SubscriptionTier, type UserMe } from '@/api/auth'
+import { listMyLobbies, type GameLobby } from '@/api/lobbies'
+import goLobbyIcon from '@/assets/icons/go.svg?url'
 import { useAuthStore } from '@/stores/auth'
 import { useProfileSettingsModalStore } from '@/stores/profileSettingsModal'
 
@@ -21,6 +23,9 @@ function openPlan(planId: SubscriptionTier) {
 }
 
 const profile = ref<UserMe | null>(null)
+const myLobbies = ref<GameLobby[]>([])
+const lobbiesLoading = ref(false)
+const lobbiesError = ref<string | null>(null)
 const loading = ref(false)
 const error = ref<string | null>(null)
 
@@ -45,23 +50,95 @@ const accountAvatarInitials = computed(() => {
   return (u.username?.trim()[0] || '?').toUpperCase()
 })
 
+function lobbyTitle(lobby: GameLobby): string {
+  const row = lobby as GameLobby & {
+    name?: string | null
+    lobby_name?: string | null
+    title?: string | null
+    lobby_title?: string | null
+  }
+  const title = [row.name, row.lobby_name, row.title, row.lobby_title].find(
+    (value) => typeof value === 'string' && value.trim(),
+  )
+  if (typeof title === 'string') return title.trim()
+  return `Лобби ${lobby.id.slice(0, 8)}`
+}
+
+function playersWord(n: number): string {
+  const m = n % 100
+  const m10 = n % 10
+  if (m10 === 1 && m !== 11) return 'игрок'
+  if (m10 >= 2 && m10 <= 4 && (m < 12 || m > 14)) return 'игрока'
+  return 'игроков'
+}
+
+function formatLobbyDate(iso: string): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleString('ru-RU', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function lobbyBriefInfo(lobby: GameLobby): string {
+  const count = lobby.players.length
+  const max = lobby.max_players ?? 10
+  const date = formatLobbyDate(lobby.created_at)
+  const playersLine = `${count} из ${max} ${playersWord(max)}`
+
+  if (lobby.imported_state) {
+    const variants = lobby.imported_state.variants?.length ?? 0
+    const variantsLine = variants > 0 ? ` · ${variants} тур/стол` : ''
+    return `GoMafia${variantsLine} · ${playersLine}${date ? ` · ${date}` : ''}`
+  }
+
+  return `Обычное лобби · ${playersLine}${date ? ` · ${date}` : ''}`
+}
+
+const myLobbiesCount = computed(() => myLobbies.value.length)
+
+function lobbyCreatedAtMs(lobby: GameLobby): number {
+  const ts = Date.parse(lobby.created_at ?? '')
+  return Number.isNaN(ts) ? 0 : ts
+}
+
+const recentLobbies = computed(() => {
+  return myLobbies.value
+    .slice()
+    .sort((a, b) => lobbyCreatedAtMs(b) - lobbyCreatedAtMs(a))
+    .slice(0, 3)
+})
+
 async function loadProfile() {
   if (!token.value) {
     profile.value = null
+    myLobbies.value = []
+    lobbiesError.value = null
+    lobbiesLoading.value = false
     error.value = null
     loading.value = false
     return
   }
   loading.value = true
+  lobbiesLoading.value = true
   error.value = null
+  lobbiesError.value = null
   try {
-    const u = await me()
+    const [u, lobbies] = await Promise.all([me(), listMyLobbies()])
     profile.value = u
+    myLobbies.value = lobbies
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
+    lobbiesError.value = e instanceof Error ? e.message : String(e)
     profile.value = null
+    myLobbies.value = []
   } finally {
     loading.value = false
+    lobbiesLoading.value = false
   }
 }
 
@@ -126,7 +203,67 @@ watch(token, loadProfile, { immediate: true })
         </div>
 
         <section class="account__lineups" aria-labelledby="account-lineups-title">
-          <h2 id="account-lineups-title" class="account__lineups-title">Созданные составы</h2>
+          <div class="account__lineups-head">
+            <div class="account__lineups-head-main">
+              <h2 id="account-lineups-title" class="account__lineups-title">Созданные лобби</h2>
+              <span v-if="!lobbiesLoading && !lobbiesError" class="account__lineups-count">{{ myLobbiesCount }}</span>
+            </div>
+            <RouterLink
+              v-if="!lobbiesLoading && !lobbiesError"
+              class="account__lineups-all-btn"
+              :to="{ name: 'dashboard' }"
+            >
+              Все лобби
+            </RouterLink>
+          </div>
+          <p v-if="lobbiesLoading" class="account__lineups-status">Загрузка лобби…</p>
+          <p v-else-if="lobbiesError" class="account__lineups-status account__lineups-status--error" role="alert">
+            {{ lobbiesError }}
+          </p>
+          <ul v-else-if="recentLobbies.length" class="account__lobbies-list">
+            <li v-for="lobby in recentLobbies" :key="lobby.id">
+              <RouterLink
+                class="account__lobby-row"
+                :to="{ name: 'lobby-manage', params: { lobbyId: lobby.id } }"
+              >
+                <span
+                  class="account__lobby-icon"
+                  :class="lobby.imported_state ? 'account__lobby-icon--gomafia' : 'account__lobby-icon--regular'"
+                  aria-hidden="true"
+                >
+                  <img
+                    v-if="lobby.imported_state"
+                    :src="goLobbyIcon"
+                    alt=""
+                    class="account__lobby-go-icon"
+                    width="26"
+                    height="24"
+                  />
+                  <svg
+                    v-else
+                    width="22"
+                    height="22"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </span>
+                <span class="account__lobby-text">
+                  <span class="account__lobby-title">{{ lobbyTitle(lobby) }}</span>
+                  <span class="account__lobby-desc">{{ lobbyBriefInfo(lobby) }}</span>
+                </span>
+              </RouterLink>
+            </li>
+          </ul>
+          <p v-else class="account__lineups-status">Пока нет созданных лобби.</p>
         </section>
 
         <div class="account__plans">
@@ -412,11 +549,145 @@ watch(token, loadProfile, { immediate: true })
   box-sizing: border-box;
 }
 
+.account__lineups-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.account__lineups-head-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
 .account__lineups-title {
   margin: 0;
   font-size: 0.9375rem;
   font-weight: 600;
   color: #374151;
+}
+
+.account__lineups-count {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #6b7280;
+  font-variant-numeric: tabular-nums;
+}
+
+.account__lineups-all-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem 0.65rem;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #374151;
+  text-decoration: none;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-sizing: border-box;
+}
+
+.account__lineups-all-btn:hover {
+  background: #f9fafb;
+  border-color: #d1d5db;
+}
+
+.account__lineups-status {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: #6b7280;
+}
+
+.account__lineups-status--error {
+  color: #b91c1c;
+}
+
+.account__lobbies-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.account__lobby-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  text-decoration: none;
+  color: inherit;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.account__lobby-row:hover {
+  border-color: #d1d5db;
+  background: #f9fafb;
+}
+
+.account__lobby-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 12px;
+}
+
+.account__lobby-icon--regular {
+  color: #2563eb;
+  background: #eef4ff;
+}
+
+.account__lobby-icon--gomafia {
+  color: #8977FE;
+  background: rgba(137, 119, 254, 0.08);
+  border: 1px solid rgba(137, 119, 254, 0.22);
+}
+
+.account__lobby-go-icon {
+  width: 26px;
+  height: auto;
+  max-height: 24px;
+  display: block;
+  object-fit: contain;
+}
+
+.account__lobby-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.account__lobby-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account__lobby-desc {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: #6b7280;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .account__plans-grid {
