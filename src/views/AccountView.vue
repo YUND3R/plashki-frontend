@@ -7,10 +7,12 @@ import { listMyLobbies, type GameLobby } from '@/api/lobbies'
 import goLobbyIcon from '@/assets/icons/go.svg?url'
 import { useAuthStore } from '@/stores/auth'
 import { useProfileSettingsModalStore } from '@/stores/profileSettingsModal'
+import { useFeedbackModalStore } from '@/stores/feedbackModal'
 
 const router = useRouter()
 const { token } = storeToRefs(useAuthStore())
 const profileSettingsModal = useProfileSettingsModalStore()
+const feedbackModal = useFeedbackModalStore()
 
 const PLANS: { id: SubscriptionTier; label: string; priceLabel: string }[] = [
   { id: 'basic', label: 'Базовый', priceLabel: 'Бесплатно' },
@@ -193,13 +195,22 @@ watch(token, loadProfile, { immediate: true })
               </div>
             </div>
           </div>
-          <button
-            type="button"
-            class="account__settings-btn"
-            @click.stop="profileSettingsModal.open()"
-          >
-            Настройки аккаунта
-          </button>
+          <div class="account__head-actions">
+            <button
+              type="button"
+              class="account__settings-btn account__settings-btn--secondary"
+              @click.stop="feedbackModal.open()"
+            >
+              Обратная связь
+            </button>
+            <button
+              type="button"
+              class="account__settings-btn"
+              @click.stop="profileSettingsModal.open()"
+            >
+              Настройки аккаунта
+            </button>
+          </div>
         </div>
 
         <section class="account__lineups" aria-labelledby="account-lineups-title">
@@ -491,6 +502,15 @@ watch(token, loadProfile, { immediate: true })
   width: 100%;
 }
 
+.account__head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
 .account__settings-btn {
   flex-shrink: 0;
   display: inline-flex;
@@ -517,6 +537,22 @@ watch(token, loadProfile, { immediate: true })
 .account__settings-btn:focus-visible {
   outline: 2px solid #2f6feb;
   outline-offset: 2px;
+}
+
+.account__settings-btn:hover {
+  background: #f9fafb;
+  border-color: #d1d5db;
+}
+
+.account__settings-btn--secondary {
+  color: #2f6feb;
+  background: #eff6ff;
+  border-color: #93c5fd;
+}
+
+.account__settings-btn--secondary:hover {
+  background: #dbeafe;
+  border-color: #60a5fa;
 }
 
 .account__plans {
@@ -826,6 +862,12 @@ watch(token, loadProfile, { immediate: true })
 
   .account__head-main {
     min-width: 0;
+  }
+
+  .account__head-actions {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .account__settings-btn {

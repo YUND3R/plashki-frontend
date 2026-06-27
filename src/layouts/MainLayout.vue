@@ -5,6 +5,7 @@ import { RouterView, useRoute, useRouter } from 'vue-router'
 import { logout as apiLogout, me } from '@/api/auth'
 import AppSidebar from '@/components/common/AppSidebar.vue'
 import ProfileSettingsModal from '@/components/account/ProfileSettingsModal.vue'
+import FeedbackModal from '@/components/feedback/FeedbackModal.vue'
 import LobbyManageHeaderToolbar from '@/components/lobby/LobbyManageHeaderToolbar.vue'
 import profilesListIcon from '@/assets/icons/spisok.svg'
 import profilesGridIcon from '@/assets/icons/plitka.svg'
@@ -12,6 +13,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useDashboardUiStore } from '@/stores/dashboardUi'
 import type { DashboardLobbyFilter } from '@/stores/dashboardUi'
 import { useProfilesUiStore } from '@/stores/profilesUi'
+import { useFeedbackModalStore } from '@/stores/feedbackModal'
 
 const route = useRoute()
 const router = useRouter()
@@ -25,6 +27,8 @@ const {
 } = storeToRefs(profilesUi)
 const dashboardUi = useDashboardUiStore()
 const { lobbyFilter } = storeToRefs(dashboardUi)
+const feedbackModal = useFeedbackModalStore()
+const { toastVisible, toastMessage } = storeToRefs(feedbackModal)
 const userRole = ref('')
 const userRoleLoading = ref(false)
 const isAdmin = computed(() => userRole.value.trim().toUpperCase() === 'ADMIN')
@@ -98,6 +102,10 @@ function toggleMobileNav() {
   mobileNavOpen.value = !mobileNavOpen.value
 }
 
+function onSidebarFeedback() {
+  mobileNavOpen.value = false
+}
+
 function onGlobalKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape' && mobileNavOpen.value) mobileNavOpen.value = false
 }
@@ -142,7 +150,7 @@ onUnmounted(() => {
       @click="mobileNavOpen = false"
     />
     <div class="shell__sidebar">
-      <AppSidebar :mobile-drawer="isMobile" :is-admin="isAdmin" />
+      <AppSidebar :mobile-drawer="isMobile" :is-admin="isAdmin" @feedback="onSidebarFeedback" />
     </div>
     <div class="shell__main">
       <main class="shell__panel" :class="{ 'shell__panel--flush-border': isLobbyManageRoute }">
@@ -251,6 +259,19 @@ onUnmounted(() => {
       </main>
     </div>
     <ProfileSettingsModal />
+    <FeedbackModal />
+    <Teleport to="body">
+      <Transition name="shell-feedback-toast">
+        <p
+          v-if="toastVisible"
+          class="shell-feedback-toast"
+          role="status"
+          aria-live="polite"
+        >
+          {{ toastMessage }}
+        </p>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -864,5 +885,36 @@ onUnmounted(() => {
   .shell--mobile .shell__sidebar {
     transition: none;
   }
+}
+
+.shell-feedback-toast {
+  position: fixed;
+  left: 50%;
+  bottom: max(1.25rem, env(safe-area-inset-bottom));
+  z-index: 3200;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 0.65rem 1rem;
+  max-width: min(22rem, calc(100vw - 2rem));
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #111827;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  text-align: center;
+  pointer-events: none;
+}
+
+.shell-feedback-toast-enter-active,
+.shell-feedback-toast-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.shell-feedback-toast-enter-from,
+.shell-feedback-toast-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(0.35rem);
 }
 </style>

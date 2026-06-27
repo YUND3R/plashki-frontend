@@ -11,11 +11,16 @@ import iconDocumentation from '@/assets/icons/documentation.svg?url'
 import iconMessage from '@/assets/icons/messege_with_us.svg?url'
 import iconControl from '@/assets/icons/control.svg?url'
 import iconOverlay from '@/assets/icons/overlay.svg?url'
+import { useFeedbackModalStore } from '@/stores/feedbackModal'
 
 const props = withDefaults(defineProps<{ mobileDrawer?: boolean; isAdmin?: boolean }>(), {
   mobileDrawer: false,
   isAdmin: false,
 })
+
+const emit = defineEmits<{ feedback: [] }>()
+
+const feedbackModal = useFeedbackModalStore()
 
 const collapsed = ref(false)
 
@@ -31,12 +36,19 @@ function toggleCollapse() {
 }
 
 const mainSection = [
-  { to: '/account', label: 'Мой аккаунт', icon: iconMyAccount },
-  { to: '/profiles', label: 'Мои игроки', icon: iconProfiles },
-  { to: '/tariffs', label: 'Тарифы', icon: iconTarifs },
-  { to: '/docs', label: 'Документация', icon: iconDocumentation },
-  { to: '/contact', label: 'Связаться с нами', icon: iconMessage },
+  { kind: 'link' as const, to: '/account', label: 'Мой аккаунт', icon: iconMyAccount },
+  { kind: 'link' as const, to: '/profiles', label: 'Мои игроки', icon: iconProfiles },
+  { kind: 'link' as const, to: '/tariffs', label: 'Тарифы', icon: iconTarifs },
+  { kind: 'link' as const, to: '/docs', label: 'Инструкция', icon: iconDocumentation },
+  { kind: 'action' as const, action: 'feedback', label: 'Обратная связь', icon: iconMessage },
 ] as const
+
+function onMainNavClick(item: (typeof mainSection)[number]) {
+  if (item.kind === 'action' && item.action === 'feedback') {
+    feedbackModal.open()
+    emit('feedback')
+  }
+}
 
 const streamSection = [
   { to: '/dashboard', label: 'Панель управления', icon: iconControl },
@@ -81,28 +93,46 @@ const adminSection = [{ to: '/admin/users', label: 'Пользователи', i
 
     <nav id="app-sidebar-nav" class="sidebar__nav" aria-label="Основное меню">
       <p v-if="!collapsed" class="sidebar__group">Основное</p>
-      <RouterLink
-        v-for="item in mainSection"
-        :key="item.to"
-        :to="item.to"
-        class="sidebar__link"
-        :title="collapsed ? item.label : undefined"
-      >
-        <span class="sidebar__icon" aria-hidden="true">
-          <img
-            class="sidebar__icon-img"
-            :class="{
-              'sidebar__icon-img--account': item.to === '/account',
-              'sidebar__icon-img--message': item.to === '/contact',
-            }"
-            :src="item.icon"
-            alt=""
-            :width="item.to === '/account' || item.to === '/contact' ? 17 : 20"
-            :height="item.to === '/account' || item.to === '/contact' ? 17 : 20"
-          />
-        </span>
-        <span v-if="!collapsed" class="sidebar__label">{{ item.label }}</span>
-      </RouterLink>
+      <template v-for="item in mainSection" :key="item.label">
+        <RouterLink
+          v-if="item.kind === 'link'"
+          :to="item.to"
+          class="sidebar__link"
+          :title="collapsed ? item.label : undefined"
+        >
+          <span class="sidebar__icon" aria-hidden="true">
+            <img
+              class="sidebar__icon-img"
+              :class="{
+                'sidebar__icon-img--account': item.to === '/account',
+              }"
+              :src="item.icon"
+              alt=""
+              :width="item.to === '/account' ? 17 : 20"
+              :height="item.to === '/account' ? 17 : 20"
+            />
+          </span>
+          <span v-if="!collapsed" class="sidebar__label">{{ item.label }}</span>
+        </RouterLink>
+        <button
+          v-else
+          type="button"
+          class="sidebar__link sidebar__link--action"
+          :title="collapsed ? item.label : undefined"
+          @click="onMainNavClick(item)"
+        >
+          <span class="sidebar__icon" aria-hidden="true">
+            <img
+              class="sidebar__icon-img sidebar__icon-img--message"
+              :src="item.icon"
+              alt=""
+              width="17"
+              height="17"
+            />
+          </span>
+          <span v-if="!collapsed" class="sidebar__label">{{ item.label }}</span>
+        </button>
+      </template>
 
       <p v-if="!collapsed" class="sidebar__group sidebar__group--spaced">Стриминг</p>
       <RouterLink
@@ -282,6 +312,15 @@ const adminSection = [{ to: '/admin/users', label: 'Пользователи', i
   font-size: 0.9375rem;
   font-weight: 400;
   line-height: 1.3;
+}
+
+.sidebar__link--action {
+  width: 100%;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
 }
 
 .sidebar__link:hover {

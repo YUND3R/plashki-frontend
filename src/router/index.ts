@@ -100,7 +100,7 @@ const router = createRouter({
         {
           path: 'docs',
           name: 'docs',
-          meta: { title: 'Документация' },
+          meta: { title: 'Инструкция' },
           component: () => import('@/views/DocsView.vue'),
         },
         {
