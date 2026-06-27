@@ -3808,7 +3808,7 @@ async function saveCardDesign() {
 .lobby-manage__modal-overlay {
   position: fixed;
   inset: 0;
-  z-index: 80;
+  z-index: 320;
   background: rgba(17, 24, 39, 0.5);
   display: flex;
   align-items: center;
