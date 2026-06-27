@@ -5,6 +5,7 @@ import { listPlayerCards, type PlayerCard } from '@/api/playerCards'
 import { ApiError } from '@/api/client'
 import { useRoute, useRouter } from 'vue-router'
 import uploadPhotoIcon from '@/assets/icons/upload-photo.svg?url'
+import timerIcon from '@/assets/icons/timer.svg?url'
 import mafiaRoleIcon from '@/assets/icons/mafia.svg?url'
 import donRoleIcon from '@/assets/icons/don.svg?url'
 import civilianRoleIcon from '@/assets/icons/civilian.svg?url'
@@ -121,7 +122,7 @@ const importedParticipantsModalOpen = ref(false)
 const activePersistentDesignCode = ref<'classic' | 'masters-yug25' | 'plus'>('classic')
 const persistentMessageDraft = ref('')
 const persistentMessageFeedback = ref<string | null>(null)
-const PERSISTENT_MESSAGE_MAX_LENGTH = 120
+const PERSISTENT_MESSAGE_MAX_LENGTH = 50
 const popupTitleDraft = ref('')
 const popupSubtitleDraft = ref('')
 const popupDurationDraft = ref('7')
@@ -130,6 +131,9 @@ const POPUP_TEXT_MAX_LENGTH = 120
 const popupTitleTone = ref<OverlayTextTone>('green')
 const popupSubtitleTone = ref<OverlayTextTone>('green')
 const persistentMessageTone = ref<OverlayTextTone>('green')
+const persistentMessageOverflow = computed(() =>
+  Math.max(0, persistentMessageDraft.value.length - PERSISTENT_MESSAGE_MAX_LENGTH),
+)
 const toneOptions: Array<{ value: OverlayTextTone; className: string; label: string }> = [
   { value: 'white', className: 'lobby-manage__c-dot--w', label: 'Белый' },
   { value: 'green', className: 'lobby-manage__c-dot--g', label: 'Зеленый' },
@@ -1814,11 +1818,17 @@ async function saveCardDesign() {
               </span>
             </label>
             <div class="lobby-manage__side-row">
-              <button type="button" class="lobby-manage__link-action" @click="emitPopupMessage">Вывести на экран</button>
               <label class="lobby-manage__duration">
-                время отображения на экране в секундах
-                <input v-model="popupDurationDraft" class="lobby-manage__duration-input" type="text" inputmode="numeric" />
+                <img :src="timerIcon" alt="" class="lobby-manage__duration-icon" />
+                <span class="lobby-manage__duration-value">
+                  <input v-model="popupDurationDraft" class="lobby-manage__duration-input" type="text" inputmode="numeric" />
+                  <span class="lobby-manage__duration-unit">сек</span>
+                </span>
+                <span class="lobby-manage__duration-label">время отображения</span>
               </label>
+              <button type="button" class="lobby-manage__link-action lobby-manage__link-action--full" @click="emitPopupMessage">
+                Вывести на экран
+              </button>
             </div>
             <p v-if="popupFeedback" class="lobby-manage__popup-feedback" role="status">{{ popupFeedback }}</p>
           </article>
@@ -1833,7 +1843,6 @@ async function saveCardDesign() {
                 v-model="persistentMessageDraft"
                 class="lobby-manage__field-input"
                 type="text"
-                :maxlength="PERSISTENT_MESSAGE_MAX_LENGTH"
                 placeholder="Введите текст"
               />
               <span class="lobby-manage__color-dots">
@@ -1849,8 +1858,8 @@ async function saveCardDesign() {
                 />
               </span>
             </label>
-            <p class="lobby-manage__persistent-counter">
-              {{ persistentMessageDraft.length }}/{{ PERSISTENT_MESSAGE_MAX_LENGTH }}
+            <p v-if="persistentMessageOverflow > 0" class="lobby-manage__persistent-limit">
+              превышено на {{ persistentMessageOverflow }} (максимум {{ PERSISTENT_MESSAGE_MAX_LENGTH }})
             </p>
             <div class="lobby-manage__persistent-actions">
               <button type="button" class="lobby-manage__link-action" @click="savePersistentMessage">
@@ -3657,6 +3666,12 @@ async function saveCardDesign() {
   line-height: 1.2;
 }
 
+.lobby-manage__link-action--full {
+  width: 100%;
+  flex-basis: 100%;
+  text-align: center;
+}
+
 .lobby-manage__link-action--ghost {
   color: #6b7280;
   border-color: #e5e7eb;
@@ -3669,14 +3684,28 @@ async function saveCardDesign() {
 
 .lobby-manage__persistent-actions {
   display: flex;
+  flex-wrap: nowrap;
   gap: 0.45rem;
   align-items: center;
+  width: 100%;
 }
 
-.lobby-manage__persistent-counter {
+.lobby-manage__persistent-actions .lobby-manage__link-action {
+  flex: 1.25 1 0;
+  text-align: center;
+  white-space: nowrap;
+  padding: 0.4rem 0.55rem;
+}
+
+.lobby-manage__persistent-actions .lobby-manage__link-action--ghost {
+  flex: 0.75 1 0;
+}
+
+.lobby-manage__persistent-limit {
   margin: 0 0 0.35rem;
   font-size: 0.6875rem;
   color: #6b7280;
+  text-align: right;
 }
 
 .lobby-manage__persistent-feedback {
@@ -3687,16 +3716,42 @@ async function saveCardDesign() {
 
 .lobby-manage__duration {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.45rem;
   font-size: 0.75rem;
   color: #6b7280;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.lobby-manage__duration-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  opacity: 0.78;
+  transform: translate(5px, -1px);
+}
+
+.lobby-manage__duration-label {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+
+.lobby-manage__duration-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  line-height: 1;
+  margin-left: 7px;
 }
 
 .lobby-manage__duration-input {
-  width: 4rem;
-  padding: 0.25rem 0.35rem;
+  width: 3.2rem;
+  height: 1.9rem;
+  padding: 0 0.4rem;
+  box-sizing: border-box;
   font: inherit;
   font-size: 0.75rem;
   color: #111827;
@@ -3704,6 +3759,14 @@ async function saveCardDesign() {
   border: 1px solid #e5e7eb;
   border-radius: 4px;
   text-decoration: none;
+}
+
+.lobby-manage__duration-unit {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.75rem;
+  color: #6b7280;
+  line-height: 1;
 }
 
 .lobby-manage__popup-feedback {
