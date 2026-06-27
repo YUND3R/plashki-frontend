@@ -12,6 +12,7 @@ import {
   photoFramePanSlackPx,
 } from '@/utils/playerCardPhotoFrame'
 import { normalizeOverlayDesignCode } from '@/utils/overlayPersistentMessage'
+import '@/styles/plus-fonts.css'
 
 const crop = defineModel<PhotoCrop>({ required: true })
 
@@ -587,9 +588,10 @@ onUnmounted(() => {
   width: 186px;
   border-radius: 8px;
   overflow: hidden;
+  font-family: var(--plus-font-family);
+  font-weight: var(--plus-font-weight);
   background:
     radial-gradient(circle at 80% 20%, #047857 0%, #052e2b 55%, #020617 100%);
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
 }
 
 .pcd-plus__photo {
@@ -631,19 +633,17 @@ onUnmounted(() => {
 .pcd-plus__seat {
   flex-shrink: 0;
   min-width: 1.35rem;
-  font-family: 'Neue Machina', 'Inter', 'Segoe UI', Roboto, Arial, sans-serif;
-  font-size: 0.875rem;
-  font-weight: 700;
-  color: #4ade80;
+  font-size: 1.0625rem;
+  font-weight: inherit;
+  color: #ffffff;
 }
 
 .pcd-plus__nick {
   margin: 0;
   min-width: 0;
   flex: 1;
-  font-family: 'Neue Machina', 'Inter', 'Segoe UI', Roboto, Arial, sans-serif;
   font-size: 0.9375rem;
-  font-weight: 600;
+  font-weight: inherit;
   line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;

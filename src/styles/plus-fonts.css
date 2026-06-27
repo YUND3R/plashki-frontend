@@ -1,0 +1,6 @@
+@import '@fontsource-variable/unbounded/wght.css';
+
+:root {
+  --plus-font-family: 'Unbounded Variable', 'Unbounded', 'Segoe UI', Roboto, Arial, sans-serif;
+  --plus-font-weight: 500;
+}
