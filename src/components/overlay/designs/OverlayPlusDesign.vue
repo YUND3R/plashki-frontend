@@ -60,11 +60,11 @@ const roleRevealTimersBySeat = new Map<string, ReturnType<typeof setTimeout>[]>(
 const roleRevealInitialized = ref(false)
 
 const ELIM_FILL_MS = 480
-const ELIM_DROP_MS = 720
-const LH_NUM_APPEAR_MS = 360
-const LH_FILL_SETTLE_MS = 80
-const LH_NUM_BASE_DELAY_MS = 120
-const LH_NUM_STEP_MS = 100
+const ELIM_DROP_MS = 1080
+const LH_NUM_APPEAR_MS = 460
+const LH_FILL_SETTLE_MS = 180
+const LH_NUM_BASE_DELAY_MS = 180
+const LH_NUM_STEP_MS = 140
 const ROLE_REVEAL_INTRO_MS = 820
 const ROLE_REVEAL_SETTLE_MS = 220
 
@@ -173,7 +173,8 @@ function isAnimatableBestMoveStatus(status: string | null | undefined): boolean 
 function shouldRunEliminationAnimation(previous: string, current: string): boolean {
   if (!elimInitialized.value) return false
   if (isAnimatableEliminationStatus(current) && !isAnimatableEliminationStatus(previous)) return true
-  return isAnimatableBestMoveStatus(current) && !isAnimatableBestMoveStatus(previous)
+  const hasBestMovePayload = bestMoveLabels().length > 0
+  return isAnimatableBestMoveStatus(current) && !isAnimatableBestMoveStatus(previous) && hasBestMovePayload
 }
 
 function showBestMoveFillOverlay(p: LobbyPlayer | null, idx: number): boolean {
@@ -266,6 +267,15 @@ function runRoleRevealAnimation(key: string) {
   const t1 = setTimeout(() => setRoleRevealStage(key, 'settle'), ROLE_REVEAL_INTRO_MS)
   const t2 = setTimeout(() => setRoleRevealStage(key), ROLE_REVEAL_INTRO_MS + ROLE_REVEAL_SETTLE_MS)
   roleRevealTimersBySeat.set(key, [t1, t2])
+}
+
+function triggerBestMoveAnimationsAfterSave() {
+  props.seats.forEach((p, idx) => {
+    if (!isBestMoveSeat(p)) return
+    const key = seatKey(p, idx)
+    if (elimStageBySeat.value[key]) return
+    runEliminationAnimation(key, 'best-move')
+  })
 }
 
 function finishEliminationAnimation(key: string) {
@@ -396,6 +406,14 @@ watch(
       next[key] = current
     })
     previousStatusBySeat.value = next
+  },
+)
+
+watch(
+  () => bestMoveLabels().join('|'),
+  (current, previous) => {
+    if (!current || current === previous) return
+    triggerBestMoveAnimationsAfterSave()
   },
 )
 
@@ -608,7 +626,7 @@ onUnmounted(() => {
   background: transparent;
   font-family: var(--plus-font-family);
   font-weight: var(--plus-font-weight);
-  --plus-elim-drop-ms: 720ms;
+  --plus-elim-drop-ms: 1080ms;
 }
 
 .overlay-plus__persistent {
