@@ -218,13 +218,15 @@ function statusIcon(status: string | null): string {
         </span>
       </div>
       <div v-if="!isEliminatedStatus(p?.status ?? null)" class="overlay-card__photo-float">
-        <OverlayPlayerPhoto
-          v-if="photoUrl(p)"
-          :player="p"
-          :design-code="CLASSIC_DESIGN"
-          img-class="overlay-card__photo"
-        />
-        <div v-else class="overlay-card__photo overlay-card__photo--empty" />
+        <div class="overlay-card__photo-stage">
+          <OverlayPlayerPhoto
+            v-if="photoUrl(p)"
+            :player="p"
+            :design-code="CLASSIC_DESIGN"
+            img-class="overlay-card__photo"
+          />
+          <div v-else class="overlay-card__photo overlay-card__photo--empty" />
+        </div>
       </div>
       <div
         v-else
@@ -406,14 +408,20 @@ function statusIcon(status: string | null): string {
 .overlay-card__photo-float {
   position: absolute;
   left: 50%;
-  bottom: 47px;
+  bottom: 46px;
   transform: translateX(-50%);
   width: 186px;
   height: 126px;
   overflow: hidden;
-  border-radius: 12px 12px 0 0;
+  border-radius: 0;
   pointer-events: none;
   z-index: 1;
+}
+
+.overlay-card__photo-stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
 }
 
 .overlay-card__seat {
@@ -430,11 +438,14 @@ function statusIcon(status: string | null): string {
 }
 
 .overlay-card__photo {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  max-width: none;
+  max-height: none;
+  object-fit: fill;
   display: block;
-  border-radius: 12px 12px 0 0;
+  border-radius: 0;
   background: transparent;
 }
 
@@ -465,7 +476,7 @@ function statusIcon(status: string | null): string {
 .overlay-card__meta-row {
   position: absolute;
   left: 0;
-  bottom: 47px;
+  bottom: 46px;
   z-index: 3;
   display: flex;
   align-items: stretch;

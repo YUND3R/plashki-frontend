@@ -378,7 +378,7 @@ onUnmounted(() => {
 
 .photo-cropper__crop-shell--classic {
   left: 50%;
-  bottom: 47px;
+  bottom: 46px;
   transform: translateX(-50%);
 }
 
