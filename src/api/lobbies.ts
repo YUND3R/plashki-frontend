@@ -736,7 +736,24 @@ function extractImportedParticipantsArray(payload: unknown): unknown[] {
   return []
 }
 
+export type ImportedTournamentParticipant = {
+  player_card_id: string
+  nickname: string
+}
+
+function normalizeImportedParticipant(item: unknown): ImportedTournamentParticipant | null {
+  if (!item || typeof item !== 'object') return null
+  const row = item as Record<string, unknown>
+  const playerCardId = typeof row.player_card_id === 'string' ? row.player_card_id.trim() : ''
+  if (!playerCardId) return null
+  const nickname = typeof row.nickname === 'string' ? row.nickname.trim() : ''
+  return { player_card_id: playerCardId, nickname }
+}
+
 function importedParticipantDisplayLine(item: unknown): string {
+  const normalized = normalizeImportedParticipant(item)
+  if (normalized?.nickname) return normalized.nickname
+
   if (typeof item === 'string' || typeof item === 'number') {
     const s = String(item).trim()
     return s || '-'
@@ -756,11 +773,44 @@ function importedParticipantDisplayLine(item: unknown): string {
 }
 
 /** Участники турнира из импорта GoMafia (только хост). GET /lobbies/{id}/imported-participants */
+export function getLobbyImportedParticipantRecords(
+  lobbyId: string,
+): Promise<ImportedTournamentParticipant[]> {
+  const id = encodeURIComponent(lobbyId)
+  return apiFetch<unknown>(`/lobbies/${id}/imported-participants`).then((payload) =>
+    extractImportedParticipantsArray(payload)
+      .map(normalizeImportedParticipant)
+      .filter((row): row is ImportedTournamentParticipant => row !== null),
+  )
+}
+
 export function getLobbyImportedParticipants(lobbyId: string): Promise<string[]> {
   const id = encodeURIComponent(lobbyId)
   return apiFetch<unknown>(`/lobbies/${id}/imported-participants`).then((payload) =>
     extractImportedParticipantsArray(payload).map(importedParticipantDisplayLine),
   )
+}
+
+/** ID карточек игроков, созданных при импорте турниров GoMafia на аккаунт. */
+export async function collectGomafiaImportedPlayerCardIds(): Promise<Set<string>> {
+  const lobbies = await listMyLobbies()
+  const importedLobbies = lobbies.filter((lobby) => !!lobby.imported_state)
+  const ids = new Set<string>()
+
+  await Promise.all(
+    importedLobbies.map(async (lobby) => {
+      try {
+        const participants = await getLobbyImportedParticipantRecords(lobby.id)
+        for (const participant of participants) {
+          ids.add(participant.player_card_id)
+        }
+      } catch {
+        // эндпоинт доступен хосту; не блокируем список профилей
+      }
+    }),
+  )
+
+  return ids
 }
 
 /** Переключить импортированный вариант (тур/стол) для Gomafia-лобби. */

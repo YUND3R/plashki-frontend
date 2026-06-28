@@ -76,6 +76,10 @@ function showObsToast(message: string, ms = 2200) {
   }, ms)
 }
 
+function openDesignPicker() {
+  lobbyManageUi.requestOpenDesignPicker()
+}
+
 async function openDesignPreview() {
   if (!lobbyId.value || previewBusy.value) return
   previewBusy.value = true
@@ -146,7 +150,7 @@ watch(lobbyId, () => {
       class="shell-lobby-toolbar__obs shell-lobby-toolbar__obs--design-main"
       :title="`Выбранный дизайн: ${selectedDesignLabel}`"
       aria-label="Выбрать дизайн плашек"
-      @click="lobbyManageUi.requestOpenDesignPicker"
+      @click="openDesignPicker"
     >
       <span class="shell-lobby-toolbar__label-wide">Дизайн плашек</span>
       <span class="shell-lobby-toolbar__design-inline-sep shell-lobby-toolbar__label-wide" aria-hidden="true">•</span>

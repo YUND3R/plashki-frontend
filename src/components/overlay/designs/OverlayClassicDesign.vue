@@ -413,7 +413,7 @@ function statusIcon(status: string | null): string {
   width: 186px;
   height: 126px;
   overflow: hidden;
-  border-radius: 0;
+  border-radius: 12px 12px 0 0;
   pointer-events: none;
   z-index: 1;
 }

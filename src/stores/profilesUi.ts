@@ -4,11 +4,14 @@ import { defineStore } from 'pinia'
 const VIEW_MODE_STORAGE_KEY = 'plashki:profiles:view-mode'
 type ProfilesViewMode = 'grid' | 'compact'
 
+export type ProfilesPlayerFilter = 'all' | 'mine' | 'gomafia'
+
 /** Шапка «Мои игроки»: поиск, счётчик, вызов «Создать» (без Teleport). */
 export const useProfilesUiStore = defineStore('profilesUi', () => {
   const searchQuery = ref('')
-  /** Всего карточек игроков - обновляет ProfilesView после загрузки списка. */
+  /** Количество игроков с учётом фильтра и поиска — обновляет ProfilesView. */
   const playerCardsTotal = ref(0)
+  const playerFilter = ref<ProfilesPlayerFilter>('all')
   const viewMode = ref<ProfilesViewMode>('grid')
   let isViewModeHydrated = false
 
@@ -48,14 +51,20 @@ export const useProfilesUiStore = defineStore('profilesUi', () => {
     searchQuery.value = ''
   }
 
+  function resetPlayerFilter() {
+    playerFilter.value = 'all'
+  }
+
   return {
     searchQuery,
     playerCardsTotal,
+    playerFilter,
     viewMode,
     hydrateViewMode,
     setViewMode,
     setOpenCreateHandler,
     requestOpenCreate,
     resetSearch,
+    resetPlayerFilter,
   }
 })

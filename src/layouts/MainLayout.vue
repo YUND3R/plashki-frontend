@@ -12,8 +12,12 @@ import profilesGridIcon from '@/assets/icons/plitka.svg'
 import { useAuthStore } from '@/stores/auth'
 import { useDashboardUiStore } from '@/stores/dashboardUi'
 import type { DashboardLobbyFilter } from '@/stores/dashboardUi'
+import { useCardsUiStore } from '@/stores/cardsUi'
+import type { CardDesignFilter } from '@/stores/cardsUi'
 import { useProfilesUiStore } from '@/stores/profilesUi'
+import type { ProfilesPlayerFilter } from '@/stores/profilesUi'
 import { useFeedbackModalStore } from '@/stores/feedbackModal'
+import { useLobbyManageUiStore } from '@/stores/lobbyManageUi'
 
 const route = useRoute()
 const router = useRouter()
@@ -23,12 +27,17 @@ const profilesUi = useProfilesUiStore()
 const {
   searchQuery: profilesToolbarSearch,
   playerCardsTotal: profilesPlayerTotal,
+  playerFilter: profilesPlayerFilter,
   viewMode: profilesViewMode,
 } = storeToRefs(profilesUi)
 const dashboardUi = useDashboardUiStore()
 const { lobbyFilter } = storeToRefs(dashboardUi)
+const cardsUi = useCardsUiStore()
+const { designFilter } = storeToRefs(cardsUi)
 const feedbackModal = useFeedbackModalStore()
 const { toastVisible, toastMessage } = storeToRefs(feedbackModal)
+const lobbyManageUi = useLobbyManageUiStore()
+const { designPickerOpen, designPickerLobbyTitle } = storeToRefs(lobbyManageUi)
 const userRole = ref('')
 const userRoleLoading = ref(false)
 const isAdmin = computed(() => userRole.value.trim().toUpperCase() === 'ADMIN')
@@ -39,21 +48,57 @@ const FILTER_OPTIONS: { value: DashboardLobbyFilter; label: string }[] = [
   { value: 'gomafia', label: 'Загруженные из GoMafia' },
 ]
 
+const CARD_DESIGN_FILTER_OPTIONS: { value: CardDesignFilter; label: string }[] = [
+  { value: 'all', label: 'Все плашки' },
+  { value: 'available', label: 'Доступные мне' },
+]
+
+const PROFILES_FILTER_OPTIONS: { value: ProfilesPlayerFilter; label: string }[] = [
+  { value: 'all', label: 'Все игроки' },
+  { value: 'mine', label: 'Созданные мной' },
+  { value: 'gomafia', label: 'Загруженные из GoMafia' },
+]
+
 function setDashboardFilter(next: DashboardLobbyFilter) {
   dashboardUi.lobbyFilter = next
 }
 
-const pageTitle = computed(() => route.meta.title ?? '')
+function setProfilesPlayerFilter(next: ProfilesPlayerFilter) {
+  profilesUi.playerFilter = next
+}
+
+function setCardDesignFilter(next: CardDesignFilter) {
+  cardsUi.designFilter = next
+}
+
+const pageTitle = computed(() => {
+  if (route.name === 'lobby-manage' && designPickerOpen.value) {
+    const name = designPickerLobbyTitle.value.trim()
+    if (name) return `Дизайн плашек для лобби «${name}»`
+    return 'Дизайн плашек для лобби'
+  }
+  return route.meta.title ?? ''
+})
 /** Только страница «Мой аккаунт»: действия в шапке; в остальных разделах скрыто. */
 const showAccountActions = computed(() => route.name === 'account' && !!token.value)
 /** Страница «Мои составы»: поиск + «Создать профиль» в шапке (profilesUi store). */
 const showProfilesHeader = computed(() => route.name === 'profiles' && !!token.value)
 /** Дашборд: фильтр лобби в шапке справа. */
 const showDashboardHeader = computed(() => route.name === 'dashboard' && !!token.value)
-/** Страница «Управление лобби»: панель действий в шапке (дизайн, Overlay, OBS, удалить). */
-const showLobbyManageHeader = computed(() => route.name === 'lobby-manage')
-/** Контент лобби без отступа от краёв белой панели. */
-const isLobbyManageRoute = computed(() => route.name === 'lobby-manage')
+/** Страница «Все дизайны карточек» и выбор в лобби: фильтр плашек в шапке справа. */
+const showCardDesignHeader = computed(() => {
+  if (!token.value) return false
+  if (route.name === 'card-design') return true
+  return route.name === 'lobby-manage' && designPickerOpen.value
+})
+/** Страница «Управление лобби»: панель действий в шапке (скрыта при выборе дизайна). */
+const showLobbyManageHeader = computed(
+  () => route.name === 'lobby-manage' && !!token.value && !designPickerOpen.value,
+)
+/** Контент без отступа от краёв белой панели. */
+const isFlushContentRoute = computed(
+  () => route.name === 'lobby-manage' || route.name === 'card-design',
+)
 
 async function logout() {
   try {
@@ -116,6 +161,13 @@ watch([mobileNavOpen, isMobile], () => {
 })
 
 watch(
+  () => route.name,
+  (name) => {
+    if (name !== 'lobby-manage') lobbyManageUi.closeDesignPicker()
+  },
+)
+
+watch(
   () => route.fullPath,
   () => {
     mobileNavOpen.value = false
@@ -153,7 +205,7 @@ onUnmounted(() => {
       <AppSidebar :mobile-drawer="isMobile" :is-admin="isAdmin" @feedback="onSidebarFeedback" />
     </div>
     <div class="shell__main">
-      <main class="shell__panel" :class="{ 'shell__panel--flush-border': isLobbyManageRoute }">
+      <main class="shell__panel" :class="{ 'shell__panel--flush-border': isFlushContentRoute }">
         <header class="shell__header">
           <button
             v-if="isMobile"
@@ -181,6 +233,20 @@ onUnmounted(() => {
             <p class="shell-profiles-total" aria-live="polite">
               Всего игроков: <span class="shell-profiles-total__num">{{ profilesPlayerTotal }}</span>
             </p>
+            <div class="shell-dashboard-filters shell-profiles-filters" role="radiogroup" aria-label="Показать игроков">
+              <button
+                v-for="opt in PROFILES_FILTER_OPTIONS"
+                :key="opt.value"
+                type="button"
+                role="radio"
+                class="shell-dashboard-filters__btn"
+                :class="{ 'shell-dashboard-filters__btn--active': profilesPlayerFilter === opt.value }"
+                :aria-checked="profilesPlayerFilter === opt.value"
+                @click="setProfilesPlayerFilter(opt.value)"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
             <input
               v-model="profilesToolbarSearch"
               class="shell-profiles-search"
@@ -249,11 +315,32 @@ onUnmounted(() => {
               />
             </div>
           </div>
+          <div
+            v-else-if="showCardDesignHeader"
+            class="shell__header-actions shell__header-actions--card-design"
+            role="toolbar"
+            aria-label="Фильтр списка плашек"
+          >
+            <div class="shell-dashboard-filters" role="radiogroup" aria-label="Показать плашки">
+              <button
+                v-for="opt in CARD_DESIGN_FILTER_OPTIONS"
+                :key="opt.value"
+                type="button"
+                role="radio"
+                class="shell-dashboard-filters__btn"
+                :class="{ 'shell-dashboard-filters__btn--active': designFilter === opt.value }"
+                :aria-checked="designFilter === opt.value"
+                @click="setCardDesignFilter(opt.value)"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
+          </div>
           <div v-else-if="showLobbyManageHeader" class="shell__header-actions shell__header-actions--lobby-manage">
             <LobbyManageHeaderToolbar />
           </div>
         </header>
-        <div class="shell__body" :class="{ 'shell__body--flush': isLobbyManageRoute }">
+        <div class="shell__body" :class="{ 'shell__body--flush': isFlushContentRoute }">
           <RouterView />
         </div>
       </main>
@@ -377,8 +464,25 @@ onUnmounted(() => {
 }
 
 .shell__header-actions--profiles {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: auto;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 0.65rem;
   align-items: center;
+  max-width: 100%;
+}
+
+.shell-profiles-filters {
+  flex-shrink: 0;
+}
+
+.shell__header-actions--profiles .shell-profiles-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  max-width: none;
 }
 
 .shell-profiles-total {
@@ -607,6 +711,9 @@ onUnmounted(() => {
 
 .shell__body.shell__body--flush {
   padding: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 @media (max-width: 1024px) {

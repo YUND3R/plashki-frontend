@@ -1,81 +1,114 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { onMounted, ref } from 'vue'
+import { RouterLink } from 'vue-router'
 import {
-  getLobbyOverlayDesigns,
+  getLobbyImportedParticipants,
   listMyLobbies,
-  setLobbyOverlayDesign,
-  type LobbyOverlayDesignOption,
+  type GameLobby,
 } from '@/api/lobbies'
-import { normalizeOverlayDesignCode } from '@/utils/overlayPersistentMessage'
+import CardDesignPickerPanel from '@/components/cardDesign/CardDesignPickerPanel.vue'
+import goLobbyIcon from '@/assets/icons/go.svg?url'
 
 type DashboardLobbyEntry = {
   id: string
   name: string
+  createdAt: string
+  playerCount: number
+  tournamentHumansCount: number | null
+  fromGomafia: boolean
 }
 
 const savedLobbies = ref<DashboardLobbyEntry[]>([])
 const selectedLobbyId = ref('')
 const loading = ref(false)
-const saving = ref(false)
-const error = ref<string | null>(null)
-const saveMessage = ref<string | null>(null)
-const AUTH_REQUIRED_TEXT = 'Авторизуйтесь или зарегистрируйтесь.'
 
-const designs = ref<LobbyOverlayDesignOption[]>([])
-const selectedDesign = ref('')
-const initialSelectedDesign = ref('')
-
-const canSave = computed(() => {
-  if (!selectedLobbyId.value) return false
-  if (!selectedDesign.value) return false
-  if (saving.value) return false
-  return true
-})
-
-const isAuthRequiredError = computed(() => (error.value ?? '').trim() === AUTH_REQUIRED_TEXT)
-
-function subscriptionLabel(raw: string): string {
-  const s = raw.trim().toLowerCase()
-  if (s === 'free') return 'Бесплатно'
-  if (s === 'premium') return 'Premium'
-  if (s === 'standard') return 'Standard'
-  return raw
+function lobbyTitleFromLobby(lobby: GameLobby): string {
+  const row = lobby as GameLobby & {
+    name?: string | null
+    lobby_name?: string | null
+    title?: string | null
+    lobby_title?: string | null
+  }
+  const title = [row.name, row.lobby_name, row.title, row.lobby_title].find(
+    (value) => typeof value === 'string' && value.trim(),
+  )
+  if (typeof title === 'string') return title.trim()
+  return `Лобби ${lobby.id.slice(0, 8)}`
 }
 
-function designPreviewVariant(rawCode: string): 'classic' | 'masters-yug25' | 'plus' {
-  const code = normalizeOverlayDesignCode(rawCode)
-  if (code === 'masters-yug25') return 'masters-yug25'
-  if (code === 'plus') return 'plus'
-  return 'classic'
+function formatLobbyDate(iso: string): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleString('ru-RU', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
-function designMockPrice(rawCode: string): string {
-  const variant = designPreviewVariant(rawCode)
-  if (variant === 'plus') return '499 RUB'
-  if (variant === 'masters-yug25') return '799 RUB'
-  return '299 RUB'
+function playersWord(n: number): string {
+  const m = n % 100
+  const m10 = n % 10
+  if (m10 === 1 && m !== 11) return 'игрок'
+  if (m10 >= 2 && m10 <= 4 && (m < 12 || m > 14)) return 'игрока'
+  return 'игроков'
 }
 
-function lobbyTitle(id: string, names: Array<string | null | undefined>): string {
-  const found = names.find((x) => typeof x === 'string' && x.trim())
-  if (typeof found === 'string') return found.trim()
-  return `Лобби ${id.slice(0, 8)}`
+function humansWord(n: number): string {
+  const m = n % 100
+  const m10 = n % 10
+  if (m10 === 1 && m !== 11) return 'человек'
+  if (m10 >= 2 && m10 <= 4 && (m < 12 || m > 14)) return 'человека'
+  return 'человек'
+}
+
+function lobbyPeopleLine(lobby: DashboardLobbyEntry): string {
+  if (lobby.tournamentHumansCount != null) {
+    const n = lobby.tournamentHumansCount
+    return `${n} ${humansWord(n)}`
+  }
+  return `${lobby.playerCount} ${playersWord(lobby.playerCount)}`
+}
+
+function lobbyDesc(lobby: DashboardLobbyEntry): string {
+  const parts = [lobbyPeopleLine(lobby)]
+  const date = formatLobbyDate(lobby.createdAt)
+  if (date) parts.push(date)
+  return parts.join(' · ')
 }
 
 async function loadLobbies() {
+  loading.value = true
   try {
     const list = await listMyLobbies()
-    savedLobbies.value = list.map((lobby) => ({
-      id: lobby.id,
-      name: lobbyTitle(lobby.id, [
-        (lobby as { name?: string | null }).name,
-        (lobby as { lobby_name?: string | null }).lobby_name,
-        (lobby as { title?: string | null }).title,
-        (lobby as { lobby_title?: string | null }).lobby_title,
-      ]),
-    }))
+    savedLobbies.value = await Promise.all(
+      list.map(async (lobby): Promise<DashboardLobbyEntry> => {
+        let tournamentHumansCount: number | null = null
+        if (lobby.imported_state) {
+          try {
+            const importedLines = await getLobbyImportedParticipants(lobby.id)
+            if (importedLines.length > 0) tournamentHumansCount = importedLines.length
+          } catch {
+            tournamentHumansCount = null
+          }
+        }
+
+        return {
+          id: lobby.id,
+          name: lobbyTitleFromLobby(lobby),
+          createdAt: lobby.created_at,
+          playerCount: lobby.players.length,
+          tournamentHumansCount,
+          fromGomafia: !!lobby.imported_state,
+        }
+      }),
+    )
   } catch {
     savedLobbies.value = []
+  } finally {
+    loading.value = false
   }
 
   if (!savedLobbies.value.length) {
@@ -86,345 +119,296 @@ async function loadLobbies() {
   if (!exists) selectedLobbyId.value = savedLobbies.value[0].id
 }
 
-async function loadDesignsForLobby() {
-  if (!selectedLobbyId.value) {
-    designs.value = []
-    selectedDesign.value = ''
-    initialSelectedDesign.value = ''
-    return
-  }
-  loading.value = true
-  error.value = null
-  saveMessage.value = null
-  try {
-    const data = await getLobbyOverlayDesigns(selectedLobbyId.value)
-    designs.value = data.options ?? []
-    selectedDesign.value = data.selected_overlay_design ?? ''
-    initialSelectedDesign.value = data.selected_overlay_design ?? ''
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
-    designs.value = []
-    selectedDesign.value = ''
-    initialSelectedDesign.value = ''
-  } finally {
-    loading.value = false
-  }
-}
-
-async function saveDesign() {
-  if (!canSave.value || !selectedLobbyId.value) return
-  saving.value = true
-  error.value = null
-  saveMessage.value = null
-  try {
-    await setLobbyOverlayDesign(selectedLobbyId.value, { overlay_design: selectedDesign.value })
-    initialSelectedDesign.value = selectedDesign.value
-    saveMessage.value = 'Дизайн сохранён.'
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
-  } finally {
-    saving.value = false
-  }
-}
-
 onMounted(async () => {
   await loadLobbies()
-  void loadDesignsForLobby()
-})
-
-watch(selectedLobbyId, () => {
-  void loadDesignsForLobby()
 })
 </script>
 
 <template>
   <section class="card-design">
     <article class="card-design__panel">
-      <p v-if="loading" class="card-design__status">Загружаем доступные дизайны…</p>
-      <div v-else-if="error" class="card-design__status card-design__status--error" role="alert">
-        <span>{{ error }}</span>
-        <span v-if="isAuthRequiredError" class="card-design__auth-actions">
-          <RouterLink class="card-design__auth-link card-design__auth-link--ghost" to="/login">Вход</RouterLink>
-          <RouterLink class="card-design__auth-link" to="/register">Регистрация</RouterLink>
-        </span>
+      <div v-if="!savedLobbies.length && !loading" class="card-design__empty">
+        <h2 class="card-design__empty-title">Нет доступных лобби</h2>
+        <p class="card-design__empty-text">
+          Сначала создайте игровое лобби на панели управления, затем вернитесь сюда и выберите дизайн
+          карточек.
+        </p>
+        <RouterLink class="card-design__empty-link" :to="{ name: 'dashboard' }">
+          Перейти к панели управления
+        </RouterLink>
       </div>
 
-      <div v-else-if="designs.length" class="card-design__list" role="radiogroup" aria-label="Доступные дизайны карточек">
-        <label
-          v-for="item in designs"
-          :key="item.code"
-          class="card-design__option"
-          :class="{ 'card-design__option--disabled': !item.selectable }"
-        >
-          <input
-            v-model="selectedDesign"
-            class="card-design__radio"
-            type="radio"
-            name="overlay-design"
-            :value="item.code"
-            :disabled="!item.selectable || saving"
-          />
-          <span
-            class="card-design__preview"
-            :class="`card-design__preview--${designPreviewVariant(item.code)}`"
-            aria-hidden="true"
-          >
-            <span class="card-design__preview-photos">
-              <span class="card-design__preview-photo-block" />
-              <span class="card-design__preview-photo-block" />
-              <span class="card-design__preview-photo-block" />
-            </span>
-          </span>
-          <span class="card-design__option-body">
-            <span class="card-design__option-headline">
-              <span class="card-design__option-title">{{ item.title }}</span>
-              <span class="card-design__option-price">{{ designMockPrice(item.code) }}</span>
-            </span>
-            <span class="card-design__option-meta">
-              Подписка: {{ subscriptionLabel(item.required_subscription) }}
-              <span class="card-design__sep">•</span>
-              Анимации: {{ item.animation_supported ? 'Да' : 'Нет' }}
-            </span>
-          </span>
-        </label>
-      </div>
+      <template v-else>
+        <div class="card-design__layout">
+          <aside class="card-design__lobbies" aria-label="Ваши лобби">
+            <ul class="card-design__lobby-list">
+              <li v-for="lobby in savedLobbies" :key="lobby.id">
+                <button
+                  type="button"
+                  class="card-design__lobby-item"
+                  :class="{ 'card-design__lobby-item--selected': selectedLobbyId === lobby.id }"
+                  :disabled="loading"
+                  @click="selectedLobbyId = lobby.id"
+                >
+                  <span
+                    class="card-design__lobby-icon"
+                    :class="
+                      lobby.fromGomafia
+                        ? 'card-design__lobby-icon--gomafia'
+                        : 'card-design__lobby-icon--saved'
+                    "
+                    aria-hidden="true"
+                  >
+                    <img
+                      v-if="lobby.fromGomafia"
+                      :src="goLobbyIcon"
+                      alt=""
+                      class="card-design__lobby-go-icon"
+                      width="26"
+                      height="24"
+                    />
+                    <svg
+                      v-else
+                      width="22"
+                      height="22"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path
+                        d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
+                    </svg>
+                  </span>
+                  <span class="card-design__lobby-text">
+                    <span class="card-design__lobby-title">{{ lobby.name }}</span>
+                    <span class="card-design__lobby-desc">{{ lobbyDesc(lobby) }}</span>
+                  </span>
+                </button>
+              </li>
+            </ul>
+          </aside>
 
-      <p v-else-if="selectedLobbyId" class="card-design__status">Нет доступных дизайнов.</p>
-
-      <footer class="card-design__actions">
-        <button type="button" class="card-design__save" :disabled="!canSave" @click="saveDesign">
-          {{ saving ? 'Сохраняем…' : 'Сохранить дизайн' }}
-        </button>
-        <p v-if="saveMessage" class="card-design__ok" role="status">{{ saveMessage }}</p>
-      </footer>
+          <CardDesignPickerPanel v-if="selectedLobbyId" :key="selectedLobbyId" :lobby-id="selectedLobbyId" />
+        </div>
+      </template>
     </article>
   </section>
 </template>
 
 <style scoped>
 .card-design {
-  max-width: 940px;
-  margin: 0 auto;
-  padding: 0.25rem 0 0.75rem;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .card-design__panel {
   border: none;
-  border-radius: 14px;
-  background: #fff;
-  padding: 0.95rem;
-}
-
-.card-design__status {
-  margin: 0.85rem 0 0;
-  font-size: 0.875rem;
-  color: #4b5563;
-}
-
-.card-design__status--error {
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  flex: 1;
   display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 0.6rem;
-  text-align: center;
-  color: #b91c1c;
+  flex-direction: column;
+  min-height: 0;
 }
 
-.card-design__auth-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.32rem 0.62rem;
-  border: 1px solid #fca5a5;
-  border-radius: 8px;
-  background: #fff1f2;
-  color: #9f1239;
-  font-size: 0.8rem;
-  text-decoration: none;
-}
-
-.card-design__auth-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-}
-
-.card-design__auth-link--ghost {
-  border-color: #fecaca;
-  background: #ffffff;
-}
-
-.card-design__auth-link:hover {
-  background: #ffe4e6;
-}
-
-.card-design__list {
-  margin-top: 0.9rem;
+.card-design__layout {
   display: grid;
-  grid-template-columns: repeat(3, 280px);
-  grid-auto-rows: 1fr;
-  justify-content: start;
-  gap: 0.55rem;
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  gap: 0;
+  align-items: stretch;
+  flex: 1;
+  min-height: 0;
+  background: #fff;
 }
 
-.card-design__option {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto auto;
-  align-content: start;
-  justify-items: start;
-  align-items: start;
-  width: 280px;
-  gap: 0.65rem;
-  padding: 0.65rem 0.75rem;
+.card-design__lobbies {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  min-height: 0;
   height: 100%;
+  padding: 0;
+  border-right: 1px solid #e5e7eb;
+  overflow: hidden;
+}
+
+.card-design__lobby-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.5rem;
+  align-content: start;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.card-design__lobby-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  width: 100%;
+  min-width: 0;
+  padding: 0.65rem 0.75rem;
   border: 1px solid #e5e7eb;
   border-radius: 10px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   cursor: pointer;
   box-sizing: border-box;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
 }
 
-.card-design__option:has(.card-design__radio:checked) {
+.card-design__lobby-item:hover:not(:disabled) {
+  border-color: #cbd5e1;
+  background: #f9fafb;
+}
+
+.card-design__lobby-item--selected {
   border-color: #60a5fa;
   background: #eff6ff;
 }
 
-.card-design__option--disabled {
+.card-design__lobby-item:focus-visible {
+  outline: 2px solid #2f6feb;
+  outline-offset: 1px;
+}
+
+.card-design__lobby-item:disabled {
   opacity: 0.65;
   cursor: not-allowed;
 }
 
-.card-design__radio {
-  position: absolute;
-  opacity: 0;
-  width: 0;
-  height: 0;
-  pointer-events: none;
-}
-
-.card-design__preview {
-  position: relative;
-  width: 100%;
-  max-width: none;
-  height: 156px;
+.card-design__lobby-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.35rem;
+  height: 2.35rem;
   border-radius: 10px;
-  border: 1px solid #d1d5db;
-  overflow: hidden;
-  background: #0b1220;
+  background: #eff6ff;
+  color: #2f6feb;
 }
 
-.card-design__preview-photos {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  align-items: center;
-  gap: 0.4rem;
-  width: 100%;
-  height: 100%;
-  padding: 0.55rem;
-  box-sizing: border-box;
+.card-design__lobby-icon--saved {
+  background: #eef4ff;
+  color: #2563eb;
 }
 
-.card-design__preview-photo-block {
-  width: 100%;
-  height: 100%;
-  min-height: 5.8rem;
-  border-radius: 6px;
-  border: 1px dashed rgba(255, 255, 255, 0.28);
-  background: rgba(255, 255, 255, 0.08);
+.card-design__lobby-icon--gomafia {
+  background: rgba(137, 119, 254, 0.08);
+  color: #8977fe;
 }
 
-.card-design__preview--classic {
-  background: linear-gradient(180deg, #111827 0%, #0f172a 100%);
+.card-design__lobby-go-icon {
+  display: block;
+  width: 22px;
+  height: auto;
+  max-height: 20px;
+  object-fit: contain;
 }
 
-.card-design__preview--masters-yug25 {
-  background: linear-gradient(180deg, #141414 0%, #0a0a0a 100%);
-}
-
-.card-design__preview--plus {
-  background: linear-gradient(135deg, #0f172a 0%, #0b1220 42%, #1e293b 100%);
-}
-
-.card-design__option-body {
-  display: grid;
+.card-design__lobby-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
   gap: 0.2rem;
-  width: 100%;
-  min-height: 3.4rem;
 }
 
-.card-design__option-headline {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.card-design__option-title {
-  font-size: 1.08rem;
-  color: #111827;
+.card-design__lobby-title {
+  font-size: 0.875rem;
   font-weight: 600;
+  color: #111827;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.card-design__option-price {
+.card-design__lobby-desc {
+  font-size: 0.75rem;
+  color: #6b7280;
+  line-height: 1.35;
+}
+
+.card-design__empty {
+  display: grid;
+  gap: 0.65rem;
+  padding: 1.5rem 0.5rem;
+  text-align: center;
+}
+
+.card-design__empty-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.card-design__empty-text {
+  margin: 0 auto;
+  max-width: 28rem;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: #6b7280;
+}
+
+.card-design__empty-link {
+  justify-self: center;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 1.45rem;
-  padding: 0 0.48rem;
-  border: 1px dashed #d1d5db;
-  border-radius: 6px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: #6b7280;
-  background: #f9fafb;
-}
-
-.card-design__option-meta {
-  font-size: 0.8125rem;
-  color: #6b7280;
-}
-
-.card-design__sep {
-  margin: 0 0.25rem;
-}
-
-.card-design__actions {
-  margin-top: 1rem;
-  display: flex;
-  align-items: center;
-  gap: 0.7rem;
-}
-
-.card-design__save {
-  border: 1px solid #d1d5db;
-  background: #fff;
-  color: #111827;
+  min-height: 2.35rem;
+  padding: 0 0.9rem;
   border-radius: 8px;
-  padding: 0.45rem 0.75rem;
-  font: inherit;
+  background: #2f6feb;
+  color: #fff;
   font-size: 0.875rem;
-  cursor: pointer;
+  font-weight: 600;
+  text-decoration: none;
 }
 
-.card-design__save:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
+.card-design__empty-link:hover {
+  background: #2563eb;
 }
 
-.card-design__ok {
-  margin: 0;
-  font-size: 0.8125rem;
-  color: #1d4ed8;
-}
-
-@media (max-width: 1024px) {
-  .card-design__list {
-    grid-template-columns: repeat(2, 280px);
+@media (max-width: 860px) {
+  .card-design__layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
-  .card-design__preview {
-    width: min(100%, 280px);
-    height: 156px;
+  .card-design__lobbies {
+    height: auto;
+    max-height: 40vh;
+    border-right: none;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  .card-design__lobby-list {
+    max-height: 28vh;
   }
 }
 </style>

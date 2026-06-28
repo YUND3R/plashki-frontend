@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { RouterLink } from 'vue-router'
 import { me } from '@/api/auth'
+import { collectGomafiaImportedPlayerCardIds } from '@/api/lobbies'
 import { deletePlayerCard, listPlayerCards, type PlayerCard } from '@/api/playerCards'
 import PlayerCardCreateModal from '@/components/account/PlayerCardCreateModal.vue'
 import PlayerCardInfoModal from '@/components/account/PlayerCardInfoModal.vue'
@@ -11,9 +12,10 @@ import { useProfilesUiStore } from '@/stores/profilesUi'
 
 const { token } = storeToRefs(useAuthStore())
 const profilesUi = useProfilesUiStore()
-const { searchQuery, viewMode } = storeToRefs(profilesUi)
+const { searchQuery, viewMode, playerFilter } = storeToRefs(profilesUi)
 
 const cards = ref<PlayerCard[]>([])
+const gomafiaImportedCardIds = ref<Set<string>>(new Set())
 const loading = ref(false)
 const error = ref<string | null>(null)
 const selectedId = ref<string | null>(null)
@@ -125,10 +127,28 @@ function openInfoModal(c: PlayerCard) {
   infoModalOpen.value = true
 }
 
+function hasGomafiaProfileLink(c: PlayerCard): boolean {
+  return !!c.gomafia_url?.trim()
+}
+
+function isFromGomafiaImport(c: PlayerCard): boolean {
+  return gomafiaImportedCardIds.value.has(c.id)
+}
+
+function isManuallyCreated(c: PlayerCard): boolean {
+  return !isFromGomafiaImport(c)
+}
+
 const filteredCards = computed(() => {
+  let list = cards.value
+  if (playerFilter.value === 'mine') {
+    list = list.filter(isManuallyCreated)
+  } else if (playerFilter.value === 'gomafia') {
+    list = list.filter(isFromGomafiaImport)
+  }
   const q = searchQuery.value.trim().toLowerCase()
-  if (!q) return cards.value
-  return cards.value.filter((c) => {
+  if (!q) return list
+  return list.filter((c) => {
     const hay = `${c.nickname} ${c.first_name} ${c.last_name}`.toLowerCase()
     return hay.includes(q)
   })
@@ -144,7 +164,12 @@ async function load() {
   error.value = null
   try {
     const u = await me()
-    cards.value = await listPlayerCards(u.id)
+    const [allCards, importedIds] = await Promise.all([
+      listPlayerCards(u.id),
+      collectGomafiaImportedPlayerCardIds(),
+    ])
+    cards.value = allCards
+    gomafiaImportedCardIds.value = importedIds
     if (selectedId.value && !cards.value.some((c) => c.id === selectedId.value)) {
       selectedId.value = cards.value[0]?.id ?? null
     }
@@ -159,9 +184,9 @@ async function load() {
 watch(token, load, { immediate: true })
 
 watch(
-  () => cards.value.length,
-  (n) => {
-    profilesUi.playerCardsTotal = n
+  filteredCards,
+  (list) => {
+    profilesUi.playerCardsTotal = list.length
   },
   { immediate: true },
 )
@@ -189,6 +214,7 @@ onUnmounted(() => {
   profilesUi.setOpenCreateHandler(null)
   profilesUi.playerCardsTotal = 0
   profilesUi.resetSearch()
+  profilesUi.resetPlayerFilter()
   if (deleteReadyInterval) {
     clearInterval(deleteReadyInterval)
     deleteReadyInterval = null
@@ -198,10 +224,6 @@ onUnmounted(() => {
 function cardPhoto(c: PlayerCard): string {
   const u = c.photo_urls?.[0]
   return typeof u === 'string' && u.trim() ? u.trim() : ''
-}
-
-function hasGomafia(c: PlayerCard): boolean {
-  return !!c.gomafia_url?.trim()
 }
 
 </script>
@@ -377,7 +399,7 @@ function hasGomafia(c: PlayerCard): boolean {
           </div>
           <div class="profiles__compact-actions" @click.stop>
             <a
-              v-if="hasGomafia(c)"
+              v-if="hasGomafiaProfileLink(c)"
               class="profiles__compact-gm"
               :href="c.gomafia_url!.trim()"
               target="_blank"
@@ -431,7 +453,17 @@ function hasGomafia(c: PlayerCard): boolean {
       </div>
 
       <div v-else class="profiles__empty-wrap">
-        <p class="profiles__empty">Пока нет профилей. Нажмите «Создать профиль».</p>
+        <p v-if="cards.length && playerFilter !== 'all'" class="profiles__empty">
+          {{
+            playerFilter === 'gomafia'
+              ? 'Нет игроков, загруженных из GoMafia.'
+              : 'Нет созданных вручную игроков.'
+          }}
+        </p>
+        <p v-else-if="cards.length && searchQuery.trim()" class="profiles__empty">
+          По запросу «{{ searchQuery.trim() }}» ничего не найдено.
+        </p>
+        <p v-else class="profiles__empty">Пока нет профилей. Нажмите «Создать профиль».</p>
       </div>
     </template>
   </section>

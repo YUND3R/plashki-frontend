@@ -17,6 +17,7 @@ import deletedStatusIcon from '@/assets/icons/deleted.svg?url'
 import killedStatusIcon from '@/assets/icons/killed.svg?url'
 import LobbyMemberPhotoModal from '@/components/lobby/LobbyMemberPhotoModal.vue'
 import LobbyImportedParticipantsModal from '@/components/lobby/LobbyImportedParticipantsModal.vue'
+import CardDesignPickerPanel from '@/components/cardDesign/CardDesignPickerPanel.vue'
 import {
   clearLobbyBestMove,
   clearLobbySheriffCheck,
@@ -30,14 +31,12 @@ import {
   resetLobbyStatuses,
   setLobbyBestMove,
   setLobbySheriffCheck,
-  setLobbyOverlayDesign,
   setLobbyMemberStatus,
   setLobbyMemberRole,
   setLobbyImportedSelection,
   swapLobbySeats,
   type GameLobby,
   type LobbyImportedVariant,
-  type LobbyOverlayDesignOption,
   type LobbyPlayer,
 } from '@/api/lobbies'
 import { me } from '@/api/auth'
@@ -56,7 +55,7 @@ import {
 const route = useRoute()
 const router = useRouter()
 const lobbyManageUi = useLobbyManageUiStore()
-const { hostMode } = storeToRefs(lobbyManageUi)
+const { hostMode, designPickerOpen } = storeToRefs(lobbyManageUi)
 
 const lobby = ref<GameLobby | null>(null)
 const loading = ref(true)
@@ -91,14 +90,6 @@ const statusSubmittingMembershipId = ref<string | null>(null)
 const rolesResetBusy = ref(false)
 const deleteBusy = ref(false)
 const deleteConfirmOpen = ref(false)
-const cardDesignModalOpen = ref(false)
-const cardDesignLoading = ref(false)
-const cardDesignSaving = ref(false)
-const cardDesignError = ref<string | null>(null)
-const cardDesignSaveMessage = ref<string | null>(null)
-const cardDesignOptions = ref<LobbyOverlayDesignOption[]>([])
-const selectedCardDesign = ref('')
-const initialCardDesign = ref('')
 const sheriffChecksModalOpen = ref(false)
 const sheriffChecksTargetMembershipId = ref<string | null>(null)
 const sheriffChecksValues = ref<string[]>(['', '', '', '', ''])
@@ -282,10 +273,10 @@ const replaceTargetPlayer = computed(() => {
 const replaceTargetLabel = computed(() => replaceTargetPlayer.value?.nickname?.trim() || 'игрока')
 
 const isLobbyHost = computed(() => {
-  const hid = lobby.value?.host_user_id
-  const uid = currentUserId.value
+  const hid = lobby.value?.host_user_id?.trim() ?? ''
+  const uid = currentUserId.value?.trim() ?? ''
   if (!hid || !uid) return false
-  return hid === uid
+  return hid.toLowerCase() === uid.toLowerCase()
 })
 
 const replaceOtherSeatCardIds = computed(() => {
@@ -809,8 +800,6 @@ async function syncActivePersistentDesignCode() {
     const data = await getLobbyOverlayDesigns(lobbyId.value)
     const selected = normalizePersistentDesignCode(data.selected_overlay_design)
     activePersistentDesignCode.value = selected
-    selectedCardDesign.value = selected
-    initialCardDesign.value = selected
   } catch {
     activePersistentDesignCode.value = 'classic'
   }
@@ -1086,13 +1075,6 @@ watch(isReplacePanelOpen, (open) => {
 })
 
 watch(
-  () => lobbyManageUi.designPickerOpenToken,
-  () => {
-    void openCardDesignModal()
-  },
-)
-
-watch(
   () => lobbyManageUi.designChangedToken,
   async () => {
     await syncActivePersistentDesignCode()
@@ -1100,6 +1082,45 @@ watch(
     persistentMessageFeedback.value = null
   },
 )
+
+watch(
+  () => lobbyManageUi.designPickerOpenToken,
+  () => {
+    openCardDesignPicker()
+  },
+)
+
+watch(designPickerOpen, (open) => {
+  if (open) {
+    lobbyManageUi.setDesignPickerLobbyTitle(lobbyDisplayName.value)
+  }
+})
+
+watch(lobbyDisplayName, (name) => {
+  if (designPickerOpen.value) {
+    lobbyManageUi.setDesignPickerLobbyTitle(name)
+  }
+})
+
+watch(lobbyId, () => {
+  lobbyManageUi.closeDesignPicker()
+})
+
+function openCardDesignPicker() {
+  if (!lobby.value || !lobbyId.value) return
+  if (!isLobbyHost.value || swapBusy.value || rolesResetBusy.value || replaceSubmitting.value) return
+  lobbyManageUi.openDesignPicker()
+}
+
+function onCardDesignSaved() {
+  void syncActivePersistentDesignCode()
+  lobbyManageUi.notifyDesignChanged()
+  lobbyManageUi.closeDesignPicker()
+}
+
+function closeCardDesignPicker() {
+  lobbyManageUi.closeDesignPicker()
+}
 
 watch(
   () => lobbyManageUi.deleteConfirmOpenToken,
@@ -1116,66 +1137,6 @@ function cardThumb(c: PlayerCard): string {
 function cardFullName(c: PlayerCard): string {
   const parts = [c.first_name?.trim(), c.last_name?.trim()].filter(Boolean)
   return parts.join(' ')
-}
-
-const canSaveCardDesign = computed(() => {
-  if (!selectedCardDesign.value) return false
-  if (cardDesignSaving.value) return false
-  return selectedCardDesign.value !== initialCardDesign.value
-})
-
-function subscriptionLabel(raw: string): string {
-  const s = raw.trim().toLowerCase()
-  if (s === 'free') return 'Бесплатно'
-  if (s === 'premium') return 'Premium'
-  if (s === 'standard') return 'Standard'
-  return raw
-}
-
-function designPreviewVariant(rawCode: string): 'classic' | 'masters-yug25' | 'plus' {
-  const code = normalizeOverlayDesignCode(rawCode)
-  if (code === 'masters-yug25') return 'masters-yug25'
-  if (code === 'plus') return 'plus'
-  return 'classic'
-}
-
-function designMockPrice(rawCode: string): string {
-  const variant = designPreviewVariant(rawCode)
-  if (variant === 'plus') return '499 RUB'
-  if (variant === 'masters-yug25') return '799 RUB'
-  return '299 RUB'
-}
-
-async function loadCardDesignOptions() {
-  if (!lobbyId.value) return
-  cardDesignLoading.value = true
-  cardDesignError.value = null
-  cardDesignSaveMessage.value = null
-  try {
-    const data = await getLobbyOverlayDesigns(lobbyId.value)
-    cardDesignOptions.value = data.options ?? []
-    selectedCardDesign.value = data.selected_overlay_design ?? ''
-    initialCardDesign.value = data.selected_overlay_design ?? ''
-  } catch (e) {
-    cardDesignError.value = e instanceof Error ? e.message : String(e)
-    cardDesignOptions.value = []
-    selectedCardDesign.value = ''
-    initialCardDesign.value = ''
-  } finally {
-    cardDesignLoading.value = false
-  }
-}
-
-async function openCardDesignModal() {
-  if (!isLobbyHost.value || swapBusy.value || rolesResetBusy.value || replaceSubmitting.value) return
-  cardDesignModalOpen.value = true
-  await loadCardDesignOptions()
-}
-
-function closeCardDesignModal() {
-  cardDesignModalOpen.value = false
-  cardDesignError.value = null
-  cardDesignSaveMessage.value = null
 }
 
 function canOpenSheriffChecks(p: LobbyPlayer | null): boolean {
@@ -1350,34 +1311,28 @@ async function resetBestMove() {
     bestMoveResetting.value = false
   }
 }
-
-async function saveCardDesign() {
-  if (!canSaveCardDesign.value || !lobbyId.value) return
-  cardDesignSaving.value = true
-  cardDesignError.value = null
-  cardDesignSaveMessage.value = null
-  try {
-    await setLobbyOverlayDesign(lobbyId.value, { overlay_design: selectedCardDesign.value })
-    initialCardDesign.value = selectedCardDesign.value
-    activePersistentDesignCode.value = normalizePersistentDesignCode(selectedCardDesign.value)
-    lobbyManageUi.notifyDesignChanged()
-    cardDesignSaveMessage.value = 'Дизайн карточек сохранён.'
-  } catch (e) {
-    cardDesignError.value = e instanceof Error ? e.message : String(e)
-  } finally {
-    cardDesignSaving.value = false
-  }
-}
 </script>
 
 <template>
-  <section class="lobby-manage">
+  <section class="lobby-manage" :class="{ 'lobby-manage--design-picker': designPickerOpen }">
     <p v-if="loading" class="lobby-manage__status">Загрузка лобби…</p>
     <p v-else-if="error" class="lobby-manage__status lobby-manage__status--error" role="alert">
       {{ error }}
     </p>
 
     <template v-else-if="lobby">
+      <div v-if="designPickerOpen" class="lobby-manage__design-picker">
+        <CardDesignPickerPanel
+          :key="lobbyId"
+          :lobby-id="lobbyId"
+          show-cancel
+          save-success-message="Дизайн карточек сохранён."
+          @saved="onCardDesignSaved"
+          @close="closeCardDesignPicker"
+        />
+      </div>
+
+      <template v-else>
       <div class="lobby-manage__grid">
         <article class="lobby-manage__card lobby-manage__card--main">
           <p v-if="swapHint" class="lobby-manage__swap-hint" role="status">{{ swapHint }}</p>
@@ -2016,85 +1971,6 @@ async function saveCardDesign() {
         </div>
       </div>
 
-      <div
-        v-if="cardDesignModalOpen"
-        class="lobby-manage__modal-overlay"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Выбор дизайна карточек"
-      >
-        <div class="lobby-manage__modal-card lobby-manage__modal-card--design-picker">
-          <div class="lobby-manage__modal-head">
-            <h3 class="lobby-manage__modal-title">Выбрать дизайн карточек</h3>
-            <button
-              type="button"
-              class="lobby-manage__modal-close"
-              aria-label="Закрыть"
-              title="Закрыть"
-              @click="closeCardDesignModal"
-            >
-              ×
-            </button>
-          </div>
-
-          <p v-if="cardDesignLoading" class="lobby-manage__modal-status">Загрузка дизайнов…</p>
-          <p v-else-if="cardDesignError" class="lobby-manage__modal-status lobby-manage__modal-status--error" role="alert">
-            {{ cardDesignError }}
-          </p>
-          <div
-            v-else-if="cardDesignOptions.length"
-            class="lobby-manage__design-list"
-            role="radiogroup"
-            aria-label="Список доступных дизайнов"
-          >
-            <label
-              v-for="item in cardDesignOptions"
-              :key="item.code"
-              class="lobby-manage__design-item"
-              :class="{ 'lobby-manage__design-item--disabled': !item.selectable }"
-            >
-              <input
-                v-model="selectedCardDesign"
-                class="lobby-manage__design-radio"
-                type="radio"
-                name="lobby-overlay-design"
-                :value="item.code"
-                :disabled="!item.selectable || cardDesignSaving"
-              />
-              <span
-                class="lobby-manage__design-preview"
-                :class="`lobby-manage__design-preview--${designPreviewVariant(item.code)}`"
-                aria-hidden="true"
-              >
-                <span class="lobby-manage__design-preview-photos">
-                  <span class="lobby-manage__design-preview-photo-block" />
-                  <span class="lobby-manage__design-preview-photo-block" />
-                  <span class="lobby-manage__design-preview-photo-block" />
-                </span>
-              </span>
-              <span class="lobby-manage__design-text">
-                <span class="lobby-manage__design-headline">
-                  <span class="lobby-manage__design-name">{{ item.title }}</span>
-                  <span class="lobby-manage__design-price">{{ designMockPrice(item.code) }}</span>
-                </span>
-                <span class="lobby-manage__design-meta">
-                  Подписка: {{ subscriptionLabel(item.required_subscription) }} · Анимации:
-                  {{ item.animation_supported ? 'Да' : 'Нет' }}
-                </span>
-              </span>
-            </label>
-          </div>
-          <p v-else class="lobby-manage__modal-status">Нет доступных дизайнов.</p>
-
-          <div class="lobby-manage__modal-actions">
-            <button type="button" class="lobby-manage__btn-foot" :disabled="!canSaveCardDesign" @click="saveCardDesign">
-              {{ cardDesignSaving ? 'Сохранение…' : 'Сохранить' }}
-            </button>
-            <p v-if="cardDesignSaveMessage" class="lobby-manage__modal-ok" role="status">{{ cardDesignSaveMessage }}</p>
-          </div>
-        </div>
-      </div>
-
       <LobbyImportedParticipantsModal v-model="importedParticipantsModalOpen" :lobby-id="lobbyId" />
 
       <div
@@ -2214,6 +2090,7 @@ async function saveCardDesign() {
       </div>
 
     </template>
+    </template>
   </section>
 </template>
 
@@ -2224,6 +2101,27 @@ async function saveCardDesign() {
   padding: 0;
   margin: 0;
   box-sizing: border-box;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.lobby-manage--design-picker {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.lobby-manage__design-picker {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #fff;
 }
 
 .lobby-manage__status {

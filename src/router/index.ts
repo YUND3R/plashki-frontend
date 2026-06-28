@@ -124,7 +124,7 @@ const router = createRouter({
         {
           path: 'card-design',
           name: 'card-design',
-          meta: { title: 'Дизайн карточек' },
+          meta: { title: 'Все дизайны карточек' },
           component: () => import('@/views/CardsView.vue'),
         },
         {
