@@ -104,6 +104,14 @@ function eliminatedStatusIcon(status: string | null | undefined): string {
   return ''
 }
 
+function eliminatedStatusClass(status: string | null | undefined): string {
+  const key = statusKey(status)
+  if (key === 'killed' || key === 'best-move') return 'overlay-masters-card--status-killed'
+  if (key === 'voted') return 'overlay-masters-card--status-voted'
+  if (key === 'deleted') return 'overlay-masters-card--status-deleted'
+  return ''
+}
+
 function trimNickname(raw: string | null | undefined, maxLen: number): string {
   const value = (raw ?? '').trim()
   if (!value) return ''
@@ -189,16 +197,6 @@ function showRoleBadge(p: LobbyPlayer | null, idx: number): boolean {
 
 function isDoubleDigitSeat(idx: number): boolean {
   return idx + 1 >= 10
-}
-
-function seatInlineStyle(idx: number): Record<string, string> {
-  if (isDoubleDigitSeat(idx)) return { marginLeft: '0px' }
-  return {}
-}
-
-function roleFinalLeft(idx: number): string {
-  if (isDoubleDigitSeat(idx)) return '60px'
-  return '39px'
 }
 
 function seatIcon(idx: number): string {
@@ -319,9 +317,11 @@ onUnmounted(() => {
       :class="[
         toneClassForSeat(p, idx),
         stageClass(p, idx),
+        eliminatedStatusClass(p?.status),
         {
           'overlay-masters-card--eliminated': isEliminatedStatus(p?.status),
           'overlay-masters-card--no-photo': !hasPhoto(p),
+          'overlay-masters-card--seat-double': isDoubleDigitSeat(idx),
         },
       ]"
     >
@@ -380,7 +380,11 @@ onUnmounted(() => {
 
       <span class="overlay-masters-card__head">
         <Transition name="overlay-masters-content-fade">
-          <span v-if="showContent(stageOf(p, idx))" class="overlay-masters-card__seat" :style="seatInlineStyle(idx)">
+          <span
+            v-if="showContent(stageOf(p, idx))"
+            class="overlay-masters-card__seat"
+            :class="{ 'overlay-masters-card__seat--double': isDoubleDigitSeat(idx) }"
+          >
             <img :src="seatIcon(idx)" alt="" class="overlay-masters-card__seat-icon" />
           </span>
         </Transition>
@@ -394,7 +398,6 @@ onUnmounted(() => {
           'overlay-masters-card__role-center--move': stageOf(p, idx) === 4,
           'overlay-masters-card__role-center--final': stageOf(p, idx) === 0,
         }"
-        :style="{ '--role-final-left': roleFinalLeft(idx) }"
       >
         <img :src="roleIcon(p?.game_role ?? null)" alt="" class="overlay-masters-card__role-center-icon" />
       </span>
@@ -542,7 +545,7 @@ onUnmounted(() => {
   height: 26px;
   padding: 0 5px;
   border-radius: 0;
-  background: rgba(12, 14, 17, 0.92);
+  background: #0a0a0a;
   border-left: 0;
   border-right: 0;
   color: #f8fafc;
@@ -576,7 +579,7 @@ onUnmounted(() => {
   height: 26px;
   padding: 0 7px;
   border-radius: 4px 0 0 4px;
-  background: rgba(12, 14, 17, 0.92);
+  background: #0a0a0a;
   color: #f8fafc;
   font-family: Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif;
   font-size: 16px;
@@ -652,21 +655,36 @@ onUnmounted(() => {
 
 .overlay-masters-card--eliminated::after {
   opacity: 1;
+}
+
+.overlay-masters-card--status-killed::after {
   background:
-    radial-gradient(170px 98px at 86% 88%, rgba(55, 65, 81, 0.82) 0%, rgba(31, 41, 55, 0.42) 44%, rgba(4, 6, 12, 0) 100%),
-    linear-gradient(145deg, rgba(17, 24, 39, 0) 48%, rgba(17, 24, 39, 0.28) 78%, rgba(17, 24, 39, 0.48) 100%);
+    radial-gradient(170px 98px at 86% 88%, rgba(250, 204, 21, 0.34) 0%, rgba(250, 204, 21, 0.12) 44%, rgba(4, 6, 12, 0) 100%),
+    linear-gradient(145deg, rgba(161, 98, 7, 0) 48%, rgba(161, 98, 7, 0.08) 78%, rgba(161, 98, 7, 0.16) 100%);
+}
+
+.overlay-masters-card--status-voted::after {
+  background:
+    radial-gradient(170px 98px at 86% 88%, rgba(59, 130, 246, 0.32) 0%, rgba(59, 130, 246, 0.11) 44%, rgba(4, 6, 12, 0) 100%),
+    linear-gradient(145deg, rgba(30, 64, 175, 0) 48%, rgba(30, 64, 175, 0.07) 78%, rgba(30, 64, 175, 0.14) 100%);
+}
+
+.overlay-masters-card--status-deleted::after {
+  background:
+    radial-gradient(170px 98px at 86% 88%, rgba(55, 65, 81, 0.3) 0%, rgba(31, 41, 55, 0.12) 44%, rgba(4, 6, 12, 0) 100%),
+    linear-gradient(145deg, rgba(17, 24, 39, 0) 48%, rgba(17, 24, 39, 0.07) 78%, rgba(17, 24, 39, 0.14) 100%);
 }
 
 .overlay-masters-card--eliminated::before {
   background: linear-gradient(180deg, rgba(10, 10, 10, 0.12) 0%, rgba(10, 10, 10, 0.86) 100%);
 }
 
-.overlay-masters-card--no-photo::before,
-.overlay-masters-card--no-photo::after {
+.overlay-masters-card--no-photo:not(.overlay-masters-card--eliminated)::before,
+.overlay-masters-card--no-photo:not(.overlay-masters-card--eliminated)::after {
   background: none;
 }
 
-.overlay-masters-card--no-photo::after {
+.overlay-masters-card--no-photo:not(.overlay-masters-card--eliminated)::after {
   opacity: 0;
 }
 
@@ -714,7 +732,7 @@ onUnmounted(() => {
 
 .overlay-masters-card__head {
   position: absolute;
-  top: 12px;
+  top: 6px;
   left: 12px;
   z-index: 5;
   display: inline-flex;
@@ -726,8 +744,8 @@ onUnmounted(() => {
 }
 
 .overlay-masters-card--eliminated .overlay-masters-card__head {
-  top: 11px;
-  left: 20px;
+  top: 8px;
+  left: 8px;
 }
 
 .overlay-masters-card__seat {
@@ -738,6 +756,10 @@ onUnmounted(() => {
   margin-left: -10px;
 }
 
+.overlay-masters-card__seat--double {
+  min-width: 34px;
+}
+
 .overlay-masters-card__seat-icon {
   width: 42px;
   height: 40px;
@@ -745,9 +767,18 @@ onUnmounted(() => {
   display: block;
 }
 
+.overlay-masters-card--eliminated .overlay-masters-card__seat {
+  min-width: 22px;
+  margin-left: -4px;
+}
+
+.overlay-masters-card--eliminated .overlay-masters-card__seat--double {
+  min-width: 28px;
+}
+
 .overlay-masters-card--eliminated .overlay-masters-card__seat-icon {
-  width: 17px;
-  height: 16px;
+  width: 24px;
+  height: 23px;
 }
 
 .overlay-masters-card__nick {
@@ -804,9 +835,19 @@ onUnmounted(() => {
     opacity 260ms ease;
 }
 
+.overlay-masters-card--seat-double .overlay-masters-card__role-center {
+  top: 13px;
+  left: 42px;
+}
+
 .overlay-masters-card--eliminated .overlay-masters-card__role-center {
   top: 10px;
   left: calc(var(--role-final-left, 39px) - 10px);
+}
+
+.overlay-masters-card--eliminated.overlay-masters-card--seat-double .overlay-masters-card__role-center {
+  top: 9px;
+  left: 32px;
 }
 
 .overlay-masters-card__role-center--center {
@@ -829,6 +870,16 @@ onUnmounted(() => {
   transform: translate(0, 0);
   width: 18px;
   height: 18px;
+}
+
+.overlay-masters-card--seat-double .overlay-masters-card__role-center--move {
+  top: 13px;
+  left: 42px;
+}
+
+.overlay-masters-card--eliminated.overlay-masters-card--seat-double .overlay-masters-card__role-center--move {
+  top: 9px;
+  left: 32px;
 }
 
 .overlay-masters-card__role-center-icon {

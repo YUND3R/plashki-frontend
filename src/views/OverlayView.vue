@@ -9,7 +9,7 @@ import {
   type OverlayGlobalStateResponse,
   type LobbyPlayer,
 } from '@/api/lobbies'
-import { enrichLobbyPhotoLayouts } from '@/utils/overlayPhotoLayoutBridge'
+import { enrichLobbyPhotoLayouts, applyStablePhotoLayouts } from '@/utils/overlayPhotoLayoutBridge'
 import OverlayClassicDesign from '@/components/overlay/designs/OverlayClassicDesign.vue'
 import OverlayMastersDesign from '@/components/overlay/designs/OverlayMastersDesign.vue'
 import OverlayPlusDesign from '@/components/overlay/designs/OverlayPlusDesign.vue'
@@ -160,7 +160,7 @@ async function enrichLobbyInBackground(merged: GameLobby, seq: number) {
     const enriched = await enrichLobbyPhotoLayouts(merged)
     if (seq !== loadSeq) return
     if (lobbyDataSignature(enriched) !== lobbyDataSignature(merged)) return
-    lobby.value = enriched
+    lobby.value = applyStablePhotoLayouts(lobby.value, enriched)
   } catch {
     // overlay показывает данные лобби и без доп. кадрирования
   }
@@ -189,7 +189,7 @@ async function loadLobby() {
       const fresh = await getLobbyFresh(liveActiveLobbyId.value)
       if (seq !== loadSeq) return
       const merged = mergeOverlayState(fresh, liveState)
-      lobby.value = merged
+      lobby.value = applyStablePhotoLayouts(lobby.value, merged)
       error.value = null
       void enrichLobbyInBackground(merged, seq)
       return
@@ -206,7 +206,7 @@ async function loadLobby() {
     if (seq !== loadSeq) return
 
     const merged = mergeOverlayDesign(fresh, designs)
-    lobby.value = merged
+    lobby.value = applyStablePhotoLayouts(lobby.value, merged)
     error.value = null
     void enrichLobbyInBackground(merged, seq)
   } catch (e) {

@@ -47,9 +47,15 @@ function onImgLoad(ev: Event) {
   syncNaturalFromImg(ev.target as HTMLImageElement)
 }
 
-watch(photoUrl, async () => {
+watch(photoUrl, async (url, prevUrl) => {
+  if (url === prevUrl) return
   natural.value = { w: 0, h: 0 }
   await nextTick()
+  syncNaturalFromImg(imgRef.value)
+})
+
+watch(frame, () => {
+  if (natural.value.w >= 1 && natural.value.h >= 1) return
   syncNaturalFromImg(imgRef.value)
 })
 </script>

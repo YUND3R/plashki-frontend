@@ -65,6 +65,30 @@ export function readCachedPhotoLayouts(playerCardId: string): PhotoLayouts | nul
   return row?.layouts ? normalizePhotoLayouts(row.layouts) : null
 }
 
+/** Сохранить photo_layouts между poll-тиками overlay (localStorage + предыдущий кадр). */
+export function mergePlayerPhotoLayouts(prev: LobbyPlayer | undefined, next: LobbyPlayer): LobbyPlayer {
+  const cardId = next.player_card_id?.trim()
+  const cached = cardId ? readCachedPhotoLayouts(cardId) : null
+  const layouts = mergePhotoLayouts(prev?.photo_layouts, next.photo_layouts, cached)
+  const displayPhotoLayout = next.display_photo_layout ?? prev?.display_photo_layout ?? null
+
+  if (!layouts && !displayPhotoLayout) return next
+
+  return {
+    ...next,
+    photo_layouts: layouts ?? next.photo_layouts,
+    display_photo_layout: displayPhotoLayout,
+  }
+}
+
+export function applyStablePhotoLayouts(prev: GameLobby | null, next: GameLobby): GameLobby {
+  const prevByMember = prev ? new Map(prev.players.map((p) => [p.membership_id, p])) : null
+  return {
+    ...next,
+    players: next.players.map((p) => mergePlayerPhotoLayouts(prevByMember?.get(p.membership_id), p)),
+  }
+}
+
 async function enrichPlayer(p: LobbyPlayer): Promise<LobbyPlayer> {
   const cardId = p.player_card_id?.trim()
   if (!cardId) return p
