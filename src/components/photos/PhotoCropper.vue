@@ -1,14 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import {
-  DEFAULT_PHOTO_CROP,
-  MAX_PHOTO_CROP_ZOOM,
-  MIN_PHOTO_CROP_ZOOM,
   normalizePhotoCrop,
   type PhotoCrop,
 } from '@/utils/photoCrop'
 import {
-  overlayPhotoAspectRatio,
+  MASTERS_PHOTO_MASK_TOP_OFFSET,
   overlayPhotoCropViewport,
   type OverlayPhotoSpec,
 } from '@/utils/overlayPhotoSpec'
@@ -28,6 +25,7 @@ import seat8Icon from '@/assets/icons/numbers/8.svg?url'
 import seat9Icon from '@/assets/icons/numbers/9.svg?url'
 import seat10Icon from '@/assets/icons/numbers/10.svg?url'
 import '@/styles/plus-fonts.css'
+import PhotoCropperControls from '@/components/photos/PhotoCropperControls.vue'
 
 const crop = defineModel<PhotoCrop>({ required: true })
 
@@ -38,10 +36,12 @@ const props = withDefaults(
     disabled?: boolean
     nickname?: string
     seatIndex?: number
+    hideControls?: boolean
   }>(),
   {
     nickname: '',
     seatIndex: 1,
+    hideControls: false,
   },
 )
 
@@ -82,7 +82,15 @@ const mastersSeatIcon = computed(() => {
   return seat10Icon
 })
 
-const aspectRatio = computed(() => overlayPhotoAspectRatio(props.spec))
+const cropViewport = computed(() => overlayPhotoCropViewport(props.spec))
+
+const frameBoxStyle = computed(() => {
+  const { cw, ch } = cropViewport.value
+  return {
+    width: `${cw}px`,
+    height: `${ch}px`,
+  }
+})
 
 const frameSize = ref({ cw: 0, ch: 0 })
 
@@ -98,14 +106,22 @@ function measureFrame() {
 const sourcePreviewStyle = computed(() => {
   const f = normalizePhotoCrop(crop.value)
   const { w: nw, h: nh } = imgNatural.value
-  const { cw, ch } = frameSize.value
+  const specVp = cropViewport.value
+  const cw = frameSize.value.cw >= 1 ? frameSize.value.cw : specVp.cw
+  const ch = frameSize.value.ch >= 1 ? frameSize.value.ch : specVp.ch
   const meta = nw >= 1 && nh >= 1 && cw >= 1 && ch >= 1 ? { cw, ch, nw, nh } : null
   return photoFrameImgStyle(f, meta)
 })
 
-function centerCrop() {
-  if (props.disabled) return
-  crop.value = { ...DEFAULT_PHOTO_CROP }
+function onWheel(ev: WheelEvent) {
+  if (props.disabled || !props.imageSrc) return
+  ev.preventDefault()
+  const current = normalizePhotoCrop(crop.value)
+  const factor = Math.exp(-ev.deltaY * 0.0012)
+  crop.value = normalizePhotoCrop({
+    ...current,
+    zoom: current.zoom * factor,
+  })
 }
 
 function onImgLoad(ev: Event) {
@@ -221,33 +237,57 @@ onUnmounted(() => {
 
 <template>
   <div class="photo-cropper">
-    <div class="photo-cropper__stage">
+    <div class="photo-cropper__stage" @wheel.prevent="onWheel">
       <div class="photo-cropper__preview">
-        <div class="photo-cropper__source" :class="`photo-cropper__source--${designCode}`">
+        <div
+          class="photo-cropper__source"
+          :class="`photo-cropper__source--${designCode}`"
+          :style="
+            designCode === 'masters-yug25'
+              ? { '--masters-mask-top': `${MASTERS_PHOTO_MASK_TOP_OFFSET}px` }
+              : undefined
+          "
+        >
           <div class="photo-cropper__design-card">
-            <div
-              ref="frameRef"
-              class="photo-cropper__frame"
-              :class="{
-                'photo-cropper__frame--dragging': dragging,
-                'photo-cropper__frame--disabled': disabled,
-              }"
-              :style="{ aspectRatio }"
-              @pointerdown="onPointerDown"
-              @pointermove="onPointerMove"
-              @pointerup="onPointerUp"
-              @pointercancel="onPointerUp"
-            >
-              <div class="photo-cropper__photo-stage">
-                <img
-                  v-if="imageSrc"
-                  :src="imageSrc"
-                  alt=""
-                  class="photo-cropper__source-img"
-                  :style="sourcePreviewStyle"
-                  draggable="false"
-                  @load="onImgLoad"
-                />
+            <div class="photo-cropper__crop-shell" :class="`photo-cropper__crop-shell--${designCode}`">
+              <div
+                ref="frameRef"
+                class="photo-cropper__frame"
+                :class="{
+                  'photo-cropper__frame--dragging': dragging,
+                  'photo-cropper__frame--disabled': disabled,
+                }"
+                :style="frameBoxStyle"
+                @pointerdown="onPointerDown"
+                @pointermove="onPointerMove"
+                @pointerup="onPointerUp"
+                @pointercancel="onPointerUp"
+              >
+              <div class="photo-cropper__photo-layer photo-cropper__photo-layer--muted">
+                <div class="photo-cropper__photo-stage">
+                  <img
+                    v-if="imageSrc"
+                    :src="imageSrc"
+                    alt=""
+                    class="photo-cropper__source-img photo-cropper__source-img--muted"
+                    :style="sourcePreviewStyle"
+                    draggable="false"
+                    aria-hidden="true"
+                  />
+                </div>
+              </div>
+              <div class="photo-cropper__photo-layer photo-cropper__photo-layer--active">
+                <div class="photo-cropper__photo-stage">
+                  <img
+                    v-if="imageSrc"
+                    :src="imageSrc"
+                    alt=""
+                    class="photo-cropper__source-img"
+                    :style="sourcePreviewStyle"
+                    draggable="false"
+                    @load="onImgLoad"
+                  />
+                </div>
               </div>
               <div class="photo-cropper__frame-guide" aria-hidden="true">
                 <span class="photo-cropper__seat">
@@ -261,41 +301,20 @@ onUnmounted(() => {
                 </span>
               </div>
             </div>
+            </div>
             <div class="photo-cropper__design-footer" aria-hidden="true">
               <span v-if="designCode === 'plus'" class="photo-cropper__footer-seat">{{ seatLabel }}</span>
               <span class="photo-cropper__footer-nick">{{ displayNickname }}</span>
             </div>
           </div>
           <p class="photo-cropper__hint">
-            Видно всё исходное фото. Рамка показывает область, которая попадёт в плашку {{ designLabel }}.
+            Видно всё исходное фото. Синяя рамка — область фото, которая попадёт в плашку {{ designLabel }}.
           </p>
         </div>
       </div>
     </div>
 
-    <div class="photo-cropper__controls">
-      <label class="photo-cropper__zoom">
-        <input
-          v-model.number="crop.zoom"
-          type="range"
-          :min="MIN_PHOTO_CROP_ZOOM"
-          :max="MAX_PHOTO_CROP_ZOOM"
-          step="0.01"
-          :disabled="disabled"
-          aria-label="Масштаб"
-          @input="crop = normalizePhotoCrop(crop)"
-        />
-      </label>
-      <button
-        type="button"
-        class="photo-cropper__center-btn"
-        :disabled="disabled"
-        title="Сбросить кадрирование: центр и масштаб 1"
-        @click="centerCrop"
-      >
-        По умолчанию
-      </button>
-    </div>
+    <PhotoCropperControls v-if="!hideControls" v-model="crop" :disabled="disabled" />
   </div>
 </template>
 
@@ -303,14 +322,19 @@ onUnmounted(() => {
 .photo-cropper {
   display: flex;
   flex-direction: column;
-  gap: 0.65rem;
+  gap: 1rem;
+  height: 100%;
+  min-height: 0;
 }
 
 .photo-cropper__stage {
   --pcd-preview-scale: 2.2;
+  flex: 1;
+  min-height: 0;
   display: flex;
   justify-content: center;
-  padding: 0.5rem 0 0.1rem;
+  align-items: center;
+  padding: 0.25rem 0;
   overflow: visible;
 }
 
@@ -338,11 +362,35 @@ onUnmounted(() => {
 }
 
 .photo-cropper__frame {
-  position: absolute;
+  position: relative;
   overflow: visible;
   cursor: grab;
   touch-action: none;
   z-index: 3;
+  box-sizing: border-box;
+}
+
+.photo-cropper__crop-shell {
+  position: absolute;
+  z-index: 3;
+  overflow: visible;
+}
+
+.photo-cropper__crop-shell--classic {
+  left: 50%;
+  bottom: 47px;
+  transform: translateX(-50%);
+}
+
+.photo-cropper__crop-shell--plus {
+  top: 0;
+  left: 0;
+}
+
+.photo-cropper__crop-shell--masters-yug25 {
+  top: 0;
+  left: 0;
+  overflow: visible;
 }
 
 .photo-cropper__frame--dragging {
@@ -354,9 +402,25 @@ onUnmounted(() => {
   pointer-events: none;
 }
 
+.photo-cropper__photo-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.photo-cropper__photo-layer--muted {
+  z-index: 0;
+  overflow: visible;
+}
+
+.photo-cropper__photo-layer--active {
+  z-index: 1;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
 .photo-cropper__photo-stage {
   position: absolute;
-  z-index: 1;
   inset: 0;
   transform-origin: center center;
 }
@@ -373,12 +437,16 @@ onUnmounted(() => {
   user-select: none;
 }
 
+.photo-cropper__source-img--muted {
+  filter: grayscale(1) saturate(0) brightness(0.78);
+  opacity: 0.82;
+}
+
 .photo-cropper__frame-guide {
   position: absolute;
   inset: 0;
   z-index: 2;
-  border: 2px solid rgba(255, 255, 255, 0.92);
-  box-shadow: inset 0 0 0 1px rgba(12, 14, 17, 0.32);
+  border: 1.5px solid #2f6feb;
   pointer-events: none;
 }
 
@@ -391,7 +459,6 @@ onUnmounted(() => {
   font-size: 36px;
   font-weight: 800;
   line-height: 1;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.75);
 }
 
 .photo-cropper__seat-icon {
@@ -426,7 +493,6 @@ onUnmounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
 }
 
 .photo-cropper__source--classic .photo-cropper__design-card {
@@ -455,13 +521,12 @@ onUnmounted(() => {
 }
 
 .photo-cropper__source--classic .photo-cropper__frame {
-  left: 50%;
-  bottom: 47px;
-  width: 186px;
-  height: 126px;
-  transform: translateX(-50%);
   border-radius: 12px 12px 0 0;
   background: transparent;
+}
+
+.photo-cropper__source--classic .photo-cropper__photo-layer--active {
+  border-radius: 12px 12px 0 0;
 }
 
 .photo-cropper__source--classic .photo-cropper__frame-guide {
@@ -499,22 +564,38 @@ onUnmounted(() => {
 
 .photo-cropper__source--masters-yug25 .photo-cropper__design-card {
   width: 185px;
-  height: 125px;
-  background: #0a0a0a;
-  border-radius: 5px;
+  height: calc(125px + var(--masters-mask-top, 40px));
+  background: transparent;
+  border-radius: 0;
 }
 
 .photo-cropper__source--masters-yug25 {
   width: min(100%, calc(185px * var(--pcd-preview-scale)));
-  padding-top: calc(40px * var(--pcd-preview-scale));
-  height: calc(165px * var(--pcd-preview-scale));
+  padding-top: 0;
+  height: calc((125px + var(--masters-mask-top, 40px)) * var(--pcd-preview-scale));
   box-sizing: border-box;
+}
+
+.photo-cropper__source--masters-yug25 .photo-cropper__design-card::after {
+  content: '';
+  position: absolute;
+  top: var(--masters-mask-top, 40px);
+  left: 0;
+  width: 185px;
+  height: 125px;
+  z-index: 1;
+  pointer-events: none;
+  border-radius: 5px;
+  background: #0a0a0a;
 }
 
 .photo-cropper__source--masters-yug25 .photo-cropper__design-card::before {
   content: '';
   position: absolute;
-  inset: 0;
+  top: var(--masters-mask-top, 40px);
+  left: 0;
+  width: 185px;
+  height: 125px;
   z-index: 2;
   pointer-events: none;
   border-radius: 5px;
@@ -527,14 +608,16 @@ onUnmounted(() => {
 }
 
 .photo-cropper__source--masters-yug25 .photo-cropper__frame {
-  top: -40px;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  width: 185px;
-  height: 165px;
   border-radius: 5px;
-  background: #0a0a0a;
+  background: transparent;
+}
+
+.photo-cropper__source--masters-yug25 .photo-cropper__photo-layer--muted {
+  overflow: visible;
+}
+
+.photo-cropper__source--masters-yug25 .photo-cropper__photo-layer--active {
+  border-radius: 5px;
 }
 
 .photo-cropper__source--masters-yug25 .photo-cropper__frame-guide {
@@ -551,7 +634,7 @@ onUnmounted(() => {
   justify-content: flex-start;
   min-width: 28px;
   left: 2px;
-  top: 52px;
+  top: calc(var(--masters-mask-top, 40px) + 12px);
   z-index: 5;
   margin-left: 0;
   text-shadow: none;
@@ -592,11 +675,11 @@ onUnmounted(() => {
 }
 
 .photo-cropper__source--plus .photo-cropper__frame {
-  top: 0;
-  left: 0;
-  width: 186px;
-  height: 186px;
   background: #0c0e11;
+  border-radius: 8px 8px 0 0;
+}
+
+.photo-cropper__source--plus .photo-cropper__photo-layer--active {
   border-radius: 8px 8px 0 0;
 }
 
@@ -636,49 +719,5 @@ onUnmounted(() => {
   flex: 1;
   font-size: 0.9375rem;
   line-height: 1.2;
-}
-
-.photo-cropper__controls {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
-}
-
-.photo-cropper__zoom {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  font-size: 0.8125rem;
-  color: #374151;
-}
-
-.photo-cropper__zoom input[type='range'] {
-  width: 100%;
-}
-
-.photo-cropper__center-btn {
-  flex-shrink: 0;
-  padding: 0.45rem 0.7rem;
-  font: inherit;
-  font-size: 0.75rem;
-  font-weight: 500;
-  line-height: 1.2;
-  color: #374151;
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.photo-cropper__center-btn:hover:not(:disabled) {
-  background: #f9fafb;
-}
-
-.photo-cropper__center-btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
 }
 </style>

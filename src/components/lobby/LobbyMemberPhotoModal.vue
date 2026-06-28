@@ -162,6 +162,17 @@ function onAddPhoto(ev: Event) {
   openCropForNew(file)
 }
 
+function onCropDismiss() {
+  if (cropImageSrc.value.startsWith('blob:')) {
+    URL.revokeObjectURL(cropImageSrc.value)
+  }
+  cropImageSrc.value = ''
+  pendingFile.value = null
+  cropTargetUrl.value = null
+  cropModalOpen.value = false
+  open.value = false
+}
+
 async function onCropSave(crop: PhotoCrop) {
   const pl = props.player
   if (!pl?.user_id || !pl.player_card_id) return
@@ -194,6 +205,7 @@ async function onCropSave(crop: PhotoCrop) {
       if (pl.player_card_id) writeCachedPhotoLayouts(pl.player_card_id, photoLayouts.value)
     }
     cropModalOpen.value = false
+    open.value = false
   } catch (e) {
     saveError.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -372,6 +384,7 @@ async function deletePhoto(url: string) {
     :saving="saving"
     :title="`Кадрирование - ${designLabel}`"
     @save="onCropSave"
+    @close="onCropDismiss"
   />
 </template>
 

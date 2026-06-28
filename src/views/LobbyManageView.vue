@@ -807,7 +807,10 @@ async function syncActivePersistentDesignCode() {
   }
   try {
     const data = await getLobbyOverlayDesigns(lobbyId.value)
-    activePersistentDesignCode.value = normalizePersistentDesignCode(data.selected_overlay_design)
+    const selected = normalizePersistentDesignCode(data.selected_overlay_design)
+    activePersistentDesignCode.value = selected
+    selectedCardDesign.value = selected
+    initialCardDesign.value = selected
   } catch {
     activePersistentDesignCode.value = 'classic'
   }
@@ -882,8 +885,11 @@ function emitPopupMessage() {
 
 function openPhotoModal(p: LobbyPlayer) {
   if (!isLobbyHost.value || swapBusy.value || rolesResetBusy.value || !p.membership_id) return
-  photoModalPlayer.value = p
-  photoModalOpen.value = true
+  void (async () => {
+    await syncActivePersistentDesignCode()
+    photoModalPlayer.value = p
+    photoModalOpen.value = true
+  })()
 }
 
 function onPhotoModalApplied(next: GameLobby) {
@@ -1353,6 +1359,7 @@ async function saveCardDesign() {
   try {
     await setLobbyOverlayDesign(lobbyId.value, { overlay_design: selectedCardDesign.value })
     initialCardDesign.value = selectedCardDesign.value
+    activePersistentDesignCode.value = normalizePersistentDesignCode(selectedCardDesign.value)
     lobbyManageUi.notifyDesignChanged()
     cardDesignSaveMessage.value = 'Дизайн карточек сохранён.'
   } catch (e) {
@@ -1960,7 +1967,7 @@ async function saveCardDesign() {
         v-model="photoModalOpen"
         :lobby-id="lobby.id"
         :player="photoModalPlayer"
-        :overlay-design="selectedCardDesign || 'classic'"
+        :overlay-design="activePersistentDesignCode"
         @applied="onPhotoModalApplied"
       />
 

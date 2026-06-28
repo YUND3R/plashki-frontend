@@ -45,13 +45,12 @@ export function overlayPhotoSpecForDesign(rawDesignCode: string): OverlayPhotoSp
 }
 
 export function overlayPhotoAspectRatio(spec: OverlayPhotoSpec): string {
-  const w = Math.max(1, spec.frameWidth)
-  const h = Math.max(1, spec.frameHeight)
-  return `${w} / ${h}`
+  const { cw, ch } = overlayPhotoCropViewport(spec)
+  return `${Math.max(1, cw)} / ${Math.max(1, ch)}`
 }
 
 /** Masters: маска фото выступает на 40px вверх (.photo-mask { top: -40px }). */
-const MASTERS_PHOTO_MASK_TOP_OFFSET = 40
+export const MASTERS_PHOTO_MASK_TOP_OFFSET = 40
 
 /** Логический viewport кропа - одинаковый в кроппере и overlay. */
 export function overlayPhotoCropViewport(spec: OverlayPhotoSpec): { cw: number; ch: number } {
