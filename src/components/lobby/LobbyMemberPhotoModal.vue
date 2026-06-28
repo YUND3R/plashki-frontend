@@ -10,8 +10,7 @@ import {
 import { setLobbyMemberDisplayPhoto, type GameLobby, type LobbyPlayer } from '@/api/lobbies'
 import { normalizeOverlayDesignCode } from '@/utils/overlayPersistentMessage'
 import { overlayPhotoSpecForDesign } from '@/utils/overlayPhotoSpec'
-import type { PhotoCrop } from '@/utils/photoCrop'
-import { resolveLobbyPlayerPhotoFrame } from '@/utils/playerCardPhotoFrame'
+import { DEFAULT_PHOTO_CROP, MIN_PHOTO_CROP_ZOOM, type PhotoCrop } from '@/utils/photoCrop'
 import { writeCachedPhotoLayouts } from '@/utils/overlayPhotoLayoutBridge'
 import cropIcon from '@/assets/icons/cadr.svg?url'
 import deleteIcon from '@/assets/icons/delete.svg?url'
@@ -143,7 +142,7 @@ function openCropForNew(file: File) {
   pendingFile.value = file
   cropTargetUrl.value = null
   cropImageSrc.value = URL.createObjectURL(file)
-  cropInitial.value = null
+  cropInitial.value = { ...DEFAULT_PHOTO_CROP, zoom: MIN_PHOTO_CROP_ZOOM }
   cropModalOpen.value = true
 }
 
@@ -151,7 +150,7 @@ function openCropForExisting(url: string) {
   pendingFile.value = null
   cropTargetUrl.value = url
   cropImageSrc.value = url
-  cropInitial.value = photoLayouts.value[url] ?? resolveLobbyPlayerPhotoFrame(props.player, url)
+  cropInitial.value = { ...DEFAULT_PHOTO_CROP, zoom: MIN_PHOTO_CROP_ZOOM }
   cropModalOpen.value = true
 }
 
@@ -170,10 +169,19 @@ async function onCropSave(crop: PhotoCrop) {
   saveError.value = null
   try {
     if (pendingFile.value) {
-      await uploadPlayerCardPhoto(pl.user_id, pl.player_card_id, pendingFile.value, crop)
+      const uploadedUrl = await uploadPlayerCardPhoto(pl.user_id, pl.player_card_id, pendingFile.value)
+      await patchPlayerCardPhotoLayout(
+        pl.user_id,
+        pl.player_card_id,
+        uploadedUrl,
+        crop,
+        photoLayouts.value,
+      )
+      photoLayouts.value[uploadedUrl] = crop
+      if (pl.player_card_id) writeCachedPhotoLayouts(pl.player_card_id, photoLayouts.value)
       pendingFile.value = null
       await loadPhotos(pl)
-      selectedUrl.value = photoUrls.value[photoUrls.value.length - 1] ?? selectedUrl.value
+      selectedUrl.value = photoUrls.value.includes(uploadedUrl) ? uploadedUrl : photoUrls.value[photoUrls.value.length - 1] ?? selectedUrl.value
     } else if (cropTargetUrl.value) {
       await patchPlayerCardPhotoLayout(
         pl.user_id,
@@ -247,7 +255,7 @@ async function deletePhoto(url: string) {
 <template>
   <Teleport to="body">
     <Transition name="app-modal">
-      <div v-if="open" class="app-modal" role="presentation">
+      <div v-if="open && !cropModalOpen" class="app-modal" role="presentation">
         <div class="app-modal__backdrop" aria-hidden="true" @click.self="!saving && close()" />
         <div class="app-modal__wrap lmp-modal__wrap" role="dialog" aria-modal="true" aria-labelledby="lmp-title">
           <div class="app-modal__panel">

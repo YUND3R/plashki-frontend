@@ -11,6 +11,9 @@ export const DEFAULT_PHOTO_CROP: PhotoCrop = {
   zoom: 1,
 }
 
+export const MIN_PHOTO_CROP_ZOOM = 0.35
+export const MAX_PHOTO_CROP_ZOOM = 3
+
 export type PhotoLayouts = Record<string, PhotoCrop>
 
 export function normalizePhotoCrop(raw: Partial<PhotoCrop> | null | undefined): PhotoCrop {
@@ -18,9 +21,9 @@ export function normalizePhotoCrop(raw: Partial<PhotoCrop> | null | undefined): 
   const y = Number(raw?.y_pct)
   const z = Number(raw?.zoom)
   return {
-    x_pct: Number.isFinite(x) ? Math.min(142, Math.max(-42, x)) : DEFAULT_PHOTO_CROP.x_pct,
-    y_pct: Number.isFinite(y) ? Math.min(142, Math.max(-42, y)) : DEFAULT_PHOTO_CROP.y_pct,
-    zoom: Number.isFinite(z) ? Math.min(3, Math.max(1, z)) : DEFAULT_PHOTO_CROP.zoom,
+    x_pct: Number.isFinite(x) ? Math.min(100, Math.max(0, x)) : DEFAULT_PHOTO_CROP.x_pct,
+    y_pct: Number.isFinite(y) ? Math.min(100, Math.max(0, y)) : DEFAULT_PHOTO_CROP.y_pct,
+    zoom: Number.isFinite(z) ? Math.min(MAX_PHOTO_CROP_ZOOM, Math.max(MIN_PHOTO_CROP_ZOOM, z)) : DEFAULT_PHOTO_CROP.zoom,
   }
 }
 

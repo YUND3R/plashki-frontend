@@ -105,13 +105,16 @@ export async function uploadPlayerCardPhoto(
   ownerUserId: string,
   cardId: string,
   file: File,
-  crop: PhotoCrop = normalizePhotoCrop(null),
+  crop?: PhotoCrop | null,
 ): Promise<string> {
   const fd = new FormData()
   fd.append('file', file)
-  fd.append('x_pct', String(crop.x_pct))
-  fd.append('y_pct', String(crop.y_pct))
-  fd.append('zoom', String(crop.zoom))
+  if (crop) {
+    const normalizedCrop = normalizePhotoCrop(crop)
+    fd.append('x_pct', String(normalizedCrop.x_pct))
+    fd.append('y_pct', String(normalizedCrop.y_pct))
+    fd.append('zoom', String(normalizedCrop.zoom))
+  }
   const path = `${base(ownerUserId)}/${cardId}/photo`
   const data = await apiFetchFormData<unknown>(path, fd)
   return parseUploadPhotoResponse(data)
@@ -121,7 +124,7 @@ export async function uploadPlayerCardPhotos(
   ownerUserId: string,
   cardId: string,
   files: File[],
-  crop: PhotoCrop = normalizePhotoCrop(null),
+  crop?: PhotoCrop | null,
 ): Promise<string[]> {
   const urls: string[] = []
   for (const f of files) {

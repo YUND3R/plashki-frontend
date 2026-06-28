@@ -20,10 +20,12 @@ export const DEFAULT_PLAYER_CARD_PHOTO_FRAME: PlayerCardPhotoFrame = {
   y_pct: 50,
   zoom: 1,
 }
+const MIN_PLAYER_CARD_ZOOM = 0.35
+const MAX_PLAYER_CARD_ZOOM = 3
 
-/** Как в CSS `object-position`: чуть шире 0-100 помогает в превью. */
-export const PLAYER_CARD_OBJECT_POS_PCT_MIN = -42
-export const PLAYER_CARD_OBJECT_POS_PCT_MAX = 142
+/** Точка исходного фото, которая должна попасть в центр рамки. */
+export const PLAYER_CARD_OBJECT_POS_PCT_MIN = 0
+export const PLAYER_CARD_OBJECT_POS_PCT_MAX = 100
 
 export function normalizePlayerCardPhotoFrame(
   raw: Partial<PlayerCardPhotoFrame> | null | undefined,
@@ -39,12 +41,12 @@ export function normalizePlayerCardPhotoFrame(
       ? Math.min(PLAYER_CARD_OBJECT_POS_PCT_MAX, Math.max(PLAYER_CARD_OBJECT_POS_PCT_MIN, y))
       : DEFAULT_PLAYER_CARD_PHOTO_FRAME.y_pct,
     zoom: Number.isFinite(z)
-      ? Math.min(3, Math.max(1, z))
+      ? Math.min(MAX_PLAYER_CARD_ZOOM, Math.max(MIN_PLAYER_CARD_ZOOM, z))
       : DEFAULT_PLAYER_CARD_PHOTO_FRAME.zoom,
   }
 }
 
-/** Размеры контейнера и натуральное разрешение - для точного translate+scale при наличии meta. */
+/** Размеры контейнера и натуральное разрешение - для точного абсолютного рендера фото. */
 export type PhotoFrameImgStyleMeta = {
   cw: number
   ch: number
@@ -52,55 +54,27 @@ export type PhotoFrameImgStyleMeta = {
   nh: number
 }
 
-/**
- * Полный диапазон pan по оси (px) - cover-запас + zoom + минимум на zoom 1.0,
- * чтобы фото можно было двигать без предварительного увеличения.
- */
-const PHOTO_FRAME_MIN_PAN_SLACK_FRAC = 0.5
-
-/** Замедление drag в кроппере: на zoom 1.0 мышь слишком чувствительна при мин. slack. */
-export function photoFramePanDragDamping(zoom: number): number {
-  const z = Math.min(3, Math.max(1, zoom))
-  if (z <= 1.01) return 3.25
-  if (z >= 2) return 1.1
-  const t = z - 1
-  return 3.25 + t * (1.1 - 3.25)
-}
-
-export function photoFramePanSlackPx(
-  f: PlayerCardPhotoFrame,
+export function photoFrameRenderedSize(
+  frame: PlayerCardPhotoFrame | null | undefined,
   meta: PhotoFrameImgStyleMeta,
-): { slackX: number; slackY: number } {
-  const z = Math.min(3, Math.max(1, f.zoom))
+): { width: number; height: number } {
+  const f = normalizePlayerCardPhotoFrame(frame)
   const W = Math.max(1, meta.cw)
   const H = Math.max(1, meta.ch)
   const nw = Math.max(1, meta.nw)
   const nh = Math.max(1, meta.nh)
-  const sCover = Math.max(W / nw, H / nh)
-  const Dw = nw * sCover
-  const Dh = nh * sCover
-  const coverSlackX = Math.max(0, Dw - W)
-  const coverSlackY = Math.max(0, Dh - H)
-  const zoomPadX = W * Math.max(z - 1, 0)
-  const zoomPadY = H * Math.max(z - 1, 0)
-  const minSlackX = W * PHOTO_FRAME_MIN_PAN_SLACK_FRAC
-  const minSlackY = H * PHOTO_FRAME_MIN_PAN_SLACK_FRAC
+  const coverScale = Math.max(W / nw, H / nh)
   return {
-    slackX: Math.max(coverSlackX + zoomPadX, minSlackX),
-    slackY: Math.max(coverSlackY + zoomPadY, minSlackY),
+    width: nw * coverScale * f.zoom,
+    height: nh * coverScale * f.zoom,
   }
 }
 
-function photoFramePanTranslatePx(f: PlayerCardPhotoFrame, meta: PhotoFrameImgStyleMeta): { tx: number; ty: number } {
-  const { slackX, slackY } = photoFramePanSlackPx(f, meta)
-  const panHalfX = slackX / 2
-  const panHalfY = slackY / 2
-  const tx = -((f.x_pct - 50) / 50) * panHalfX
-  const ty = -((f.y_pct - 50) / 50) * panHalfY
-  return { tx, ty }
-}
-
-/** Стили `<img>` в кропе (`overflow: hidden`). Без meta - браузерный object-position + scale. */
+/**
+ * Единая модель кадра:
+ * x_pct/y_pct - точка исходного фото, которая попадает в центр рамки.
+ * zoom - масштаб относительно заполнения рамки. В модалке и overlay используется один CSS.
+ */
 export function photoFrameImgStyle(
   frame: PlayerCardPhotoFrame | null | undefined,
   meta?: PhotoFrameImgStyleMeta | null,
@@ -115,18 +89,28 @@ export function photoFrameImgStyle(
     meta.ch >= 8 &&
     Number.isFinite(meta.nw + meta.nh + meta.cw + meta.ch)
 
-  const transform = hasMeta
-    ? (() => {
-        const { tx, ty } = photoFramePanTranslatePx(f, meta!)
-        return `translate(${+tx.toFixed(3)}px, ${+ty.toFixed(3)}px) scale(${f.zoom})`
-      })()
-    : `scale(${f.zoom})`
+  if (!hasMeta) {
+    return {
+      objectFit: 'cover',
+      objectPosition: `${f.x_pct}% ${f.y_pct}%`,
+      transform: `scale(${f.zoom})`,
+      transformOrigin: 'center center',
+    }
+  }
 
+  const { width, height } = photoFrameRenderedSize(f, meta!)
   return {
-    objectFit: 'cover',
-    objectPosition: hasMeta ? '50% 50%' : `${f.x_pct}% ${f.y_pct}%`,
-    transform,
-    transformOrigin: 'center center',
+    position: 'absolute',
+    left: '50%',
+    top: '50%',
+    width: `${+width.toFixed(3)}px`,
+    height: `${+height.toFixed(3)}px`,
+    maxWidth: 'none',
+    maxHeight: 'none',
+    objectFit: 'fill',
+    objectPosition: '50% 50%',
+    transform: `translate(-${+f.x_pct.toFixed(3)}%, -${+f.y_pct.toFixed(3)}%)`,
+    transformOrigin: '0 0',
   }
 }
 
