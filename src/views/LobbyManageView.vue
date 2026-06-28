@@ -534,6 +534,7 @@ async function applyImportedSelectionByKey(keyRaw: string) {
 function openImportedParticipantsModal() {
   if (!isLobbyHost.value || !lobbyId.value || !hasImportedSelection.value) return
   if (swapBusy.value || rolesResetBusy.value || replaceSubmitting.value) return
+  closeImportedMenus()
   importedParticipantsModalOpen.value = true
 }
 

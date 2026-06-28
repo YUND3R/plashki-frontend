@@ -143,7 +143,7 @@ function onOverlayPointerDown(e: PointerEvent) {
 .imported-pmodal {
   position: fixed;
   inset: 0;
-  z-index: 90;
+  z-index: 340;
   display: flex;
   align-items: center;
   justify-content: center;
