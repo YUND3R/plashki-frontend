@@ -1,14 +1,17 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import { RouterLink, useRouter } from 'vue-router'
-import type { GameLobby } from '@/api/lobbies'
+import type { GameLobby, LobbyListParams } from '@/api/lobbies'
 import {
   deleteLobby,
   getLobbyImportedParticipants,
   getLobbyOverlayDesigns,
+  getLobbiesCount,
   importGomafiaTournament,
-  listMyLobbies,
+  listLobbies,
 } from '@/api/lobbies'
+import { useDebouncedRef } from '@/composables/useDebouncedRef'
 import { useDashboardUiStore } from '@/stores/dashboardUi'
 import deleteLobbyIcon from '@/assets/icons/delete.svg?url'
 import goLobbyIcon from '@/assets/icons/go.svg?url'
@@ -40,8 +43,20 @@ function overlayDesignFallbackLabel(code: string): string {
     .join(' ')
 }
 
+const LOBBY_PAGE_SIZE = 20
+
 const router = useRouter()
 const dashboardUi = useDashboardUiStore()
+const {
+  tournamentSearchQuery,
+  lobbyFilter,
+  overlayDesignFilter,
+  sortBy,
+  sortOrder,
+  lobbyListPage,
+} = storeToRefs(dashboardUi)
+const debouncedSearch = useDebouncedRef(tournamentSearchQuery, 400)
+const lobbiesTotal = ref(0)
 const apiBase = computed(() => import.meta.env.VITE_API_BASE_URL ?? '(не задан - скопируйте .env.example в .env)')
 
 const modalOpen = ref(false)
@@ -73,11 +88,32 @@ function lobbyTitle(lobby: GameLobby): string {
   return `Лобби ${lobby.id.slice(0, 8)}`
 }
 
+function buildLobbyListParams(): LobbyListParams {
+  const q = debouncedSearch.value.trim()
+  const params: LobbyListParams = {
+    sort_by: sortBy.value,
+    sort_order: sortOrder.value,
+  }
+  if (q) params.q = q
+  if (overlayDesignFilter.value) params.overlay_design = overlayDesignFilter.value
+  if (lobbyFilter.value === 'all') {
+    params.limit = LOBBY_PAGE_SIZE
+    params.offset = lobbyListPage.value * LOBBY_PAGE_SIZE
+  }
+  return params
+}
+
 async function refreshLobbies() {
   loading.value = true
   loadError.value = null
   try {
-    const list = await listMyLobbies()
+    const params = buildLobbyListParams()
+    const countParams = { q: params.q, overlay_design: params.overlay_design }
+    const [list, total] = await Promise.all([
+      listLobbies(params),
+      lobbyFilter.value === 'all' ? getLobbiesCount(countParams) : Promise.resolve(0),
+    ])
+    lobbiesTotal.value = lobbyFilter.value === 'all' ? total : list.length
     const withDesign = await Promise.all(
       list.map(async (lobby): Promise<DashboardLobbyEntry> => {
         let cardDesignLabel = '-'
@@ -124,7 +160,7 @@ async function refreshLobbies() {
 }
 
 function filterLobbiesByCategory(list: DashboardLobbyEntry[]): DashboardLobbyEntry[] {
-  switch (dashboardUi.lobbyFilter) {
+  switch (lobbyFilter.value) {
     case 'mine':
       return list.filter((x) => !x.fromGomafia)
     case 'gomafia':
@@ -134,22 +170,38 @@ function filterLobbiesByCategory(list: DashboardLobbyEntry[]): DashboardLobbyEnt
   }
 }
 
-const filteredSavedLobbies = computed(() => {
-  let list = filterLobbiesByCategory(savedLobbies.value)
-  const q = dashboardUi.tournamentSearchQuery.trim().toLowerCase()
-  if (q) {
-    list = list.filter((x) => x.name.toLowerCase().includes(q))
-  }
-  return list
-})
+const filteredSavedLobbies = computed(() => filterLobbiesByCategory(savedLobbies.value))
+
+const showLobbyPagination = computed(
+  () => lobbyFilter.value === 'all' && lobbiesTotal.value > LOBBY_PAGE_SIZE,
+)
+
+const lobbyPageFrom = computed(() => lobbyListPage.value * LOBBY_PAGE_SIZE + 1)
+
+const lobbyPageTo = computed(() =>
+  Math.min((lobbyListPage.value + 1) * LOBBY_PAGE_SIZE, lobbiesTotal.value),
+)
 
 /** Сообщение, если список пуст при ненулевом списке сохранённых лобби */
 const dashboardListEmptyHint = computed(() => {
+  const q = tournamentSearchQuery.value.trim()
+  if (!savedLobbies.value.length && q) return 'Ничего не найдено по этому названию.'
   const catOnly = filterLobbiesByCategory(savedLobbies.value)
-  const q = dashboardUi.tournamentSearchQuery.trim()
-  if (!catOnly.length) return 'Нет лобби в выбранной категории.'
+  if (savedLobbies.value.length && !catOnly.length) return 'Нет лобби в выбранной категории.'
   if (q && !filteredSavedLobbies.value.length) return 'Ничего не найдено по этому названию.'
   return ''
+})
+
+watch([debouncedSearch, overlayDesignFilter, sortBy, sortOrder, lobbyFilter], () => {
+  if (lobbyListPage.value !== 0) {
+    lobbyListPage.value = 0
+  } else {
+    void refreshLobbies()
+  }
+})
+
+watch(lobbyListPage, () => {
+  void refreshLobbies()
 })
 
 onMounted(() => {
@@ -376,8 +428,36 @@ async function confirmDeleteLobby() {
     <p v-if="loading" class="dashboard__text">Загружаем лобби из базы…</p>
     <p v-else-if="loadError" class="dashboard__text dashboard__text--error" role="alert">{{ loadError }}</p>
 
-    <div v-if="savedLobbies.length" class="dashboard__created">
-      <h2 class="dashboard__created-title">Созданные лобби</h2>
+    <div v-if="savedLobbies.length || tournamentSearchQuery.trim() || overlayDesignFilter" class="dashboard__created">
+      <div class="dashboard__created-head">
+        <h2 class="dashboard__created-title">Созданные лобби</h2>
+        <div class="dashboard__list-controls">
+          <label class="dashboard__control">
+            <span class="dashboard__control-label">Дизайн</span>
+            <select v-model="overlayDesignFilter" class="dashboard__select" aria-label="Фильтр по дизайну оверлея">
+              <option value="">Все</option>
+              <option value="classic">Classic</option>
+              <option value="plus">Plus</option>
+              <option value="masters-yug25">Masters Yug25</option>
+            </select>
+          </label>
+          <label class="dashboard__control">
+            <span class="dashboard__control-label">Сортировка</span>
+            <select v-model="sortBy" class="dashboard__select" aria-label="Поле сортировки">
+              <option value="created_at">По дате</option>
+              <option value="title">По названию</option>
+              <option value="max_players">По числу мест</option>
+            </select>
+          </label>
+          <label class="dashboard__control dashboard__control--order">
+            <span class="dashboard__control-label">Порядок</span>
+            <select v-model="sortOrder" class="dashboard__select" aria-label="Направление сортировки">
+              <option value="desc">Сначала новые / Z→A</option>
+              <option value="asc">Сначала старые / A→Z</option>
+            </select>
+          </label>
+        </div>
+      </div>
       <ul v-if="filteredSavedLobbies.length" class="dashboard__created-list">
         <li v-for="item in filteredSavedLobbies" :key="item.id">
           <div class="dashboard-lobby-card dashboard-lobby-card--saved-shell">
@@ -439,7 +519,32 @@ async function confirmDeleteLobby() {
           </div>
         </li>
       </ul>
-      <p v-else class="dashboard__filter-empty">{{ dashboardListEmptyHint }}</p>
+      <p v-else-if="!loading" class="dashboard__filter-empty">{{ dashboardListEmptyHint || 'Список лобби пуст.' }}</p>
+      <nav
+        v-if="showLobbyPagination"
+        class="dashboard__pagination"
+        aria-label="Страницы списка лобби"
+      >
+        <button
+          type="button"
+          class="dashboard__page-btn"
+          :disabled="lobbyListPage === 0 || loading"
+          @click="lobbyListPage -= 1"
+        >
+          Назад
+        </button>
+        <span class="dashboard__page-info">
+          {{ lobbyPageFrom }}–{{ lobbyPageTo }} из {{ lobbiesTotal }}
+        </span>
+        <button
+          type="button"
+          class="dashboard__page-btn"
+          :disabled="lobbyPageTo >= lobbiesTotal || loading"
+          @click="lobbyListPage += 1"
+        >
+          Вперёд
+        </button>
+      </nav>
     </div>
 
     <p class="dashboard__text">База API: <code>{{ apiBase }}</code></p>
@@ -776,6 +881,70 @@ async function confirmDeleteLobby() {
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
+}
+
+.dashboard__created-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.dashboard__list-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 0.75rem;
+}
+
+.dashboard__control {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.dashboard__control-label {
+  line-height: 1.2;
+}
+
+.dashboard__select {
+  min-width: 7.5rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 0.8125rem;
+  color: #111827;
+}
+
+.dashboard__pagination {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.dashboard__page-btn {
+  padding: 0.35rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 0.8125rem;
+  color: #374151;
+  cursor: pointer;
+}
+
+.dashboard__page-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.dashboard__page-info {
+  font-size: 0.8125rem;
+  color: #6b7280;
 }
 
 .dashboard__filter-empty {

@@ -10,6 +10,10 @@ import {
   type LobbyPlayer,
 } from '@/api/lobbies'
 import { enrichLobbyPhotoLayouts, applyStablePhotoLayouts } from '@/utils/overlayPhotoLayoutBridge'
+import {
+  overlayLobbyDataSignature,
+  subscribeOverlayLobbyChanged,
+} from '@/utils/overlayLobbySync'
 import OverlayClassicDesign from '@/components/overlay/designs/OverlayClassicDesign.vue'
 import OverlayMastersDesign from '@/components/overlay/designs/OverlayMastersDesign.vue'
 import OverlayPlusDesign from '@/components/overlay/designs/OverlayPlusDesign.vue'
@@ -29,9 +33,20 @@ const lobby = ref<GameLobby | null>(null)
 const loading = ref(true)
 const error = ref<string | null>(null)
 let pollTimer: ReturnType<typeof setInterval> | null = null
+let unsubLobbySync: (() => void) | null = null
 let loadSeq = 0
 let designsPollTick = 0
 const DESIGNS_POLL_EVERY = 10
+/** Лёгкий poll /overlay/live (только метаданные OBS). */
+const LIVE_POLL_MS = 2000
+/** Полный GET /lobbies, если событие из редактора не дошло (OBS на другом ПК). */
+const FALLBACK_FULL_FETCH_MS = 30_000
+
+let lastLiveSignature = ''
+let previousActiveLobbyId = ''
+let lastAppliedLobbySignature = ''
+let lastFullFetchAt = 0
+let syncFetchPending = false
 
 const isLiveRoute = computed(() => route.name === 'overlay-live')
 const routeLobbyId = computed(() => String(route.params.lobbyId ?? '').trim())
@@ -119,19 +134,21 @@ const currentDesignComponent = computed(() => {
 })
 
 function lobbyDataSignature(value: GameLobby): string {
+  return overlayLobbyDataSignature(value)
+}
+
+function overlayLiveSignature(state: OverlayGlobalStateResponse | null): string {
+  if (!state) return ''
   return JSON.stringify({
-    design: value.overlay_design ?? '',
-    sheriff: value.sheriff_check ?? null,
-    best: value.best_move ?? null,
-    players: value.players.map((p) => ({
-      id: p.membership_id,
-      nick: p.nickname,
-      role: p.game_role,
-      status: p.status,
-      photo: p.lobby_photo_url ?? p.photo_urls?.[0] ?? '',
-      card: p.player_card_id,
-    })),
+    lobby: state.active_lobby_id ?? '',
+    screen: state.active_overlay_screen ?? '',
+    design: state.selected_overlay_design ?? '',
   })
+}
+
+function requestFullLobbyFetch() {
+  syncFetchPending = true
+  void pollOverlay()
 }
 
 function mergeOverlayDesign(fresh: GameLobby, designs: Awaited<ReturnType<typeof getLobbyOverlayDesigns>> | null): GameLobby {
@@ -166,49 +183,52 @@ async function enrichLobbyInBackground(merged: GameLobby, seq: number) {
   }
 }
 
-async function loadLobby() {
+async function fetchFullLobby() {
   if (!effectiveLobbyId.value && !isLiveRoute.value) {
     loading.value = false
     error.value = 'Не указан lobbyId'
     return
   }
+  if (isLiveRoute.value && !liveActiveLobbyId.value) {
+    lobby.value = null
+    error.value = null
+    loading.value = false
+    return
+  }
+
   const seq = ++loadSeq
   const isInitialLoad = !lobby.value
   if (isInitialLoad) loading.value = true
-  try {
-    if (isLiveRoute.value) {
-      const liveState = await getOverlayLive()
-      if (seq !== loadSeq) return
-      overlayLiveState.value = liveState
-      liveActiveLobbyId.value = liveState.active_lobby_id ?? ''
-      if (!liveActiveLobbyId.value) {
-        lobby.value = null
-        error.value = null
-        return
-      }
-      const fresh = await getLobbyFresh(liveActiveLobbyId.value)
-      if (seq !== loadSeq) return
-      const merged = mergeOverlayState(fresh, liveState)
-      lobby.value = applyStablePhotoLayouts(lobby.value, merged)
-      error.value = null
-      void enrichLobbyInBackground(merged, seq)
-      return
-    }
 
+  try {
     const shouldFetchDesigns =
+      !isLiveRoute.value &&
       isAutoDesignRoute.value &&
       (designsPollTick++ % DESIGNS_POLL_EVERY === 0 || !lobby.value?.overlay_design)
-    const freshPromise = getLobbyFresh(effectiveLobbyId.value)
+
+    const lobbyIdForFetch = isLiveRoute.value ? liveActiveLobbyId.value : effectiveLobbyId.value
+    const freshPromise = getLobbyFresh(lobbyIdForFetch)
     const designsPromise = shouldFetchDesigns
-      ? getLobbyOverlayDesigns(effectiveLobbyId.value).catch(() => null)
+      ? getLobbyOverlayDesigns(lobbyIdForFetch).catch(() => null)
       : Promise.resolve(null)
     const [fresh, designs] = await Promise.all([freshPromise, designsPromise])
     if (seq !== loadSeq) return
 
-    const merged = mergeOverlayDesign(fresh, designs)
-    lobby.value = applyStablePhotoLayouts(lobby.value, merged)
+    const merged = isLiveRoute.value
+      ? mergeOverlayState(fresh, overlayLiveState.value)
+      : mergeOverlayDesign(fresh, designs)
+
+    lastFullFetchAt = Date.now()
+    const nextSignature = lobbyDataSignature(merged)
+    const dataChanged = nextSignature !== lastAppliedLobbySignature
+
+    if (dataChanged) {
+      lastAppliedLobbySignature = nextSignature
+      lobby.value = applyStablePhotoLayouts(lobby.value, merged)
+      void enrichLobbyInBackground(merged, seq)
+    }
+
     error.value = null
-    void enrichLobbyInBackground(merged, seq)
   } catch (e) {
     if (seq !== loadSeq) return
     if (!lobby.value) {
@@ -217,6 +237,54 @@ async function loadLobby() {
   } finally {
     if (seq === loadSeq) loading.value = false
   }
+}
+
+async function pollOverlay() {
+  let needFull = syncFetchPending || !lobby.value
+
+  if (isLiveRoute.value) {
+    try {
+      const liveState = await getOverlayLive()
+      overlayLiveState.value = liveState
+      const nextLobbyId = liveState.active_lobby_id ?? ''
+      const liveSig = overlayLiveSignature(liveState)
+      const liveMetaChanged = liveSig !== lastLiveSignature
+      const lobbySwitched = nextLobbyId !== previousActiveLobbyId
+
+      lastLiveSignature = liveSig
+      previousActiveLobbyId = nextLobbyId
+      liveActiveLobbyId.value = nextLobbyId
+
+      if (!nextLobbyId) {
+        lobby.value = null
+        lastAppliedLobbySignature = ''
+        error.value = null
+        syncFetchPending = false
+        loading.value = false
+        return
+      }
+
+      needFull = needFull || liveMetaChanged || lobbySwitched
+    } catch (e) {
+      if (!lobby.value) {
+        error.value = e instanceof Error ? e.message : String(e)
+      }
+      return
+    }
+  } else if (!effectiveLobbyId.value) {
+    loading.value = false
+    error.value = 'Не указан lobbyId'
+    return
+  }
+
+  if (!needFull && Date.now() - lastFullFetchAt >= FALLBACK_FULL_FETCH_MS) {
+    needFull = true
+  }
+
+  if (!needFull) return
+
+  syncFetchPending = false
+  await fetchFullLobby()
 }
 
 function loadPersistentMessage() {
@@ -267,17 +335,22 @@ function loadPopupMessage() {
 function startPolling() {
   if (pollTimer) clearInterval(pollTimer)
   pollTimer = setInterval(() => {
-    void loadLobby()
-  }, 1000)
+    void pollOverlay()
+  }, LIVE_POLL_MS)
 }
 
 async function restartForLobbyChange() {
   loadSeq += 1
   designsPollTick = 0
+  lastLiveSignature = ''
+  previousActiveLobbyId = ''
+  lastAppliedLobbySignature = ''
+  lastFullFetchAt = 0
+  syncFetchPending = false
   setActivePopupMessage(null)
   lastPopupMessageId.value = ''
   lobby.value = null
-  await loadLobby()
+  await pollOverlay()
   startPolling()
 }
 
@@ -289,7 +362,16 @@ onMounted(async () => {
   loadPersistentMessage()
   loadPopupMessage()
   window.addEventListener('storage', onStorageChanged)
-  await loadLobby()
+  unsubLobbySync = subscribeOverlayLobbyChanged((event) => {
+    if (isLiveRoute.value) {
+      if (liveActiveLobbyId.value && event.lobbyId !== liveActiveLobbyId.value) return
+      requestFullLobbyFetch()
+      return
+    }
+    if (event.lobbyId === routeLobbyId.value) requestFullLobbyFetch()
+  })
+  syncFetchPending = true
+  await pollOverlay()
   startPolling()
 })
 
@@ -317,6 +399,8 @@ function onStorageChanged(e: StorageEvent) {
 
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer)
+  unsubLobbySync?.()
+  unsubLobbySync = null
   clearPopupHideTimer()
   window.removeEventListener('storage', onStorageChanged)
   document.documentElement.classList.remove('overlay-page')

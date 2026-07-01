@@ -1,5 +1,6 @@
 import { ApiError, apiFetch, apiFetchJson } from './client'
 import { me } from './auth'
+import { buildQuery, type LobbyListParams } from './listQuery'
 import type { PhotoLayouts } from './playerCards'
 import { normalizePhotoCrop, normalizePhotoLayouts, type PhotoCrop } from '@/utils/photoCrop'
 
@@ -303,8 +304,74 @@ function hasLobbyName(lobby: GameLobby): boolean {
   return typeof lobby.name === 'string' && lobby.name.trim().length > 0
 }
 
-/** Список лобби текущего пользователя из бэка (без localStorage). */
+export type { LobbyListParams } from './listQuery'
+
+async function enrichLobbyNames(lobbies: GameLobby[]): Promise<GameLobby[]> {
+  if (!lobbies.length) return lobbies
+  return Promise.all(
+    lobbies.map(async (lobby) => {
+      if (hasLobbyName(lobby)) return lobby
+      try {
+        const detailed = await getLobby(lobby.id)
+        return hasLobbyName(detailed) ? detailed : lobby
+      } catch {
+        return lobby
+      }
+    }),
+  )
+}
+
+/** Список лобби текущего пользователя с серверными фильтрами. */
+export async function listLobbies(params: LobbyListParams = {}): Promise<GameLobby[]> {
+  const query = buildQuery({
+    q: params.q?.trim(),
+    overlay_design: params.overlay_design,
+    sort_by: params.sort_by,
+    sort_order: params.sort_order,
+    limit: params.limit,
+    offset: params.offset,
+  })
+
+  try {
+    const payload = await apiFetch<unknown>(`/lobbies${query}`, { method: 'GET' })
+    const parsed = extractLobbyArray(payload).map(toGameLobby).filter((x): x is GameLobby => x !== null)
+    return enrichLobbyNames(parsed)
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 404 || error.status === 405)) {
+      return listMyLobbiesLegacy()
+    }
+    throw error
+  }
+}
+
+export type LobbiesCountResponse = { total: number }
+
+/** Счётчик лobbi с теми же фильтрами, что listLobbies (без limit/offset). */
+export async function getLobbiesCount(
+  params: Pick<LobbyListParams, 'q' | 'overlay_design'> = {},
+): Promise<number> {
+  const query = buildQuery({
+    q: params.q?.trim(),
+    overlay_design: params.overlay_design,
+  })
+  try {
+    const data = await apiFetch<LobbiesCountResponse>(`/lobbies/count${query}`)
+    return typeof data.total === 'number' ? data.total : 0
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 404 || error.status === 405)) {
+      const all = await listMyLobbiesLegacy()
+      return all.length
+    }
+    throw error
+  }
+}
+
+/** @deprecated Используйте listLobbies(). Оставлено для fallback и внутренних вызовов. */
 export async function listMyLobbies(): Promise<GameLobby[]> {
+  return listLobbies()
+}
+
+async function listMyLobbiesLegacy(): Promise<GameLobby[]> {
   const currentUser = await me()
   const endpoints = ['/lobbies/my', `/users/${currentUser.id}/lobbies`, '/lobbies']
   let lastError: unknown = null
@@ -314,19 +381,7 @@ export async function listMyLobbies(): Promise<GameLobby[]> {
       const payload = await apiFetch<unknown>(endpoint, { method: 'GET' })
       const parsed = extractLobbyArray(payload).map(toGameLobby).filter((x): x is GameLobby => x !== null)
       if (!parsed.length) return parsed
-      // Иногда список лобби приходит без name, хотя detail по id имя возвращает.
-      const enriched = await Promise.all(
-        parsed.map(async (lobby) => {
-          if (hasLobbyName(lobby)) return lobby
-          try {
-            const detailed = await getLobby(lobby.id)
-            return hasLobbyName(detailed) ? detailed : lobby
-          } catch {
-            return lobby
-          }
-        }),
-      )
-      return enriched
+      return enrichLobbyNames(parsed)
     } catch (error) {
       if (error instanceof ApiError && (error.status === 404 || error.status === 405 || error.status === 422)) {
         lastError = error

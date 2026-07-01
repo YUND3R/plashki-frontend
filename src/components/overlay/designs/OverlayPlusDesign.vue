@@ -290,7 +290,7 @@ function finishEliminationAnimation(key: string) {
 function onElimPhotoAnimationEnd(p: LobbyPlayer | null, idx: number, event: AnimationEvent) {
   if (event.target !== event.currentTarget) return
   if (elimStage(p, idx) !== 'drop') return
-  if (event.animationName !== 'overlay-plus-photo-collapse') return
+  if (event.animationName !== 'overlay-plus-photo-scale-out') return
   finishEliminationAnimation(seatKey(p, idx))
 }
 
@@ -341,7 +341,12 @@ function elimCardAnimStyle(p: LobbyPlayer | null, idx: number): Record<string, s
 
 function isCardEliminatedLayout(p: LobbyPlayer | null, idx: number): boolean {
   if (!isEliminatedStatus(p?.status ?? null)) return false
-  return elimStage(p, idx) !== 'fill'
+  const stage = elimStage(p, idx)
+  return stage !== 'fill' && stage !== 'drop'
+}
+
+function isCardDropAnimating(p: LobbyPlayer | null, idx: number): boolean {
+  return elimStage(p, idx) === 'drop'
 }
 
 function statusIcon(status: string | null): string {
@@ -482,7 +487,10 @@ onUnmounted(() => {
       v-for="(p, idx) in props.seats"
       :key="p?.membership_id ?? `empty-${idx}`"
       class="overlay-plus-card"
-      :class="{ 'overlay-plus-card--eliminated': isCardEliminatedLayout(p, idx) }"
+      :class="{
+        'overlay-plus-card--eliminated': isCardEliminatedLayout(p, idx),
+        'overlay-plus-card--anim-drop': isCardDropAnimating(p, idx),
+      }"
       :style="elimCardAnimStyle(p, idx)"
     >
       <div v-if="showSheriffChecksAbove(p)" class="overlay-plus-card__checks">
@@ -710,10 +718,23 @@ onUnmounted(() => {
   height: 224px;
   border-radius: 8px;
   overflow: visible;
-  background:
-    radial-gradient(circle at 82% 18%, rgba(52, 211, 153, 0.22) 0%, transparent 42%),
-    radial-gradient(circle at 12% 88%, rgba(251, 191, 36, 0.08) 0%, transparent 48%),
-    linear-gradient(180deg, #0f172a 0%, #020617 100%);
+  background: #0c0e11;
+}
+
+.overlay-plus-card--anim-drop {
+  height: 224px;
+  overflow: hidden;
+  background: rgba(12, 14, 17, 0.92);
+  animation: overlay-plus-card-shrink var(--plus-elim-drop-ms, 1080ms)
+    cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+
+.overlay-plus-card--anim-drop .overlay-plus-card__status-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 5;
 }
 
 .overlay-plus-card--eliminated {
@@ -791,13 +812,14 @@ onUnmounted(() => {
   border-radius: 8px 8px 0 0;
   overflow: hidden;
   flex-shrink: 0;
-  will-change: height;
 }
 
 .overlay-plus-card__photo-wrap--anim-drop {
-  animation: overlay-plus-photo-collapse var(--plus-elim-drop-ms, 720ms)
+  transform-origin: top center;
+  animation: overlay-plus-photo-scale-out var(--plus-elim-drop-ms, 1080ms)
     cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
   pointer-events: none;
+  will-change: transform;
 }
 
 .overlay-plus-card__photo-wrap--anim-drop .overlay-plus-card__photo {
@@ -909,16 +931,21 @@ onUnmounted(() => {
   }
 }
 
-@keyframes overlay-plus-photo-collapse {
+@keyframes overlay-plus-photo-scale-out {
   from {
-    height: 186px;
-    margin: 0;
+    transform: scaleY(1);
   }
   to {
-    height: 0;
-    min-height: 0;
-    max-height: 0;
-    margin: 0;
+    transform: scaleY(0);
+  }
+}
+
+@keyframes overlay-plus-card-shrink {
+  from {
+    height: 224px;
+  }
+  to {
+    height: 74px;
   }
 }
 

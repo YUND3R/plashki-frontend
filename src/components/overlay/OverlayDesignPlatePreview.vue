@@ -22,13 +22,19 @@ const props = withDefaults(
 type PreviewBounds = {
   w: number
   h: number
-  topBleed: number
 }
 
 const PREVIEW_BOUNDS: Record<'classic' | 'masters-yug25' | 'plus', PreviewBounds> = {
-  classic: { w: 186, h: 151, topBleed: 22 },
-  'masters-yug25': { w: 185, h: 125, topBleed: MASTERS_PHOTO_MASK_TOP_OFFSET },
-  plus: { w: 186, h: 224, topBleed: 0 },
+  classic: { w: 186, h: 151 },
+  'masters-yug25': { w: 185, h: 125 },
+  plus: { w: 186, h: 224 },
+}
+
+/** Фото выступает выше плашки — как .photo-mask { top: -40px } и classic photo-float. */
+const PHOTO_TOP_BLEED: Record<'classic' | 'masters-yug25' | 'plus', number> = {
+  classic: 22,
+  'masters-yug25': MASTERS_PHOTO_MASK_TOP_OFFSET,
+  plus: 0,
 }
 
 const PLATE_GAP_PX = 14
@@ -45,35 +51,54 @@ const bounds = computed(
   () => PREVIEW_BOUNDS[variant.value as keyof typeof PREVIEW_BOUNDS] ?? PREVIEW_BOUNDS.classic,
 )
 
-const frameHeight = computed(() => bounds.value.h + bounds.value.topBleed)
+const plateHeight = computed(() => bounds.value.h)
+
+const photoTopBleed = computed(
+  () => PHOTO_TOP_BLEED[variant.value as keyof typeof PHOTO_TOP_BLEED] ?? 0,
+)
+
+/** Высота HTML-контейнера scale: плашка + зона фото над ней (как в overlay). */
+const renderHeight = computed(() => plateHeight.value + photoTopBleed.value)
 
 const plateSeats = computed(() =>
   [0, 1, 2].map((idx) => props.seats[idx] ?? null),
 )
+
+function hasPhoto(player: LobbyPlayer | null): boolean {
+  return !!player && !!rowPhoto(player)
+}
+
+const anyPreviewPhoto = computed(() => plateSeats.value.some((player) => hasPhoto(player)))
+
+function scaleStyleFor(player: LobbyPlayer | null) {
+  const h = hasPhoto(player) ? renderHeight.value : plateHeight.value
+  return {
+    width: `${bounds.value.w}px`,
+    height: `${h}px`,
+    transform: `translateX(-50%) scale(${plateScale.value})`,
+    transformOrigin: 'bottom center',
+  }
+}
 
 const plateScale = computed(() => {
   const b = bounds.value
   const packedWidth = b.w * 3 + PLATE_GAP_PX * 2
   const scaleByContainer = (rootWidth.value - STAGE_PAD_X) / packedWidth
   const scaleByTarget = TARGET_PLATE_WIDTH / b.w
-  const scaleByHeight = STAGE_INNER_HEIGHT / frameHeight.value
+  const scaleByHeight = STAGE_INNER_HEIGHT / plateHeight.value
   return Math.min(scaleByContainer, scaleByTarget, scaleByHeight) * 0.98
 })
 
 const stageStyle = computed(() => ({
-  minHeight: `${Math.ceil(frameHeight.value * plateScale.value)}px`,
+  minHeight: `${Math.ceil(plateHeight.value * plateScale.value)}px`,
+  paddingTop: anyPreviewPhoto.value
+    ? `${Math.ceil(photoTopBleed.value * plateScale.value)}px`
+    : '0px',
 }))
 
 const cellStyle = computed(() => ({
   width: `${Math.ceil(bounds.value.w * plateScale.value)}px`,
-  height: `${Math.ceil(frameHeight.value * plateScale.value)}px`,
-}))
-
-const scaleStyle = computed(() => ({
-  width: `${bounds.value.w}px`,
-  height: `${frameHeight.value}px`,
-  transform: `translateX(-50%) scale(${plateScale.value})`,
-  transformOrigin: 'bottom center',
+  height: `${Math.ceil(plateHeight.value * plateScale.value)}px`,
 }))
 
 const mastersSeatIcons = [seat1Icon, seat2Icon, seat3Icon]
@@ -87,10 +112,6 @@ function displayNick(player: LobbyPlayer | null, idx: number): string {
   const label = nick || `Игрок ${idx + 1}`
   if (label.length <= 12) return label
   return `${label.slice(0, 11)}…`
-}
-
-function hasPhoto(player: LobbyPlayer | null): boolean {
-  return !!player && !!rowPhoto(player)
 }
 
 let resizeObserver: ResizeObserver | null = null
@@ -112,7 +133,7 @@ onUnmounted(() => {
 <template>
   <div ref="rootRef" class="odpp" :class="`odpp--${variant}`" :style="stageStyle" aria-hidden="true">
     <div v-for="(player, idx) in plateSeats" :key="idx" class="odpp__cell" :style="cellStyle">
-      <div class="odpp__scale" :style="scaleStyle">
+      <div class="odpp__scale" :style="scaleStyleFor(player)">
         <article v-if="variant === 'classic'" class="odpp-classic">
           <div class="odpp-classic__top">
             <span class="odpp-classic__seat">{{ idx + 1 }}</span>
@@ -133,16 +154,18 @@ onUnmounted(() => {
           </div>
         </article>
 
-        <article v-else-if="variant === 'masters-yug25'" class="odpp-masters">
-          <div class="odpp-masters__photo-mask">
+        <article
+          v-else-if="variant === 'masters-yug25'"
+          class="odpp-masters"
+          :class="{ 'odpp-masters--no-photo': !hasPhoto(player) }"
+        >
+          <div v-if="hasPhoto(player)" class="odpp-masters__photo-mask">
             <div class="odpp-masters__photo-stage">
               <OverlayPlayerPhoto
-                v-if="hasPhoto(player)"
                 :player="player"
                 design-code="masters-yug25"
                 img-class="odpp-masters__photo"
               />
-              <div v-else class="odpp-masters__photo odpp-masters__photo--empty" />
             </div>
           </div>
           <span class="odpp-masters__head">
@@ -271,7 +294,7 @@ onUnmounted(() => {
   left: 0;
   top: 0;
   transform: none;
-  background: linear-gradient(180deg, #1f2937 0%, #111827 100%);
+  background: transparent;
 }
 
 .odpp-classic__bottom {
@@ -323,6 +346,10 @@ onUnmounted(() => {
   );
 }
 
+.odpp-masters--no-photo::before {
+  background: none;
+}
+
 .odpp-masters__photo-mask {
   position: absolute;
   top: -40px;
@@ -348,10 +375,6 @@ onUnmounted(() => {
   height: 100%;
   object-fit: cover;
   display: block;
-}
-
-.odpp-masters__photo--empty {
-  background: linear-gradient(180deg, #1f2937 0%, #0a0a0a 100%);
 }
 
 .odpp-masters__head {

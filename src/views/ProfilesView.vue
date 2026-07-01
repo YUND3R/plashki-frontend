@@ -7,12 +7,14 @@ import { collectGomafiaImportedPlayerCardIds } from '@/api/lobbies'
 import { deletePlayerCard, listPlayerCards, type PlayerCard } from '@/api/playerCards'
 import PlayerCardCreateModal from '@/components/account/PlayerCardCreateModal.vue'
 import PlayerCardInfoModal from '@/components/account/PlayerCardInfoModal.vue'
+import { useDebouncedRef } from '@/composables/useDebouncedRef'
 import { useAuthStore } from '@/stores/auth'
 import { useProfilesUiStore } from '@/stores/profilesUi'
 
 const { token } = storeToRefs(useAuthStore())
 const profilesUi = useProfilesUiStore()
 const { searchQuery, viewMode, playerFilter } = storeToRefs(profilesUi)
+const debouncedSearch = useDebouncedRef(searchQuery, 400)
 
 const cards = ref<PlayerCard[]>([])
 const gomafiaImportedCardIds = ref<Set<string>>(new Set())
@@ -146,12 +148,7 @@ const filteredCards = computed(() => {
   } else if (playerFilter.value === 'gomafia') {
     list = list.filter(isFromGomafiaImport)
   }
-  const q = searchQuery.value.trim().toLowerCase()
-  if (!q) return list
-  return list.filter((c) => {
-    const hay = `${c.nickname} ${c.first_name} ${c.last_name}`.toLowerCase()
-    return hay.includes(q)
-  })
+  return list
 })
 
 async function load() {
@@ -164,8 +161,9 @@ async function load() {
   error.value = null
   try {
     const u = await me()
+    const q = debouncedSearch.value.trim()
     const [allCards, importedIds] = await Promise.all([
-      listPlayerCards(u.id),
+      listPlayerCards(u.id, q ? { q } : {}),
       collectGomafiaImportedPlayerCardIds(),
     ])
     cards.value = allCards
@@ -181,7 +179,9 @@ async function load() {
   }
 }
 
-watch(token, load, { immediate: true })
+watch([token, debouncedSearch], () => {
+  if (token.value) void load()
+}, { immediate: true })
 
 watch(
   filteredCards,

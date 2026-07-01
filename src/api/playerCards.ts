@@ -1,4 +1,5 @@
 import { apiFetch, apiFetchFormData, apiFetchJson } from './client'
+import { buildQuery, type PlayerCardListParams } from './listQuery'
 import {
   normalizePhotoCrop,
   normalizePhotoLayouts,
@@ -86,8 +87,18 @@ function parseUploadPhotoResponse(data: unknown): string {
   )
 }
 
-export function listPlayerCards(ownerUserId: string) {
-  return apiFetch<unknown[]>(base(ownerUserId)).then((rows) =>
+export type { PlayerCardListParams } from './listQuery'
+
+export function listPlayerCards(ownerUserId: string, params: PlayerCardListParams = {}) {
+  const query = buildQuery({
+    q: params.q?.trim(),
+    has_photos: params.has_photos,
+    sort_by: params.sort_by,
+    sort_order: params.sort_order,
+    limit: params.limit,
+    offset: params.offset,
+  })
+  return apiFetch<unknown[]>(`${base(ownerUserId)}${query}`).then((rows) =>
     rows.map((row) => normalizePlayerCard(row)).filter((row): row is PlayerCard => !!row),
   )
 }

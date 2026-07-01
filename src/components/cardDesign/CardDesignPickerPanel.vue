@@ -459,7 +459,7 @@ function onCancel() {
 .card-design__preview {
   width: 100%;
   max-width: 100%;
-  overflow: hidden;
+  overflow: visible;
   background: transparent;
   padding: 0.25rem 0 0.5rem 0.75rem;
   box-sizing: border-box;

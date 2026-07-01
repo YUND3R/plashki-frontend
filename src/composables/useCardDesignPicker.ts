@@ -9,6 +9,8 @@ import {
 } from '@/api/lobbies'
 import { useCardsUiStore } from '@/stores/cardsUi'
 import { normalizeOverlayDesignCode } from '@/utils/overlayPersistentMessage'
+import { notifyOverlayLobbyChanged } from '@/utils/overlayLobbySync'
+import { enrichLobbyPhotoLayouts } from '@/utils/overlayPhotoLayoutBridge'
 
 const AUTH_REQUIRED_TEXT = 'Авторизуйтесь или зарегистрируйтесь.'
 
@@ -102,7 +104,8 @@ export function useCardDesignPicker(
     }
     try {
       const lobby = await getLobby(lobbyId.value)
-      previewSeats.value = lobby.players.slice(0, 3)
+      const enriched = await enrichLobbyPhotoLayouts(lobby)
+      previewSeats.value = enriched.players.slice(0, 3)
     } catch {
       previewSeats.value = []
     }
@@ -141,6 +144,7 @@ export function useCardDesignPicker(
     try {
       await setLobbyOverlayDesign(lobbyId.value, { overlay_design: selectedDesign.value })
       initialSelectedDesign.value = selectedDesign.value
+      notifyOverlayLobbyChanged(lobbyId.value)
       saveMessage.value =
         options.saveSuccessMessage ?? 'Дизайн сохранён для выбранного лобби.'
       options.onSaved?.()

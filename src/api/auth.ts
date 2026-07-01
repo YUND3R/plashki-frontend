@@ -1,4 +1,5 @@
 import { apiFetch, apiFetchFormData, apiFetchJson, markCookieSessionAuthenticated, setAccessToken } from './client'
+import { buildQuery, type AdminUserListParams } from './listQuery'
 
 export type TokenResponse = {
   message?: string
@@ -77,9 +78,20 @@ export async function me(): Promise<UserMe> {
   return apiFetch<UserMe>('/auth/me')
 }
 
-/** ADMIN-only: список всех зарегистрированных пользователей. */
-export async function listAdminUsers(): Promise<AdminUser[]> {
-  return apiFetch<AdminUser[]>('/admin/users')
+export type { AdminUserListParams } from './listQuery'
+
+/** ADMIN-only: список зарегистрированных пользователей с серверными фильтрами. */
+export async function listAdminUsers(params: AdminUserListParams = {}): Promise<AdminUser[]> {
+  const query = buildQuery({
+    q: params.q?.trim(),
+    role: params.role,
+    subscription: params.subscription,
+    sort_by: params.sort_by,
+    sort_order: params.sort_order,
+    limit: params.limit,
+    offset: params.offset,
+  })
+  return apiFetch<AdminUser[]>(`/admin/users${query}`)
 }
 
 export async function forgotPassword(email: string): Promise<MessageResponse> {

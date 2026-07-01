@@ -51,6 +51,10 @@ import {
   createOverlayPopupMessageDraft,
   writeOverlayPopupMessage,
 } from '@/utils/overlayPopupMessage'
+import {
+  notifyOverlayLobbyChanged,
+  overlayLobbyDataSignature,
+} from '@/utils/overlayLobbySync'
 
 const route = useRoute()
 const router = useRouter()
@@ -209,6 +213,24 @@ async function load() {
 
 onMounted(load)
 watch(lobbyId, load)
+
+let overlaySyncPrimed = false
+watch(lobbyId, () => {
+  overlaySyncPrimed = false
+})
+
+watch(
+  () => (lobby.value ? overlayLobbyDataSignature(lobby.value) : ''),
+  (signature) => {
+    const id = lobbyId.value.trim()
+    if (!id || !signature) return
+    if (!overlaySyncPrimed) {
+      overlaySyncPrimed = true
+      return
+    }
+    notifyOverlayLobbyChanged(id)
+  },
+)
 
 onMounted(() => {
   document.addEventListener('pointerdown', onDocPointerDownImported, true)
