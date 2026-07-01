@@ -3,8 +3,35 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { listAdminUsers, me, type AdminUser } from '@/api/auth'
 import type { AdminUserListParams } from '@/api/listQuery'
 import { useDebouncedRef } from '@/composables/useDebouncedRef'
+import AdminFilterSelect from '@/components/admin/AdminFilterSelect.vue'
 
 const PAGE_SIZE = 50
+
+const roleOptions = [
+  { value: '', label: 'Все' },
+  { value: 'admin', label: 'Admin' },
+  { value: 'moderator', label: 'Moderator' },
+  { value: 'sponsor', label: 'Sponsor' },
+  { value: 'user', label: 'User' },
+] as const
+
+const subscriptionOptions = [
+  { value: '', label: 'Все' },
+  { value: 'free', label: 'Базовый' },
+  { value: 'standard', label: 'Стандарт' },
+  { value: 'premium', label: 'Премиум' },
+] as const
+
+const sortByOptions = [
+  { value: 'created_at', label: 'По дате' },
+  { value: 'username', label: 'По логину' },
+  { value: 'email', label: 'По email' },
+] as const
+
+const sortOrderOptions = [
+  { value: 'asc', label: 'По возрастанию' },
+  { value: 'desc', label: 'По убыванию' },
+] as const
 
 const loading = ref(true)
 const error = ref<string | null>(null)
@@ -12,10 +39,10 @@ const forbidden = ref(false)
 const users = ref<AdminUser[]>([])
 const searchInput = ref('')
 const debouncedSearch = useDebouncedRef(searchInput, 400)
-const roleFilter = ref<AdminUserListParams['role'] | ''>('')
-const subscriptionFilter = ref<AdminUserListParams['subscription'] | ''>('')
-const sortBy = ref<NonNullable<AdminUserListParams['sort_by']>>('created_at')
-const sortOrder = ref<'asc' | 'desc'>('asc')
+const roleFilter = ref('')
+const subscriptionFilter = ref('')
+const sortBy = ref('created_at')
+const sortOrder = ref('asc')
 const page = ref(0)
 
 function fullName(u: AdminUser): string {
@@ -52,12 +79,20 @@ const pageTo = computed(() => page.value * PAGE_SIZE + users.value.length)
 const hasNextPage = computed(() => users.value.length >= PAGE_SIZE)
 
 function buildParams(): AdminUserListParams {
+  const role = roleFilter.value
+  const subscription = subscriptionFilter.value
+  const sortField = sortBy.value
+  const order = sortOrder.value
   return {
     q: debouncedSearch.value || undefined,
-    role: roleFilter.value || undefined,
-    subscription: subscriptionFilter.value || undefined,
-    sort_by: sortBy.value,
-    sort_order: sortOrder.value,
+    role: role === 'admin' || role === 'moderator' || role === 'sponsor' || role === 'user' ? role : undefined,
+    subscription:
+      subscription === 'free' || subscription === 'standard' || subscription === 'premium'
+        ? subscription
+        : undefined,
+    sort_by:
+      sortField === 'created_at' || sortField === 'username' || sortField === 'email' ? sortField : 'created_at',
+    sort_order: order === 'desc' ? 'desc' : 'asc',
     limit: PAGE_SIZE,
     offset: page.value * PAGE_SIZE,
   }
@@ -110,49 +145,72 @@ onMounted(() => {
     </header>
 
     <div v-if="!forbidden" class="admin-users__toolbar" role="toolbar" aria-label="Фильтры пользователей">
-      <input
-        v-model="searchInput"
-        class="admin-users__search"
-        type="search"
-        name="admin_user_search"
-        placeholder="Поиск по логину, email, имени…"
-        autocomplete="off"
-        aria-label="Поиск пользователей"
-      />
-      <label class="admin-users__filter">
-        <span class="admin-users__filter-label">Роль</span>
-        <select v-model="roleFilter" class="admin-users__select" aria-label="Фильтр по роли">
-          <option value="">Все</option>
-          <option value="admin">Admin</option>
-          <option value="moderator">Moderator</option>
-          <option value="sponsor">Sponsor</option>
-          <option value="user">User</option>
-        </select>
-      </label>
-      <label class="admin-users__filter">
-        <span class="admin-users__filter-label">Подписка</span>
-        <select v-model="subscriptionFilter" class="admin-users__select" aria-label="Фильтр по подписке">
-          <option value="">Все</option>
-          <option value="free">Базовый</option>
-          <option value="standard">Стандарт</option>
-          <option value="premium">Премиум</option>
-        </select>
-      </label>
-      <label class="admin-users__filter">
-        <span class="admin-users__filter-label">Сортировка</span>
-        <select v-model="sortBy" class="admin-users__select" aria-label="Поле сортировки">
-          <option value="created_at">По дате</option>
-          <option value="username">По логину</option>
-          <option value="email">По email</option>
-        </select>
-      </label>
-      <label class="admin-users__filter">
-        <span class="admin-users__filter-label">Порядок</span>
-        <select v-model="sortOrder" class="admin-users__select" aria-label="Направление сортировки">
-          <option value="asc">По возрастанию</option>
-          <option value="desc">По убыванию</option>
-        </select>
-      </label>
+      <div class="admin-users__search-wrap">
+        <span class="admin-users__search-icon" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path
+              d="M10.5 18a7.5 7.5 0 100-15 7.5 7.5 0 000 15zM16.5 16.5L21 21"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </span>
+        <input
+          v-model="searchInput"
+          class="admin-users__search"
+          type="search"
+          name="admin_user_search"
+          placeholder="Поиск по логину, email, имени…"
+          autocomplete="off"
+          aria-label="Поиск пользователей"
+        />
+        <button
+          v-if="searchInput.trim()"
+          type="button"
+          class="admin-users__search-clear"
+          aria-label="Очистить поиск"
+          @click="searchInput = ''"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path
+              d="M18 6L6 18M6 6l12 12"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+            />
+          </svg>
+        </button>
+      </div>
+      <div class="admin-users__filters">
+        <AdminFilterSelect
+          v-model="roleFilter"
+          label="Роль"
+          aria-label="Фильтр по роли"
+          :options="[...roleOptions]"
+        />
+        <AdminFilterSelect
+          v-model="subscriptionFilter"
+          label="Подписка"
+          aria-label="Фильтр по подписке"
+          :options="[...subscriptionOptions]"
+        />
+        <AdminFilterSelect
+          v-model="sortBy"
+          label="Сортировка"
+          aria-label="Поле сортировки"
+          default-value="created_at"
+          :options="[...sortByOptions]"
+        />
+        <AdminFilterSelect
+          v-model="sortOrder"
+          label="Порядок"
+          aria-label="Направление сортировки"
+          default-value="asc"
+          :options="[...sortOrderOptions]"
+        />
+      </div>
     </div>
 
     <p v-if="loading" class="admin-users__status">Загружаем список пользователей…</p>
@@ -237,41 +295,117 @@ onMounted(() => {
 
 .admin-users__toolbar {
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 0.5rem 0.75rem;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.85rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fafbfc;
+}
+
+.admin-users__filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.65rem;
+  width: 100%;
+}
+
+.admin-users__search-wrap {
+  flex: 1 1 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+  min-height: 2.5rem;
+  padding: 0 0.75rem 0 0.65rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.admin-users__search-wrap:focus-within {
+  border-color: #93c5fd;
+  background: #fff;
+}
+
+.admin-users__search-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #9ca3af;
+  transition: color 0.15s ease;
+}
+
+.admin-users__search-wrap:focus-within .admin-users__search-icon {
+  color: #2f6feb;
 }
 
 .admin-users__search {
-  flex: 1 1 14rem;
-  min-width: 12rem;
-  padding: 0.45rem 0.65rem;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  padding: 0.45rem 0;
+  border: none;
+  background: transparent;
+  font: inherit;
   font-size: 0.875rem;
+  line-height: 1.35;
   color: #111827;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
-.admin-users__filter {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  font-size: 0.75rem;
+.admin-users__search:focus {
+  outline: none;
+}
+
+.admin-users__search::placeholder {
+  color: #9ca3af;
+}
+
+.admin-users__search::-webkit-search-cancel-button,
+.admin-users__search::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.admin-users__search-clear {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.65rem;
+  height: 1.65rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: #f3f4f6;
   color: #6b7280;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
 }
 
-.admin-users__filter-label {
-  line-height: 1.2;
+.admin-users__search-clear:hover {
+  background: #e5e7eb;
+  color: #374151;
 }
 
-.admin-users__select {
-  min-width: 7.5rem;
-  padding: 0.35rem 0.5rem;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  background: #fff;
-  font-size: 0.8125rem;
-  color: #111827;
+.admin-users__search-clear:focus-visible {
+  outline: 2px solid #2f6feb;
+  outline-offset: 1px;
+}
+
+@media (min-width: 900px) {
+  .admin-users__search-wrap {
+    max-width: none;
+  }
 }
 
 .admin-users__status {
@@ -351,8 +485,22 @@ onMounted(() => {
 }
 
 @media (max-width: 1024px) {
+  .admin-users__filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .admin-users__table {
     min-width: 720px;
+  }
+}
+
+@media (max-width: 560px) {
+  .admin-users__filters {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-users__toolbar {
+    padding: 0.75rem;
   }
 }
 </style>

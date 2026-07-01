@@ -328,6 +328,7 @@ export async function listLobbies(params: LobbyListParams = {}): Promise<GameLob
     overlay_design: params.overlay_design,
     sort_by: params.sort_by,
     sort_order: params.sort_order,
+    source: params.source,
     limit: params.limit,
     offset: params.offset,
   })
@@ -346,13 +347,14 @@ export async function listLobbies(params: LobbyListParams = {}): Promise<GameLob
 
 export type LobbiesCountResponse = { total: number }
 
-/** Счётчик лobbi с теми же фильтрами, что listLobbies (без limit/offset). */
+/** Счётчик лобби с теми же фильтрами, что listLobbies (без limit/offset). */
 export async function getLobbiesCount(
-  params: Pick<LobbyListParams, 'q' | 'overlay_design'> = {},
+  params: Pick<LobbyListParams, 'q' | 'overlay_design' | 'source'> = {},
 ): Promise<number> {
   const query = buildQuery({
     q: params.q?.trim(),
     overlay_design: params.overlay_design,
+    source: params.source,
   })
   try {
     const data = await apiFetch<LobbiesCountResponse>(`/lobbies/count${query}`)
@@ -633,9 +635,11 @@ export function replaceLobbyMemberCard(
 export type LobbyOverlayDesignOption = {
   code: string
   title: string
-  required_subscription: string
-  animation_supported: boolean
+  price_rub: number
+  rental_hours: number
+  animations_supported: boolean
   selectable: boolean
+  access_expires_at?: string | null
 }
 
 export type LobbyOverlayDesignsResponse = {

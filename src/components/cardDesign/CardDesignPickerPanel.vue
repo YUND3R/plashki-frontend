@@ -47,6 +47,7 @@ const {
   saving,
   error,
   saveMessage,
+  rentMessage,
   designs,
   selectedDesign,
   initialSelectedDesign,
@@ -56,9 +57,12 @@ const {
   canSave,
   activeDesignTitle,
   isAuthRequiredError,
-  subscriptionLabel,
-  designMockPrice,
+  formatDesignPriceRub,
+  formatDesignRentalLabel,
+  formatDesignAccessLabel,
   designUsesPhotoCutout,
+  isRentingDesign,
+  rentDesign,
   saveDesign,
 } = useCardDesignPicker(lobbyIdRef, {
   saveSuccessMessage: props.saveSuccessMessage,
@@ -115,7 +119,7 @@ function onCancel() {
             :key="item.code"
             class="card-design__option"
             :class="{
-              'card-design__option--disabled': !item.selectable,
+              'card-design__option--locked': !item.selectable,
               'card-design__option--selected': selectedDesign === item.code,
               'card-design__option--active': item.code === initialSelectedDesign,
             }"
@@ -161,13 +165,29 @@ function onCancel() {
                 <span v-if="!item.selectable" class="card-design__badge card-design__badge--locked">
                   Недоступен
                 </span>
-                <span class="card-design__option-price">{{ designMockPrice(item.code) }}</span>
+                <span class="card-design__option-price">{{ formatDesignPriceRub(item.price_rub) }}</span>
                 <span class="card-design__chip">
-                  Подписка: {{ subscriptionLabel(item.required_subscription) }}
+                  {{ formatDesignRentalLabel(item.rental_hours) }}
+                </span>
+                <span v-if="formatDesignAccessLabel(item.access_expires_at)" class="card-design__chip">
+                  {{ formatDesignAccessLabel(item.access_expires_at) }}
                 </span>
                 <span class="card-design__chip">
-                  Анимации: {{ item.animation_supported ? 'Да' : 'Нет' }}
+                  Анимации: {{ item.animations_supported ? 'Да' : 'Нет' }}
                 </span>
+                <button
+                  v-if="!item.selectable"
+                  type="button"
+                  class="card-design__rent"
+                  :disabled="!!isRentingDesign(item.code) || saving"
+                  @click.stop.prevent="rentDesign(item.code)"
+                >
+                  {{
+                    isRentingDesign(item.code)
+                      ? 'Оформляем…'
+                      : `Арендовать за ${formatDesignPriceRub(item.price_rub)}`
+                  }}
+                </button>
               </span>
             </span>
           </label>
@@ -193,6 +213,7 @@ function onCancel() {
         </p>
         <p v-else-if="hasUnsavedChanges" class="card-design__unsaved">Есть несохранённые изменения</p>
         <p v-else-if="saveMessage" class="card-design__ok" role="status">{{ saveMessage }}</p>
+        <p v-else-if="rentMessage" class="card-design__ok" role="status">{{ rentMessage }}</p>
         <p v-else class="card-design__footer-hint">Изменения применятся к overlay после сохранения.</p>
       </div>
       <div class="card-design__footer-actions">
@@ -224,6 +245,8 @@ function onCancel() {
   padding: 0;
   background: #fff;
   overflow: hidden;
+  position: relative;
+  z-index: 1;
   --card-design-bottom-bar-min-h: 4.25rem;
 }
 
@@ -279,6 +302,8 @@ function onCancel() {
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
+  padding: 0.5rem 0.75rem 0 0.5rem;
+  box-sizing: border-box;
 }
 
 .card-design__current {
@@ -392,13 +417,14 @@ function onCancel() {
   grid-template-columns: minmax(0, 1fr);
   align-content: start;
   gap: 0.75rem;
-  padding: 1rem 0;
+  padding: 0.75rem 0 1rem;
   border: none;
   border-bottom: 1px solid #e5e7eb;
   border-radius: 0;
   background: #fff;
   cursor: pointer;
   box-sizing: border-box;
+  overflow: visible;
   transition: background 0.15s ease;
 }
 
@@ -406,11 +432,11 @@ function onCancel() {
   border-bottom: none;
 }
 
-.card-design__option:hover:not(.card-design__option--disabled) {
+.card-design__option:hover:not(.card-design__option--locked) {
   background: #f9fafb;
 }
 
-.card-design__option:focus-within:not(.card-design__option--disabled) {
+.card-design__option:focus-within:not(.card-design__option--locked) {
   background: #f8fbff;
 }
 
@@ -419,9 +445,8 @@ function onCancel() {
   box-shadow: inset 3px 0 0 #60a5fa;
 }
 
-.card-design__option--disabled {
-  opacity: 0.72;
-  cursor: not-allowed;
+.card-design__option--locked {
+  cursor: default;
 }
 
 .card-design__radio {
@@ -461,13 +486,15 @@ function onCancel() {
   max-width: 100%;
   overflow: visible;
   background: transparent;
-  padding: 0.25rem 0 0.5rem 0.75rem;
+  padding: 0.35rem 0.75rem 0.5rem 1rem;
   box-sizing: border-box;
   border: none;
   min-height: 0;
   display: flex;
   align-items: flex-end;
   justify-content: flex-start;
+  position: relative;
+  z-index: 2;
 }
 
 .card-design__option-body {
@@ -489,6 +516,32 @@ function onCancel() {
   gap: 0.4rem;
   min-width: 0;
   margin-right: 0.15rem;
+  overflow: visible;
+}
+
+.card-design__option-title-block .design-cutout-hint__tip {
+  left: calc(100% + 0.45rem);
+  bottom: auto;
+  top: 50%;
+  transform: translateY(-50%) translateX(4px);
+  z-index: 200;
+}
+
+.card-design__option-title-block .design-cutout-hint:hover .design-cutout-hint__tip,
+.card-design__option-title-block .design-cutout-hint:focus-visible .design-cutout-hint__tip,
+.card-design__option-title-block .design-cutout-hint:focus .design-cutout-hint__tip {
+  transform: translateY(-50%) translateX(0);
+}
+
+.card-design__option-title-block .design-cutout-hint__tip::after {
+  top: 50%;
+  left: auto;
+  right: 100%;
+  margin-left: 0;
+  margin-top: -4px;
+  border: 4px solid transparent;
+  border-right-color: #f3f4f6;
+  border-top-color: transparent;
 }
 
 .card-design__option-title {
@@ -532,6 +585,36 @@ function onCancel() {
 .card-design__option--selected .card-design__chip {
   background: #eef4ff;
   color: #4b5563;
+}
+
+.card-design__rent {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.75rem;
+  margin-top: 0.15rem;
+  padding: 0 0.75rem;
+  border: 1px solid #2f6feb;
+  border-radius: 8px;
+  background: #2f6feb;
+  color: #fff;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.card-design__rent:hover:not(:disabled) {
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+.card-design__rent:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
 }
 
 .card-design__footer {

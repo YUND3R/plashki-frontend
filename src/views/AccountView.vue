@@ -1,28 +1,17 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import { RouterLink, useRouter } from 'vue-router'
-import { me, type SubscriptionTier, type UserMe } from '@/api/auth'
+import { RouterLink } from 'vue-router'
+import { me, type UserMe } from '@/api/auth'
 import { listMyLobbies, type GameLobby } from '@/api/lobbies'
 import goLobbyIcon from '@/assets/icons/go.svg?url'
 import { useAuthStore } from '@/stores/auth'
 import { useProfileSettingsModalStore } from '@/stores/profileSettingsModal'
 import { useFeedbackModalStore } from '@/stores/feedbackModal'
 
-const router = useRouter()
 const { token } = storeToRefs(useAuthStore())
 const profileSettingsModal = useProfileSettingsModalStore()
 const feedbackModal = useFeedbackModalStore()
-
-const PLANS: { id: SubscriptionTier; label: string; priceLabel: string }[] = [
-  { id: 'basic', label: 'Базовый', priceLabel: 'Бесплатно' },
-  { id: 'standard', label: 'Стандарт', priceLabel: '299 ₽ / мес' },
-  { id: 'premium', label: 'Премиум', priceLabel: '599 ₽ / мес' },
-]
-
-function openPlan(planId: SubscriptionTier) {
-  void router.push({ name: 'tariffs', query: { plan: planId } })
-}
 
 const profile = ref<UserMe | null>(null)
 const myLobbies = ref<GameLobby[]>([])
@@ -30,12 +19,6 @@ const lobbiesLoading = ref(false)
 const lobbiesError = ref<string | null>(null)
 const loading = ref(false)
 const error = ref<string | null>(null)
-
-const currentPlan = computed<SubscriptionTier>(() => {
-  const t = profile.value?.subscription_tier
-  if (t === 'standard' || t === 'premium' || t === 'basic') return t
-  return 'basic'
-})
 
 const accountDisplayName = computed(() => {
   const u = profile.value
@@ -276,25 +259,6 @@ watch(token, loadProfile, { immediate: true })
           </ul>
           <p v-else class="account__lineups-status">Пока нет созданных лобби.</p>
         </section>
-
-        <div class="account__plans">
-          <h2 class="account__plans-title">Тип подписки</h2>
-          <div class="account__plans-grid" role="group" aria-label="Тарифы подписки">
-            <button
-              v-for="p in PLANS"
-              :key="p.id"
-              type="button"
-              class="account__card"
-              :class="{ 'account__card--current': currentPlan === p.id }"
-              :aria-current="currentPlan === p.id || undefined"
-              :aria-label="`${p.label}, ${p.priceLabel}. Перейти к тарифу`"
-              @click="openPlan(p.id)"
-            >
-              <span class="account__plan-name">{{ p.label }}</span>
-              <span class="account__plan-price">{{ p.priceLabel }}</span>
-            </button>
-          </div>
-        </div>
       </template>
     </div>
   </section>
@@ -555,23 +519,6 @@ watch(token, loadProfile, { immediate: true })
   border-color: #60a5fa;
 }
 
-.account__plans {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  width: 100%;
-  margin-top: auto;
-  padding: 0 0.75rem;
-  box-sizing: border-box;
-}
-
-.account__plans-title {
-  margin: 0;
-  font-size: 0.9375rem;
-  font-weight: 600;
-  color: #374151;
-}
-
 .account__lineups {
   display: flex;
   flex-direction: column;
@@ -726,79 +673,6 @@ watch(token, loadProfile, { immediate: true })
   white-space: nowrap;
 }
 
-.account__plans-grid {
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1rem;
-  width: 100%;
-}
-
-.account__card {
-  margin: 0;
-  width: 100%;
-  min-height: 7.5rem;
-  padding: 1rem 0.85rem;
-  border: 1px solid #e5e7eb;
-  border-radius: 14px;
-  background: #fff;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  font: inherit;
-  text-align: center;
-  cursor: pointer;
-  transition:
-    border-color 0.15s ease,
-    background 0.15s ease,
-    box-shadow 0.15s ease;
-}
-
-.account__card:hover:not(.account__card--current) {
-  border-color: #d1d5db;
-  background: #fafafa;
-}
-
-.account__card:focus-visible {
-  outline: 2px solid #2f6feb;
-  outline-offset: 2px;
-}
-
-.account__plan-name {
-  margin: 0;
-  font-size: 0.9375rem;
-  font-weight: 600;
-  color: #374151;
-  text-align: center;
-}
-
-.account__plan-price {
-  margin: 0;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: #6b7280;
-  text-align: center;
-  line-height: 1.35;
-}
-
-.account__card--current {
-  border-color: #2f6feb;
-  background: #f4f8ff;
-  box-shadow: 0 0 0 2px #2f6feb;
-}
-
-.account__card--current .account__plan-name {
-  color: #1d4ed8;
-}
-
-.account__card--current .account__plan-price {
-  color: #3b6fd4;
-}
-
 @media (max-width: 1024px) {
   .account {
     padding-inline: 0.35rem;
@@ -827,24 +701,8 @@ watch(token, loadProfile, { immediate: true })
     font-size: 1.2rem;
   }
 
-  .account__lineups,
-  .account__plans {
+  .account__lineups {
     padding-inline: 0.5rem;
-  }
-}
-
-@media (max-width: 1024px) and (min-width: 601px) {
-  .account__plans-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.85rem;
-  }
-}
-
-@media (max-width: 600px) {
-  .account__plans-grid {
-    grid-template-columns: 1fr;
-    max-width: 20rem;
-    margin: 0 auto;
   }
 }
 

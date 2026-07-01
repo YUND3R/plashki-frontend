@@ -209,6 +209,9 @@ onUnmounted(() => {
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
+  overflow: visible;
+  position: relative;
+  z-index: 1;
 }
 
 .odpp__cell {
@@ -270,7 +273,7 @@ onUnmounted(() => {
   overflow: hidden;
   border-radius: 12px 12px 0 0;
   pointer-events: none;
-  z-index: 1;
+  z-index: 3;
 }
 
 .odpp-classic__photo-stage {
@@ -356,7 +359,7 @@ onUnmounted(() => {
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 1;
+  z-index: 3;
   overflow: hidden;
   border-radius: 5px;
 }

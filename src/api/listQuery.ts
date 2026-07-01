@@ -2,11 +2,14 @@ export type SortOrder = 'asc' | 'desc'
 
 export type OverlayDesignCode = 'masters-yug25' | 'classic' | 'plus'
 
+export type LobbyListSource = 'all' | 'created' | 'imported'
+
 export type LobbyListParams = {
   q?: string
   overlay_design?: OverlayDesignCode
   sort_by?: 'created_at' | 'title' | 'max_players'
   sort_order?: SortOrder
+  source?: LobbyListSource
   limit?: number
   offset?: number
 }

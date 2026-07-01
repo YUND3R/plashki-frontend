@@ -97,7 +97,7 @@ const showLobbyManageHeader = computed(
 )
 /** Контент без отступа от краёв белой панели. */
 const isFlushContentRoute = computed(
-  () => route.name === 'lobby-manage' || route.name === 'card-design',
+  () => route.name === 'lobby-manage' || route.name === 'card-design' || route.name === 'docs',
 )
 
 async function logout() {
@@ -224,7 +224,6 @@ onUnmounted(() => {
           </button>
           <div class="shell__title-wrap">
             <h1 class="shell__title">{{ pageTitle }}</h1>
-            <span v-if="isAdmin" class="shell__admin-badge">ADMIN</span>
           </div>
           <div v-if="showAccountActions" class="shell__header-actions">
             <button type="button" class="shell__logout" @click="logout">Выйти</button>
@@ -682,22 +681,6 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 0.55rem;
-}
-
-.shell__admin-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 1.35rem;
-  padding: 0 0.5rem;
-  border-radius: 999px;
-  border: 1px solid #f59e0b;
-  background: #fffbeb;
-  color: #92400e;
-  font-size: 0.6875rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  line-height: 1;
 }
 
 .shell__body {

@@ -244,6 +244,8 @@ onMounted(async () => {
   padding: 0;
   border-right: 1px solid #e5e7eb;
   overflow: hidden;
+  position: relative;
+  z-index: 0;
 }
 
 .card-design__lobby-list {
@@ -255,8 +257,14 @@ onMounted(async () => {
   align-content: start;
   flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
   overflow-x: hidden;
   overflow-y: auto;
+}
+
+.card-design__lobby-list > li {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .card-design__lobby-item {
@@ -264,6 +272,7 @@ onMounted(async () => {
   align-items: flex-start;
   gap: 0.75rem;
   width: 100%;
+  max-width: 100%;
   min-width: 0;
   padding: 0.65rem 0.75rem;
   border: 1px solid #e5e7eb;
@@ -274,6 +283,7 @@ onMounted(async () => {
   text-align: left;
   cursor: pointer;
   box-sizing: border-box;
+  overflow: hidden;
   transition:
     border-color 0.15s ease,
     background 0.15s ease;
@@ -332,12 +342,18 @@ onMounted(async () => {
 .card-design__lobby-text {
   flex: 1 1 auto;
   min-width: 0;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
+  overflow: hidden;
 }
 
 .card-design__lobby-title {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   font-size: 0.875rem;
   font-weight: 600;
   color: #111827;
@@ -348,9 +364,16 @@ onMounted(async () => {
 }
 
 .card-design__lobby-desc {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   font-size: 0.75rem;
   color: #6b7280;
   line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .card-design__empty {
