@@ -12,6 +12,7 @@ dist
 dist-ssr
 *.local
 .env
+gh_token.txt
 
 # Editor directories and files
 .vscode/*
