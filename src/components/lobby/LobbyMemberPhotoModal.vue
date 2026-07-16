@@ -179,6 +179,7 @@ async function onCropSave(crop: PhotoCrop) {
   saving.value = true
   saveError.value = null
   try {
+    let uploadedAndSelectedUrl: string | null = null
     if (pendingFile.value) {
       const uploadedUrl = await uploadPlayerCardPhoto(pl.user_id, pl.player_card_id, pendingFile.value)
       await patchPlayerCardPhotoLayout(
@@ -192,7 +193,10 @@ async function onCropSave(crop: PhotoCrop) {
       if (pl.player_card_id) writeCachedPhotoLayouts(pl.player_card_id, photoLayouts.value)
       pendingFile.value = null
       await loadPhotos(pl)
-      selectedUrl.value = photoUrls.value.includes(uploadedUrl) ? uploadedUrl : photoUrls.value[photoUrls.value.length - 1] ?? selectedUrl.value
+      selectedUrl.value = photoUrls.value.includes(uploadedUrl)
+        ? uploadedUrl
+        : photoUrls.value[photoUrls.value.length - 1] ?? selectedUrl.value
+      uploadedAndSelectedUrl = selectedUrl.value
     } else if (cropTargetUrl.value) {
       await patchPlayerCardPhotoLayout(
         pl.user_id,
@@ -205,7 +209,15 @@ async function onCropSave(crop: PhotoCrop) {
       if (pl.player_card_id) writeCachedPhotoLayouts(pl.player_card_id, photoLayouts.value)
     }
     cropModalOpen.value = false
-    open.value = false
+    // После загрузки нового фото сразу применяем его в лобби,
+    // чтобы карточка игрока обновилась без перезагрузки страницы.
+    if (uploadedAndSelectedUrl && pl.membership_id && props.lobbyId) {
+      const updated = await setLobbyMemberDisplayPhoto(props.lobbyId, pl.membership_id, {
+        photo_url: uploadedAndSelectedUrl,
+      })
+      emit('applied', updated)
+      open.value = false
+    }
   } catch (e) {
     saveError.value = e instanceof Error ? e.message : String(e)
   } finally {

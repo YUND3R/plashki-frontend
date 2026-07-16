@@ -52,6 +52,8 @@ jobs:
         run: npm ci
 
       - name: Typecheck and build
+        env:
+          VITE_API_BASE_URL: ${{ secrets.FRONTEND_API_BASE_URL }}
         run: npm run build
 
   build-and-push:
@@ -95,6 +97,8 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
+          build-args: |
+            VITE_API_BASE_URL=${{ secrets.FRONTEND_API_BASE_URL }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
