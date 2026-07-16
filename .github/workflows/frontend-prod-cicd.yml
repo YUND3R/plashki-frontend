@@ -14,6 +14,7 @@ on:
       - "Dockerfile"
       - ".dockerignore"
       - "deploy/nginx.conf"
+      - "deploy/vps-nginx.conf"
       - "docker-compose.prod.yml"
       - ".github/workflows/frontend-prod-cicd.yml"
   workflow_dispatch:
@@ -128,7 +129,7 @@ jobs:
           username: ${{ secrets.PROD_SSH_USER }}
           key: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
           port: ${{ secrets.PROD_SSH_PORT }}
-          script: mkdir -p "${{ secrets.PROD_APP_DIR }}"
+          script: mkdir -p "${{ secrets.PROD_APP_DIR }}/deploy"
 
       - name: Upload production compose file
         uses: appleboy/scp-action@v0.1.7
@@ -140,6 +141,17 @@ jobs:
           source: docker-compose.prod.yml
           target: ${{ secrets.PROD_APP_DIR }}
           strip_components: 0
+
+      - name: Upload public nginx configuration
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.PROD_SSH_HOST }}
+          username: ${{ secrets.PROD_SSH_USER }}
+          key: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+          port: ${{ secrets.PROD_SSH_PORT }}
+          source: deploy/vps-nginx.conf
+          target: ${{ secrets.PROD_APP_DIR }}/deploy
+          strip_components: 1
 
       - name: Deploy stack on remote host
         uses: appleboy/ssh-action@v1.2.0
@@ -167,5 +179,8 @@ jobs:
             export IMAGE_REPO="$IMAGE_REPO"
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            install -m 644 "$PROD_APP_DIR/deploy/vps-nginx.conf" /etc/nginx/sites-available/default
+            nginx -t
+            systemctl reload nginx
             docker compose -f docker-compose.prod.yml ps
             docker image prune -f
