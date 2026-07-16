@@ -802,7 +802,7 @@ onUnmounted(() => {
 }
 
 .overlay-plus-card__status-lh-num--mafia {
-  color: #c4b5fd;
+  color: #60a5fa;
 }
 
 .overlay-plus-card__photo-wrap {
@@ -906,7 +906,7 @@ onUnmounted(() => {
 }
 
 .overlay-plus-card__status-fill-lh-num--mafia {
-  color: #c4b5fd;
+  color: #60a5fa;
 }
 
 @keyframes overlay-plus-photo-dim {
@@ -1009,28 +1009,23 @@ onUnmounted(() => {
   gap: 0.5rem;
   flex-shrink: 0;
   padding: 0.4rem;
-  border: 1px solid transparent;
   border-radius: 6px;
   box-sizing: border-box;
-  box-shadow: 0 1px 5px rgba(2, 6, 23, 0.45);
 }
 
 .overlay-plus-card__seat-group--peaceful {
   /* Мирный: насыщенный малиновый, заметный даже на маленьком экране. */
   background: linear-gradient(135deg, #ec1972 0%, #be185d 100%);
-  border-color: #fb7185;
 }
 
 .overlay-plus-card__seat-group--sheriff {
   /* Шериф: яркий зелёный. */
   background: linear-gradient(135deg, #38d36a 0%, #15803d 100%);
-  border-color: #86efac;
 }
 
 .overlay-plus-card__seat-group--mafia {
   /* Мафия и дон: глубокий синий с яркой синей окантовкой. */
   background: linear-gradient(135deg, #2563eb 0%, #172554 100%);
-  border-color: #60a5fa;
 }
 
 .overlay-plus-card__role-icon {
@@ -1118,17 +1113,14 @@ onUnmounted(() => {
 
 .overlay-plus-card__footer-role-reveal-text--peaceful {
   color: #fb4b93;
-  text-shadow: 0 1px 6px rgba(236, 25, 114, 0.55);
 }
 
 .overlay-plus-card__footer-role-reveal-text--sheriff {
   color: #4ade80;
-  text-shadow: 0 1px 6px rgba(34, 197, 94, 0.5);
 }
 
 .overlay-plus-card__footer-role-reveal-text--mafia {
   color: #60a5fa;
-  text-shadow: 0 1px 6px rgba(37, 99, 235, 0.55);
 }
 
 @keyframes overlay-plus-role-reveal-banner {
@@ -1217,6 +1209,6 @@ onUnmounted(() => {
 }
 
 .overlay-plus-card__check-num--mafia {
-  color: #c4b5fd;
+  color: #60a5fa;
 }
 </style>

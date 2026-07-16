@@ -460,7 +460,6 @@ const canApplyImportedSelection = computed(() => {
   if (!key) return false
   return key !== importedCurrentKey.value
 })
-const isImportedAnyMenuOpen = computed(() => importedTourMenuOpen.value || importedTableMenuOpen.value)
 
 const importedSelectionSignature = computed(() => {
   const keys = importedVariants.value.map((variant) => variant.key).join('|')
@@ -1616,10 +1615,7 @@ async function resetBestMove() {
             </div>
           </div>
 
-          <div
-            class="lobby-manage__main-actions"
-            :class="{ 'lobby-manage__main-actions--imported-open': isImportedAnyMenuOpen }"
-          >
+          <div class="lobby-manage__main-actions">
             <button
               type="button"
               class="lobby-manage__btn-foot"
@@ -1668,92 +1664,6 @@ async function resetBestMove() {
               />
               Проверки шерифа
             </button>
-            <div v-if="hasImportedSelection" class="lobby-manage__imported-toolbar">
-              <div ref="importedSwitcherRef" class="lobby-manage__imported-switcher">
-              <div class="lobby-manage__imported-group">
-                <span class="lobby-manage__imported-field-label">Тур</span>
-                <div class="lobby-manage__imported-picker">
-                  <button
-                    type="button"
-                    class="lobby-manage__imported-select-btn"
-                    :disabled="importedSelectionBusy || !isLobbyHost"
-                    :aria-expanded="importedTourMenuOpen"
-                    aria-label="Выбор тура"
-                    @click="toggleImportedTourMenu"
-                  >
-                    <span class="lobby-manage__imported-select-text">{{ importedSelectedTourLabel }}</span>
-                    <span class="lobby-manage__imported-select-arrow" aria-hidden="true">▾</span>
-                  </button>
-                  <div v-if="importedTourMenuOpen" class="lobby-manage__imported-menu" role="listbox" aria-label="Туры">
-                    <button
-                      v-for="tour in importedTourOptions"
-                      :key="tour.key"
-                      type="button"
-                      class="lobby-manage__imported-menu-item"
-                      :class="{ 'lobby-manage__imported-menu-item--active': tour.key === importedSelectedTourKey }"
-                      @click="selectImportedTourOption(tour.key)"
-                    >
-                      {{ tour.label }}
-                    </button>
-                  </div>
-                </div>
-              </div>
-              <div class="lobby-manage__imported-group">
-                <span class="lobby-manage__imported-field-label">Стол</span>
-                <div class="lobby-manage__imported-picker">
-                  <button
-                    type="button"
-                    class="lobby-manage__imported-select-btn"
-                    :disabled="importedSelectionBusy || !isLobbyHost"
-                    :aria-expanded="importedTableMenuOpen"
-                    aria-label="Выбор стола"
-                    @click="toggleImportedTableMenu"
-                  >
-                    <span class="lobby-manage__imported-select-text">{{ importedSelectedTableLabel }}</span>
-                    <span class="lobby-manage__imported-select-arrow" aria-hidden="true">▾</span>
-                  </button>
-                  <div
-                    v-if="importedTableMenuOpen"
-                    class="lobby-manage__imported-menu"
-                    role="listbox"
-                    aria-label="Столы"
-                  >
-                    <button
-                      v-for="table in importedTableOptions"
-                      :key="table.key"
-                      type="button"
-                      class="lobby-manage__imported-menu-item"
-                      :class="{ 'lobby-manage__imported-menu-item--active': table.key === importedSelectedTableKey }"
-                      @click="selectImportedTableOption(table.key)"
-                    >
-                      {{ table.label }}
-                    </button>
-                  </div>
-                </div>
-              </div>
-              <button
-                type="button"
-                class="lobby-manage__imported-btn lobby-manage__imported-btn--apply"
-                :disabled="importedSelectionBusy || !isLobbyHost || !canApplyImportedSelection"
-                @click="applyImportedSelection"
-              >
-                {{ importedSelectionBusy ? '...' : 'Применить' }}
-              </button>
-              </div>
-              <button
-                v-if="isLobbyHost"
-                type="button"
-                class="lobby-manage__btn-foot lobby-manage__imported-participants-open"
-                :disabled="swapBusy || rolesResetBusy || replaceSubmitting || deleteBusy || importedSelectionBusy"
-                @click="openImportedParticipantsModal"
-              >
-                Список всех участников турнира
-              </button>
-            </div>
-            <p v-if="!isLobbyHost && hasImportedSelection" class="lobby-manage__imported-note">
-              Переключать тур/стол может только хост лобби.
-            </p>
-            <p v-if="importedSelectionError" class="lobby-manage__imported-error" role="alert">{{ importedSelectionError }}</p>
           </div>
         </article>
 
@@ -1862,6 +1772,90 @@ async function resetBestMove() {
               {{ persistentMessageFeedback }}
             </p>
           </article>
+
+          <section v-if="hasImportedSelection" class="lobby-manage__imported-toolbar">
+            <div ref="importedSwitcherRef" class="lobby-manage__imported-switcher">
+              <div class="lobby-manage__imported-group">
+                <span class="lobby-manage__imported-field-label">Тур</span>
+                <div class="lobby-manage__imported-picker">
+                  <button
+                    type="button"
+                    class="lobby-manage__imported-select-btn"
+                    :disabled="importedSelectionBusy || !isLobbyHost"
+                    :aria-expanded="importedTourMenuOpen"
+                    aria-label="Выбор тура"
+                    @click="toggleImportedTourMenu"
+                  >
+                    <span class="lobby-manage__imported-select-text">{{ importedSelectedTourLabel }}</span>
+                    <span class="lobby-manage__imported-select-arrow" aria-hidden="true">▾</span>
+                  </button>
+                  <div v-if="importedTourMenuOpen" class="lobby-manage__imported-menu" role="listbox" aria-label="Туры">
+                    <button
+                      v-for="tour in importedTourOptions"
+                      :key="tour.key"
+                      type="button"
+                      class="lobby-manage__imported-menu-item"
+                      :class="{ 'lobby-manage__imported-menu-item--active': tour.key === importedSelectedTourKey }"
+                      @click="selectImportedTourOption(tour.key)"
+                    >
+                      {{ tour.label }}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="lobby-manage__imported-group">
+                <span class="lobby-manage__imported-field-label">Стол</span>
+                <div class="lobby-manage__imported-picker">
+                  <button
+                    type="button"
+                    class="lobby-manage__imported-select-btn"
+                    :disabled="importedSelectionBusy || !isLobbyHost"
+                    :aria-expanded="importedTableMenuOpen"
+                    aria-label="Выбор стола"
+                    @click="toggleImportedTableMenu"
+                  >
+                    <span class="lobby-manage__imported-select-text">{{ importedSelectedTableLabel }}</span>
+                    <span class="lobby-manage__imported-select-arrow" aria-hidden="true">▾</span>
+                  </button>
+                  <div v-if="importedTableMenuOpen" class="lobby-manage__imported-menu" role="listbox" aria-label="Столы">
+                    <button
+                      v-for="table in importedTableOptions"
+                      :key="table.key"
+                      type="button"
+                      class="lobby-manage__imported-menu-item"
+                      :class="{ 'lobby-manage__imported-menu-item--active': table.key === importedSelectedTableKey }"
+                      @click="selectImportedTableOption(table.key)"
+                    >
+                      {{ table.label }}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                class="lobby-manage__imported-btn lobby-manage__imported-btn--apply"
+                :disabled="importedSelectionBusy || !isLobbyHost || !canApplyImportedSelection"
+                @click="applyImportedSelection"
+              >
+                {{ importedSelectionBusy ? '...' : 'Применить' }}
+              </button>
+            </div>
+            <button
+              v-if="isLobbyHost"
+              type="button"
+              class="lobby-manage__btn-foot lobby-manage__imported-participants-open"
+              :disabled="swapBusy || rolesResetBusy || replaceSubmitting || deleteBusy || importedSelectionBusy"
+              @click="openImportedParticipantsModal"
+            >
+              Список всех участников турнира
+            </button>
+            <p v-if="!isLobbyHost" class="lobby-manage__imported-note">
+              Переключать тур/стол может только хост лобби.
+            </p>
+            <p v-if="importedSelectionError" class="lobby-manage__imported-error" role="alert">{{ importedSelectionError }}</p>
+          </section>
         </aside>
       </div>
 
@@ -2206,12 +2200,13 @@ async function resetBestMove() {
 
 .lobby-manage__imported-toolbar {
   display: flex;
-  flex: 1 1 auto;
+  flex-direction: column;
+  width: 100%;
   min-width: 0;
-  align-items: center;
-  gap: 0.65rem;
-  margin-left: auto;
-  padding: 0.5rem;
+  align-items: stretch;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0.75rem;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
   background: #f8fafc;
@@ -2219,22 +2214,11 @@ async function resetBestMove() {
 }
 
 .lobby-manage__imported-switcher {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   min-width: 0;
   gap: 0.5rem;
-  align-items: center;
-}
-
-@media (max-width: 860px) {
-  .lobby-manage__imported-toolbar {
-    width: 100%;
-    margin-left: 0;
-    flex-wrap: wrap;
-  }
-
-  .lobby-manage__imported-switcher {
-    width: 100%;
-  }
+  align-items: end;
 }
 
 .lobby-manage__imported-group {
@@ -2265,7 +2249,7 @@ async function resetBestMove() {
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
-  width: 145px;
+  width: 100%;
   height: 2.15rem;
   padding: 0.22rem 1.35rem 0.22rem 0.55rem;
   font: inherit;
@@ -2305,9 +2289,9 @@ async function resetBestMove() {
 
 .lobby-manage__imported-menu {
   position: absolute;
-  bottom: calc(100% + 4px);
+  top: calc(100% + 4px);
   left: 0;
-  width: 145px;
+  width: 100%;
   max-height: min(28.5rem, calc(100vh - 8rem));
   overflow-y: auto;
   z-index: 180;
@@ -2341,13 +2325,6 @@ async function resetBestMove() {
   background: #eff6ff;
   color: #1d4ed8;
   font-weight: 600;
-}
-
-@media (max-width: 860px) {
-  .lobby-manage__imported-select-btn,
-  .lobby-manage__imported-menu {
-    width: 100%;
-  }
 }
 
 .lobby-manage__imported-select-btn:focus {
@@ -3836,11 +3813,9 @@ async function resetBestMove() {
 }
 
 .lobby-manage__imported-participants-open {
-  flex: 1 1 14rem;
-  min-width: 13rem;
+  width: 100%;
   min-height: 2.15rem;
-  margin-top: 0.85rem;
-  align-self: flex-end;
+  margin: 0;
   border-color: #cbd5e1;
   background: #fff;
   color: #334155;
@@ -3849,10 +3824,11 @@ async function resetBestMove() {
 }
 
 .lobby-manage__imported-toolbar .lobby-manage__imported-btn--apply {
+  grid-column: 1 / -1;
+  width: 100%;
   min-height: 2.15rem;
-  margin-top: 0.85rem;
+  margin: 0;
   padding-inline: 0.8rem;
-  align-self: flex-end;
   border-radius: 7px;
   font-weight: 700;
 }
