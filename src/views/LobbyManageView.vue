@@ -1668,8 +1668,10 @@ async function resetBestMove() {
               />
               Проверки шерифа
             </button>
-            <div v-if="hasImportedSelection" ref="importedSwitcherRef" class="lobby-manage__imported-switcher">
+            <div v-if="hasImportedSelection" class="lobby-manage__imported-toolbar">
+              <div ref="importedSwitcherRef" class="lobby-manage__imported-switcher">
               <div class="lobby-manage__imported-group">
+                <span class="lobby-manage__imported-field-label">Тур</span>
                 <div class="lobby-manage__imported-picker">
                   <button
                     type="button"
@@ -1697,6 +1699,7 @@ async function resetBestMove() {
                 </div>
               </div>
               <div class="lobby-manage__imported-group">
+                <span class="lobby-manage__imported-field-label">Стол</span>
                 <div class="lobby-manage__imported-picker">
                   <button
                     type="button"
@@ -1736,16 +1739,17 @@ async function resetBestMove() {
               >
                 {{ importedSelectionBusy ? '...' : 'Применить' }}
               </button>
+              </div>
+              <button
+                v-if="isLobbyHost"
+                type="button"
+                class="lobby-manage__btn-foot lobby-manage__imported-participants-open"
+                :disabled="swapBusy || rolesResetBusy || replaceSubmitting || deleteBusy || importedSelectionBusy"
+                @click="openImportedParticipantsModal"
+              >
+                Список всех участников турнира
+              </button>
             </div>
-            <button
-              v-if="hasImportedSelection && isLobbyHost"
-              type="button"
-              class="lobby-manage__btn-foot lobby-manage__imported-participants-open"
-              :disabled="swapBusy || rolesResetBusy || replaceSubmitting || deleteBusy || importedSelectionBusy"
-              @click="openImportedParticipantsModal"
-            >
-              Список всех участников турнира
-            </button>
             <p v-if="!isLobbyHost && hasImportedSelection" class="lobby-manage__imported-note">
               Переключать тур/стол может только хост лобби.
             </p>
@@ -2200,29 +2204,55 @@ async function resetBestMove() {
   line-height: 1.4;
 }
 
-.lobby-manage__imported-switcher {
+.lobby-manage__imported-toolbar {
   display: flex;
   flex: 1 1 auto;
   min-width: 0;
-  justify-content: flex-end;
-  gap: 0.7rem;
+  align-items: center;
+  gap: 0.65rem;
+  margin-left: auto;
+  padding: 0.5rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+  box-sizing: border-box;
+}
+
+.lobby-manage__imported-switcher {
+  display: flex;
+  min-width: 0;
+  gap: 0.5rem;
   align-items: center;
 }
 
 @media (max-width: 860px) {
-  .lobby-manage__imported-switcher {
-    display: grid;
-    grid-template-columns: 1fr;
+  .lobby-manage__imported-toolbar {
     width: 100%;
-    justify-content: stretch;
+    margin-left: 0;
+    flex-wrap: wrap;
+  }
+
+  .lobby-manage__imported-switcher {
+    width: 100%;
   }
 }
 
 .lobby-manage__imported-group {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.2rem;
   position: relative;
+}
+
+.lobby-manage__imported-field-label {
+  padding-left: 0.1rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.03em;
+  color: #64748b;
+  text-transform: uppercase;
 }
 
 .lobby-manage__imported-picker {
@@ -2236,14 +2266,14 @@ async function resetBestMove() {
   align-items: center;
   justify-content: flex-start;
   width: 145px;
-  height: 1.95rem;
-  padding: 0.22rem 1.2rem 0.22rem 0.42rem;
+  height: 2.15rem;
+  padding: 0.22rem 1.35rem 0.22rem 0.55rem;
   font: inherit;
   font-size: 0.8125rem;
   line-height: 1;
   color: #111827;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
   background-color: #fff;
   appearance: none;
   -webkit-appearance: none;
@@ -2252,7 +2282,9 @@ async function resetBestMove() {
   text-align: left;
   cursor: pointer;
   white-space: nowrap;
-  transition: border-color 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .lobby-manage__imported-select-text {
@@ -2321,7 +2353,7 @@ async function resetBestMove() {
 .lobby-manage__imported-select-btn:focus {
   outline: none;
   border-color: #2563eb;
-  box-shadow: none;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 
 .lobby-manage__imported-select-btn:hover:not(:disabled) {
@@ -3804,8 +3836,25 @@ async function resetBestMove() {
 }
 
 .lobby-manage__imported-participants-open {
-  flex: 1 1 auto;
-  min-width: min(100%, 14rem);
+  flex: 1 1 14rem;
+  min-width: 13rem;
+  min-height: 2.15rem;
+  margin-top: 0.85rem;
+  align-self: flex-end;
+  border-color: #cbd5e1;
+  background: #fff;
+  color: #334155;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.lobby-manage__imported-toolbar .lobby-manage__imported-btn--apply {
+  min-height: 2.15rem;
+  margin-top: 0.85rem;
+  padding-inline: 0.8rem;
+  align-self: flex-end;
+  border-radius: 7px;
+  font-weight: 700;
 }
 
 .lobby-manage__modal-head {
@@ -4224,20 +4273,20 @@ async function resetBestMove() {
     white-space: nowrap;
   }
 
-  .lobby-manage__main-actions > .lobby-manage__imported-switcher {
+  .lobby-manage__main-actions > .lobby-manage__imported-toolbar {
     order: 20;
     flex: 1 0 100%;
     width: 100%;
-    justify-content: flex-start;
+    margin-left: 0;
     margin-top: 0.2rem;
-    gap: 0.45rem;
-    display: grid;
-    grid-template-columns: auto auto auto;
-    align-items: start;
+    padding: 0.45rem;
+    gap: 0.5rem;
+    flex-wrap: wrap;
   }
 
-  .lobby-manage__main-actions > .lobby-manage__imported-switcher .lobby-manage__imported-group {
-    flex: 0 0 auto;
+  .lobby-manage__main-actions > .lobby-manage__imported-switcher {
+    flex: 1 1 auto;
+    gap: 0.45rem;
   }
 
   .lobby-manage__main-actions > .lobby-manage__imported-switcher .lobby-manage__imported-select-btn {
@@ -4250,13 +4299,14 @@ async function resetBestMove() {
 
   .lobby-manage__main-actions > .lobby-manage__imported-switcher .lobby-manage__imported-btn--apply {
     min-width: 76px;
-    grid-column: auto;
-    justify-self: start;
+    margin-top: 0.75rem;
   }
 
-  .lobby-manage__main-actions > .lobby-manage__imported-participants-open {
-    order: 21;
-    flex: 0 0 auto;
+  .lobby-manage__main-actions > .lobby-manage__imported-toolbar .lobby-manage__imported-participants-open {
+    flex: 1 1 100%;
+    min-width: 0;
+    margin-top: 0;
+    align-self: auto;
   }
 
   .lobby-manage__sheriff-checks-btn--foot {
