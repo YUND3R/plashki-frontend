@@ -1,0 +1,7 @@
+services:
+  frontend:
+    image: ${IMAGE_REPO:-ghcr.io/yund3r/plashki-frontend}:${IMAGE_TAG:-latest}
+    container_name: plashki-frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-4173}:80"
