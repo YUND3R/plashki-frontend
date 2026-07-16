@@ -1020,11 +1020,9 @@ async function toggleStatus(p: LobbyPlayer | null, status: LobbyStatusValue) {
   swapHint.value = null
   try {
     if (status === 'best-move') {
-      if (!isStatusActive(p, status)) {
-        lobby.value = await setLobbyMemberStatus(lobbyId.value, p.membership_id, { status })
-      }
-      const latest = lobby.value?.players?.find((x) => x.membership_id === p.membership_id) ?? p
-      openBestMoveModal(latest)
+      // ЛХ — отложенное действие: до «Сохранить» не меняем ни статус,
+      // ни payload в lobby, чтобы overlay не показал старые значения.
+      openBestMoveModal(p)
       return
     }
     lobby.value = isStatusActive(p, status)
@@ -1312,6 +1310,15 @@ async function saveBestMove() {
       return
     }
     lobby.value = await setLobbyBestMove(lobbyId.value, { best_move: bodyValues })
+    const targetMembershipId = bestMoveTargetMembershipId.value
+    if (targetMembershipId) {
+      const targetPlayer = lobby.value.players.find((p) => p.membership_id === targetMembershipId) ?? null
+      if (!isStatusActive(targetPlayer, 'best-move')) {
+        // Статус ставим вторым запросом: overlay увидит его только вместе
+        // с уже сохранёнными значениями ЛХ и запустит корректную анимацию.
+        lobby.value = await setLobbyMemberStatus(lobbyId.value, targetMembershipId, { status: 'best-move' })
+      }
+    }
     closeBestMoveModalForced()
   } catch (e) {
     bestMoveError.value = e instanceof Error ? e.message : String(e)
