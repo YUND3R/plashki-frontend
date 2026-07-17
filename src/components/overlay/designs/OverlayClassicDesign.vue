@@ -22,10 +22,6 @@ const props = defineProps({
     type: Array as PropType<string[]>,
     default: () => [],
   },
-  bestMove: {
-    type: Array as PropType<string[]>,
-    default: () => [],
-  },
   persistentMessage: {
     type: String,
     default: '',
@@ -103,9 +99,9 @@ function sheriffCheckLabels(): string[] {
   return labels
 }
 
-function bestMoveLabels(): string[] {
+function bestMoveLabels(p: LobbyPlayer | null): string[] {
   const labels: string[] = []
-  for (const raw of props.bestMove ?? []) {
+  for (const raw of p?.best_move ?? []) {
     const value = (typeof raw === 'string' ? raw : '').trim()
     if (!value) continue
     labels.push(value)
@@ -231,7 +227,7 @@ function statusIcon(status: string | null): string {
       <div
         v-else
         class="overlay-card__meta-row"
-        :class="{ 'overlay-card__meta-row--with-lh': isBestMoveSeat(p) && bestMoveLabels().length }"
+        :class="{ 'overlay-card__meta-row--with-lh': isBestMoveSeat(p) && bestMoveLabels(p).length }"
       >
         <div
           class="overlay-card__meta-role-group"
@@ -256,13 +252,13 @@ function statusIcon(status: string | null): string {
           </span>
         </div>
         <div
-          v-if="isBestMoveSeat(p) && bestMoveLabels().length"
+          v-if="isBestMoveSeat(p) && bestMoveLabels(p).length"
           class="overlay-card__meta-lh"
         >
           <span class="overlay-card__meta-lh-text">
             <span class="overlay-card__meta-lh-label">ЛХ</span>
             <span
-              v-for="(label, checkIdx) in bestMoveLabels()"
+              v-for="(label, checkIdx) in bestMoveLabels(p)"
               :key="`${seatKey(p, idx)}-best-move-${checkIdx}-${label}`"
               class="overlay-card__meta-lh-num"
               :class="{ 'overlay-card__meta-lh-num--mafia': isSheriffCheckMafiaLike(label) }"

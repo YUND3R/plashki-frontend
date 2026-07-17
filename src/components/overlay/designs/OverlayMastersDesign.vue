@@ -33,10 +33,6 @@ const props = defineProps({
     type: Array as PropType<string[]>,
     default: () => [],
   },
-  bestMove: {
-    type: Array as PropType<string[]>,
-    default: () => [],
-  },
   persistentMessage: {
     type: String,
     default: '',
@@ -224,9 +220,9 @@ function sheriffCheckLabels(): string[] {
   return labels
 }
 
-function bestMoveLabels(): string[] {
+function bestMoveLabels(p: LobbyPlayer | null): string[] {
   const labels: string[] = []
-  for (const raw of props.bestMove ?? []) {
+  for (const raw of p?.best_move ?? []) {
     const value = (typeof raw === 'string' ? raw : '').trim()
     if (!value) continue
     labels.push(value)
@@ -336,10 +332,10 @@ onUnmounted(() => {
         </span>
       </div>
 
-      <div v-if="isBestMoveSeat(p) && bestMoveLabels().length" class="overlay-masters-card__checks overlay-masters-card__checks--right">
+      <div v-if="isBestMoveSeat(p) && bestMoveLabels(p).length" class="overlay-masters-card__checks overlay-masters-card__checks--right">
         <span class="overlay-masters-card__check-prefix">ЛХ</span>
         <span
-          v-for="(label, checkIdx) in bestMoveLabels()"
+          v-for="(label, checkIdx) in bestMoveLabels(p)"
           :key="`${seatKey(p, idx)}-best-move-${checkIdx}-${label}`"
           class="overlay-masters-card__check-badge"
           :class="{ 'overlay-masters-card__check-badge--mafia': isSheriffCheckMafiaLike(label) }"

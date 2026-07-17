@@ -30,10 +30,13 @@ import {
   resetLobbyGameRoles,
   resetLobbyStatuses,
   setLobbyBestMove,
+  setLobbyBonusPoints,
   setLobbySheriffCheck,
   setLobbyMemberStatus,
   setLobbyMemberRole,
   setLobbyImportedSelection,
+  setLobbyOverlayScreen,
+  setLobbyVictoryScoresVisibility,
   swapLobbySeats,
   type GameLobby,
   type LobbyImportedVariant,
@@ -117,6 +120,14 @@ const importedParticipantsModalOpen = ref(false)
 const activePersistentDesignCode = ref<'classic' | 'masters-yug25' | 'plus'>('classic')
 const persistentMessageDraft = ref('')
 const persistentMessageFeedback = ref<string | null>(null)
+const overlayScreenSaving = ref(false)
+const overlayScreenError = ref<string | null>(null)
+const victoryScoresSaving = ref(false)
+const bonusPointsModalOpen = ref(false)
+const bonusPointsDraft = ref<Record<string, string>>({})
+const bonusPointsSaving = ref(false)
+const bonusPointsResetting = ref(false)
+const bonusPointsError = ref<string | null>(null)
 const PERSISTENT_MESSAGE_MAX_LENGTH = 50
 const popupTitleDraft = ref('')
 const popupSubtitleDraft = ref('')
@@ -894,6 +905,130 @@ function emitPopupMessage() {
   showPopupFeedback('Показано')
 }
 
+function isOverlayScreenActive(screenKey: string): boolean {
+  return (lobby.value?.active_overlay_screen ?? '').trim().toLowerCase() === screenKey
+}
+
+const bonusPointsWinner = computed<'mafia' | 'peaceful' | null>(() => {
+  if (isOverlayScreenActive('victory-mafia')) return 'mafia'
+  if (isOverlayScreenActive('victory-peaceful')) return 'peaceful'
+  return null
+})
+
+function teamPointsForPlayer(player: LobbyPlayer): number {
+  const role = (player.game_role ?? '').trim().toLowerCase()
+  if (bonusPointsWinner.value === 'mafia') return role === 'mafia' || role === 'don' ? 1 : 0
+  if (bonusPointsWinner.value === 'peaceful') return role === 'peaceful' || role === 'sheriff' ? 1 : 0
+  return 0
+}
+
+async function setOverlayScreen(screenKey: 'lobby' | 'victory-mafia' | 'victory-peaceful') {
+  if (!lobbyId.value || !isLobbyHost.value || overlayScreenSaving.value) return
+  overlayScreenSaving.value = true
+  overlayScreenError.value = null
+  try {
+    lobby.value = await setLobbyOverlayScreen(lobbyId.value, { screen_key: screenKey })
+    notifyOverlayLobbyChanged(lobbyId.value)
+  } catch (e) {
+    overlayScreenError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    overlayScreenSaving.value = false
+  }
+}
+
+async function toggleVictoryScores() {
+  if (!lobbyId.value || !isLobbyHost.value || victoryScoresSaving.value) return
+  victoryScoresSaving.value = true
+  overlayScreenError.value = null
+  try {
+    lobby.value = await setLobbyVictoryScoresVisibility(lobbyId.value, {
+      show_scores: !(lobby.value?.show_victory_scores === true),
+    })
+    notifyOverlayLobbyChanged(lobbyId.value)
+  } catch (e) {
+    overlayScreenError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    victoryScoresSaving.value = false
+  }
+}
+
+function openBonusPointsModal() {
+  if (!isLobbyHost.value || !lobby.value) return
+  bonusPointsDraft.value = Object.fromEntries(
+    lobby.value.players.map((player) => [player.membership_id, String(player.bonus_points ?? 0)]),
+  )
+  bonusPointsError.value = null
+  bonusPointsModalOpen.value = true
+}
+
+function closeBonusPointsModal() {
+  if (bonusPointsSaving.value || bonusPointsResetting.value) return
+  bonusPointsModalOpen.value = false
+  bonusPointsError.value = null
+}
+
+function updateBonusPoints(membershipId: string, value: string) {
+  bonusPointsDraft.value = { ...bonusPointsDraft.value, [membershipId]: value }
+}
+
+function changeBonusPointsByStep(membershipId: string, delta: number) {
+  const current = Number(bonusPointsDraft.value[membershipId] ?? 0)
+  const safeCurrent = Number.isFinite(current) ? current : 0
+  const next = Math.min(99.9, Math.max(-99.9, Math.round((safeCurrent + delta) * 10) / 10))
+  updateBonusPoints(membershipId, next.toFixed(1))
+}
+
+async function saveBonusPoints() {
+  if (!lobbyId.value || !lobby.value || !isLobbyHost.value || bonusPointsSaving.value || bonusPointsResetting.value) return
+  const entries = lobby.value.players.map((player) => {
+    const raw = (bonusPointsDraft.value[player.membership_id] ?? '').trim()
+    const points = raw ? Number(raw) : 0
+    return { membership_id: player.membership_id, points }
+  })
+  if (
+    entries.some(
+      (entry) =>
+        !Number.isFinite(entry.points) ||
+        Math.abs(entry.points * 10 - Math.round(entry.points * 10)) > 1e-8 ||
+        entry.points < -99.9 ||
+        entry.points > 99.9,
+    )
+  ) {
+    bonusPointsError.value = 'Укажите значение от −99.9 до 99.9 с шагом 0.1.'
+    return
+  }
+  bonusPointsSaving.value = true
+  bonusPointsError.value = null
+  try {
+    lobby.value = await setLobbyBonusPoints(lobbyId.value, { bonus_points: entries })
+    notifyOverlayLobbyChanged(lobbyId.value)
+    bonusPointsModalOpen.value = false
+  } catch (e) {
+    bonusPointsError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    bonusPointsSaving.value = false
+  }
+}
+
+async function resetBonusPoints() {
+  if (!lobbyId.value || !lobby.value || !isLobbyHost.value || bonusPointsSaving.value || bonusPointsResetting.value) return
+  bonusPointsResetting.value = true
+  bonusPointsError.value = null
+  try {
+    const entries = lobby.value.players.map((player) => ({
+      membership_id: player.membership_id,
+      points: 0,
+    }))
+    lobby.value = await setLobbyBonusPoints(lobbyId.value, { bonus_points: entries })
+    bonusPointsDraft.value = Object.fromEntries(entries.map((entry) => [entry.membership_id, '0']))
+    notifyOverlayLobbyChanged(lobbyId.value)
+  } catch (e) {
+    bonusPointsError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    bonusPointsResetting.value = false
+  }
+}
+
 function openPhotoModal(p: LobbyPlayer) {
   if (!isLobbyHost.value || swapBusy.value || rolesResetBusy.value || !p.membership_id) return
   void (async () => {
@@ -1044,6 +1179,14 @@ async function resetAllRolesAndStatuses() {
   try {
     await clearLobbyBestMove(id)
     await clearLobbySheriffCheck(id)
+    if (lobby.value?.players.length) {
+      await setLobbyBonusPoints(id, {
+        bonus_points: lobby.value.players.map((player) => ({
+          membership_id: player.membership_id,
+          points: 0,
+        })),
+      })
+    }
     await resetLobbyGameRoles(id)
     lobby.value = await resetLobbyStatuses(id)
     sheriffChecksValues.value = ['', '', '', '', '']
@@ -1210,9 +1353,8 @@ function readSheriffChecksFromLobby(sourceLobby: GameLobby | null): string[] {
   return normalized
 }
 
-function readBestMoveFromLobby(sourceLobby: GameLobby | null): string[] {
-  const source = (sourceLobby ?? {}) as Record<string, unknown>
-  const raw = source.best_move
+function readBestMoveFromPlayer(player: LobbyPlayer | null): string[] {
+  const raw = player?.best_move
   if (!Array.isArray(raw)) return ['', '', '']
   const normalized = raw
     .slice(0, 3)
@@ -1264,7 +1406,7 @@ function canOpenBestMove(p: LobbyPlayer | null): boolean {
 function openBestMoveModal(p: LobbyPlayer | null) {
   if (!canOpenBestMove(p) || !p?.membership_id) return
   bestMoveTargetMembershipId.value = p.membership_id
-  bestMoveValues.value = readBestMoveFromLobby(lobby.value)
+  bestMoveValues.value = readBestMoveFromPlayer(p)
   bestMoveError.value = null
   bestMoveModalOpen.value = true
 }
@@ -1299,19 +1441,27 @@ async function saveBestMove() {
     if (!hasAnyValue) {
       const targetMembershipId = bestMoveTargetMembershipId.value
       if (targetMembershipId) {
+        // Сначала убираем значения у выбранного игрока, затем его статус,
+        // чтобы overlay не показал ЛХ с устаревшими цифрами.
+        lobby.value = await setLobbyBestMove(lobbyId.value, {
+          membership_id: targetMembershipId,
+          best_move: bodyValues,
+        })
         const targetPlayer = lobby.value?.players?.find((p) => p.membership_id === targetMembershipId) ?? null
         if (isStatusActive(targetPlayer, 'best-move')) {
-          await clearLobbyMemberStatus(lobbyId.value, targetMembershipId)
+          lobby.value = await clearLobbyMemberStatus(lobbyId.value, targetMembershipId)
         }
       }
-      lobby.value = await clearLobbyBestMove(lobbyId.value)
       bestMoveValues.value = ['', '', '']
       closeBestMoveModalForced()
       return
     }
-    lobby.value = await setLobbyBestMove(lobbyId.value, { best_move: bodyValues })
     const targetMembershipId = bestMoveTargetMembershipId.value
     if (targetMembershipId) {
+      lobby.value = await setLobbyBestMove(lobbyId.value, {
+        membership_id: targetMembershipId,
+        best_move: bodyValues,
+      })
       const targetPlayer = lobby.value.players.find((p) => p.membership_id === targetMembershipId) ?? null
       if (!isStatusActive(targetPlayer, 'best-move')) {
         // Статус ставим вторым запросом: overlay увидит его только вместе
@@ -1332,7 +1482,16 @@ async function resetBestMove() {
   bestMoveResetting.value = true
   bestMoveError.value = null
   try {
-    lobby.value = await clearLobbyBestMove(lobbyId.value)
+    const targetMembershipId = bestMoveTargetMembershipId.value
+    if (!targetMembershipId) return
+    lobby.value = await setLobbyBestMove(lobbyId.value, {
+      membership_id: targetMembershipId,
+      best_move: ['', '', ''],
+    })
+    const targetPlayer = lobby.value.players.find((p) => p.membership_id === targetMembershipId) ?? null
+    if (isStatusActive(targetPlayer, 'best-move')) {
+      lobby.value = await clearLobbyMemberStatus(lobbyId.value, targetMembershipId)
+    }
     bestMoveValues.value = ['', '', '']
   } catch (e) {
     bestMoveError.value = e instanceof Error ? e.message : String(e)
@@ -1780,6 +1939,65 @@ async function resetBestMove() {
             </p>
           </article>
 
+          <article v-if="isLobbyHost" class="lobby-manage__card lobby-manage__card--side lobby-manage__victory-card">
+            <div class="lobby-manage__side-head">
+              <h2 class="lobby-manage__side-title">Итог игры</h2>
+              <label class="lobby-manage__victory-scores-toggle">
+                <span>С доп. баллами</span>
+                <span class="lobby-manage__host-switch" :class="{ 'lobby-manage__host-switch--on': lobby.show_victory_scores }">
+                  <input
+                    type="checkbox"
+                    class="lobby-manage__host-switch-input"
+                    :checked="lobby.show_victory_scores === true"
+                    :disabled="victoryScoresSaving"
+                    @change="toggleVictoryScores"
+                  />
+                  <span class="lobby-manage__host-switch-knob" />
+                </span>
+              </label>
+            </div>
+            <div class="lobby-manage__victory-actions">
+              <button
+                v-if="lobby.show_victory_scores"
+                type="button"
+                class="lobby-manage__link-action lobby-manage__link-action--full"
+                @click="openBonusPointsModal"
+              >
+                Доп. баллы
+              </button>
+              <button
+                type="button"
+                class="lobby-manage__link-action"
+                :class="{ 'lobby-manage__link-action--active': isOverlayScreenActive('victory-mafia') }"
+                :aria-pressed="isOverlayScreenActive('victory-mafia')"
+                :disabled="overlayScreenSaving"
+                @click="setOverlayScreen('victory-mafia')"
+              >
+                Победа мафии
+              </button>
+              <button
+                type="button"
+                class="lobby-manage__link-action"
+                :class="{ 'lobby-manage__link-action--active': isOverlayScreenActive('victory-peaceful') }"
+                :aria-pressed="isOverlayScreenActive('victory-peaceful')"
+                :disabled="overlayScreenSaving"
+                @click="setOverlayScreen('victory-peaceful')"
+              >
+                Победа мирных
+              </button>
+              <button
+                v-if="isOverlayScreenActive('victory-mafia') || isOverlayScreenActive('victory-peaceful')"
+                type="button"
+                class="lobby-manage__link-action lobby-manage__link-action--ghost lobby-manage__link-action--full"
+                :disabled="overlayScreenSaving"
+                @click="setOverlayScreen('lobby')"
+              >
+                Вернуть плашки
+              </button>
+            </div>
+            <p v-if="overlayScreenError" class="lobby-manage__victory-error" role="alert">{{ overlayScreenError }}</p>
+          </article>
+
           <section v-if="hasImportedSelection" class="lobby-manage__imported-toolbar">
             <div ref="importedSwitcherRef" class="lobby-manage__imported-switcher">
               <div class="lobby-manage__imported-group">
@@ -2112,6 +2330,73 @@ async function resetBestMove() {
               @click="resetBestMove"
             >
               {{ bestMoveResetting ? 'Сброс…' : 'Сброс' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div
+        v-if="bonusPointsModalOpen"
+        class="lobby-manage__modal-overlay"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Дополнительные баллы"
+      >
+        <div class="lobby-manage__modal-card lobby-manage__modal-card--bonus-points">
+          <div class="lobby-manage__modal-head">
+            <h3 class="lobby-manage__modal-title">Дополнительные баллы</h3>
+            <button type="button" class="lobby-manage__modal-close" aria-label="Закрыть" @click="closeBonusPointsModal">
+              ×
+            </button>
+          </div>
+          <div class="lobby-manage__bonus-points-table">
+            <div class="lobby-manage__bonus-points-head">
+              <span></span>
+              <span>Игрок</span>
+              <span>Команда</span>
+              <span>Доп.</span>
+            </div>
+            <div v-for="(player, index) in lobby?.players ?? []" :key="player.membership_id" class="lobby-manage__bonus-points-row">
+              <span class="lobby-manage__bonus-points-seat">{{ index + 1 }}</span>
+              <span class="lobby-manage__bonus-points-name">{{ player.nickname || player.username || `Игрок ${index + 1}` }}</span>
+              <span class="lobby-manage__bonus-points-team">{{ teamPointsForPlayer(player).toFixed(1) }}</span>
+              <div class="lobby-manage__bonus-points-stepper">
+                <input
+                  class="lobby-manage__bonus-points-input"
+                  type="number"
+                  inputmode="decimal"
+                  min="-99.9"
+                  max="99.9"
+                  step="0.1"
+                  :value="bonusPointsDraft[player.membership_id] ?? '0'"
+                  @input="updateBonusPoints(player.membership_id, ($event.target as HTMLInputElement).value)"
+                />
+                <div class="lobby-manage__bonus-points-stepper-actions">
+                  <button type="button" tabindex="-1" aria-label="Увеличить на 0.1" @click="changeBonusPointsByStep(player.membership_id, 0.1)">↑</button>
+                  <button type="button" tabindex="-1" aria-label="Уменьшить на 0.1" @click="changeBonusPointsByStep(player.membership_id, -0.1)">↓</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p v-if="bonusPointsError" class="lobby-manage__modal-status lobby-manage__modal-status--error" role="alert">
+            {{ bonusPointsError }}
+          </p>
+          <div class="lobby-manage__modal-actions">
+            <button
+              type="button"
+              class="lobby-manage__btn-foot lobby-manage__btn-foot--primary"
+              :disabled="bonusPointsSaving || bonusPointsResetting"
+              @click="saveBonusPoints"
+            >
+              {{ bonusPointsSaving ? 'Сохранение…' : 'Сохранить' }}
+            </button>
+            <button
+              type="button"
+              class="lobby-manage__btn-foot"
+              :disabled="bonusPointsSaving || bonusPointsResetting"
+              @click="resetBonusPoints"
+            >
+              {{ bonusPointsResetting ? 'Сброс…' : 'Сбросить' }}
             </button>
           </div>
         </div>
@@ -3522,6 +3807,47 @@ async function resetBestMove() {
   line-height: 1.3;
 }
 
+.lobby-manage__victory-hint {
+  margin: -0.2rem 0 0.65rem;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: #64748b;
+}
+
+.lobby-manage__victory-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem;
+}
+
+.lobby-manage__victory-scores-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0;
+  color: #475569;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.lobby-manage__victory-actions .lobby-manage__link-action--active {
+  color: #fff;
+  border-color: #2f6feb;
+  background: #2f6feb;
+}
+
+.lobby-manage__victory-actions .lobby-manage__link-action--full {
+  grid-column: 1 / -1;
+}
+
+.lobby-manage__victory-error {
+  margin: 0.55rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: #b91c1c;
+}
+
 .lobby-manage__field {
   display: grid;
   grid-template-columns: auto 1fr auto;
@@ -3779,6 +4105,10 @@ async function resetBestMove() {
   width: min(420px, 100%);
 }
 
+.lobby-manage__modal-card--bonus-points {
+  width: min(500px, 100%);
+}
+
 .lobby-manage__modal-card--confirm-delete {
   width: min(500px, 100%);
 }
@@ -3791,6 +4121,130 @@ async function resetBestMove() {
   width: min(920px, 100%);
   max-height: none;
   overflow: visible;
+}
+
+.lobby-manage__bonus-points-table {
+  display: grid;
+  margin-top: 0.65rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.lobby-manage__bonus-points-row {
+  display: grid;
+  grid-template-columns: 1.75rem minmax(0, 1fr) 4rem 5rem;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 2.75rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.lobby-manage__bonus-points-head {
+  display: grid;
+  grid-template-columns: 1.75rem minmax(0, 1fr) 4rem 5rem;
+  align-items: center;
+  min-height: 2rem;
+  gap: 0.55rem;
+  color: #64748b;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.lobby-manage__bonus-points-head span:nth-child(3),
+.lobby-manage__bonus-points-head span:nth-child(4) {
+  text-align: center;
+}
+
+.lobby-manage__bonus-points-seat {
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.lobby-manage__bonus-points-name {
+  min-width: 0;
+  overflow: hidden;
+  color: #111827;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lobby-manage__bonus-points-team {
+  color: #334155;
+  font-size: 0.8125rem;
+  font-weight: 800;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.lobby-manage__bonus-points-input {
+  width: 100%;
+  min-height: 2rem;
+  padding: 0.3rem 0.45rem;
+  border: 0;
+  border-radius: 6px 0 0 6px;
+  background: #fff;
+  color: #111827;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.lobby-manage__bonus-points-input:focus {
+  outline: none;
+}
+
+.lobby-manage__bonus-points-input::-webkit-inner-spin-button,
+.lobby-manage__bonus-points-input::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
+.lobby-manage__bonus-points-stepper {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 1.45rem;
+  min-height: 2rem;
+  overflow: hidden;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.lobby-manage__bonus-points-stepper:focus-within {
+  border-color: #2f6feb;
+}
+
+.lobby-manage__bonus-points-stepper-actions {
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  border-left: 1px solid #e5e7eb;
+}
+
+.lobby-manage__bonus-points-stepper-actions button {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  color: #64748b;
+  background: #f8fafc;
+  font: inherit;
+  font-size: 0.55rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.lobby-manage__bonus-points-stepper-actions button + button {
+  border-top: 1px solid #e5e7eb;
+}
+
+.lobby-manage__bonus-points-stepper-actions button:hover {
+  color: #2f6feb;
+  background: #eff6ff;
 }
 
 .lobby-manage__nick-input--modal {

@@ -12,6 +12,8 @@ export type OverlayLobbySyncEvent = {
 export function overlayLobbyDataSignature(value: GameLobby): string {
   return JSON.stringify({
     design: value.overlay_design ?? '',
+    screen: value.active_overlay_screen ?? '',
+    victoryScores: value.show_victory_scores ?? false,
     sheriff: value.sheriff_check ?? null,
     best: value.best_move ?? null,
     players: value.players.map((p) => ({
@@ -19,6 +21,8 @@ export function overlayLobbyDataSignature(value: GameLobby): string {
       nick: p.nickname,
       role: p.game_role,
       status: p.status,
+      best: p.best_move ?? null,
+      bonus: p.bonus_points ?? 0,
       photo: p.lobby_photo_url ?? p.photo_urls?.[0] ?? '',
       card: p.player_card_id,
     })),

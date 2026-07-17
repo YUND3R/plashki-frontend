@@ -17,6 +17,9 @@ import {
 import OverlayClassicDesign from '@/components/overlay/designs/OverlayClassicDesign.vue'
 import OverlayMastersDesign from '@/components/overlay/designs/OverlayMastersDesign.vue'
 import OverlayPlusDesign from '@/components/overlay/designs/OverlayPlusDesign.vue'
+import OverlayVictoryClassic from '@/components/overlay/OverlayVictoryClassic.vue'
+import OverlayVictoryMasters from '@/components/overlay/OverlayVictoryMasters.vue'
+import OverlayVictoryPlus from '@/components/overlay/OverlayVictoryPlus.vue'
 import {
   normalizeOverlayDesignCode,
   readOverlayPersistentMessage,
@@ -75,6 +78,18 @@ const designCode = computed(() => {
   if (isAutoDesignRoute.value) return lobbyDesignCode.value || 'classic'
   return routeDesignCode.value || lobbyDesignCode.value || 'classic'
 })
+const activeOverlayScreen = computed(() => {
+  const raw = isLiveRoute.value
+    ? overlayLiveState.value?.active_overlay_screen ?? lobby.value?.active_overlay_screen
+    : lobby.value?.active_overlay_screen
+  return typeof raw === 'string' ? raw.trim().toLowerCase() : ''
+})
+const victoryWinner = computed<'mafia' | 'peaceful' | null>(() => {
+  if (activeOverlayScreen.value === 'victory-mafia') return 'mafia'
+  if (activeOverlayScreen.value === 'victory-peaceful') return 'peaceful'
+  return null
+})
+const showVictoryScores = computed(() => lobby.value?.show_victory_scores === true)
 const prevDocumentTitle = ref('')
 const persistentMessage = ref('')
 const persistentMessageColor = ref<OverlayTextTone>('green')
@@ -121,16 +136,16 @@ const sheriffChecks = computed(() => {
   return raw.map((x) => (typeof x === 'string' ? x : x == null ? '' : String(x)))
 })
 
-const bestMove = computed(() => {
-  const raw = lobby.value?.best_move
-  if (!Array.isArray(raw)) return []
-  return raw.map((x) => (typeof x === 'string' ? x : x == null ? '' : String(x)))
-})
-
 const currentDesignComponent = computed(() => {
   if (designCode.value === 'masters-yug25' || designCode.value === 'masters') return OverlayMastersDesign
   if (designCode.value === 'plus') return OverlayPlusDesign
   return OverlayClassicDesign
+})
+
+const currentVictoryComponent = computed(() => {
+  if (designCode.value === 'masters-yug25' || designCode.value === 'masters') return OverlayVictoryMasters
+  if (designCode.value === 'plus') return OverlayVictoryPlus
+  return OverlayVictoryClassic
 })
 
 function lobbyDataSignature(value: GameLobby): string {
@@ -169,6 +184,8 @@ function mergeOverlayState(
   return {
     ...fresh,
     overlay_design: overlayDesign,
+    active_overlay_screen:
+      (state.active_overlay_screen ?? '').trim() || (fresh.active_overlay_screen ?? null),
   }
 }
 
@@ -410,7 +427,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <main class="overlay">
+  <main class="overlay" :class="{ 'overlay--victory': victoryWinner }">
     <div v-if="loading" class="overlay__state">
       <p class="overlay__state-title">Загрузка overlay…</p>
       <p class="overlay__state-hint">Лобби: {{ effectiveLobbyId || '—' }}</p>
@@ -429,11 +446,18 @@ onUnmounted(() => {
         <li>URL должен открываться в обычном браузере на этом же ПК</li>
       </ul>
     </div>
+    <component
+      :is="currentVictoryComponent"
+      v-else-if="victoryWinner"
+      :winner="victoryWinner"
+      :seats="visibleSeatRows"
+      :persistent-message="persistentMessage"
+      :show-scores="showVictoryScores"
+    />
     <OverlayMastersDesign
       v-else-if="designCode === 'masters-yug25' || designCode === 'masters'"
       :seats="visibleSeatRows"
       :sheriff-check="sheriffChecks"
-      :best-move="bestMove"
       :persistent-message="persistentMessage"
       :persistent-color="persistentMessageColor"
       :popup-message="activePopupMessage"
@@ -443,7 +467,6 @@ onUnmounted(() => {
       v-else
       :seats="visibleSeatRows"
       :sheriff-check="sheriffChecks"
-      :best-move="bestMove"
       :persistent-message="persistentMessage"
       :persistent-color="persistentMessageColor"
       :popup-message="activePopupMessage"
@@ -462,6 +485,13 @@ onUnmounted(() => {
   display: flex;
   align-items: flex-end;
   background: transparent;
+}
+
+.overlay--victory {
+  height: 100vh;
+  min-height: 0;
+  padding: 0;
+  align-items: stretch;
 }
 
 .overlay__state {
@@ -516,6 +546,9 @@ onUnmounted(() => {
 html.overlay-page,
 body.overlay-page,
 body.overlay-page #app {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
   background: transparent !important;
 }
 </style>

@@ -26,10 +26,6 @@ const props = defineProps({
     type: Array as PropType<string[]>,
     default: () => [],
   },
-  bestMove: {
-    type: Array as PropType<string[]>,
-    default: () => [],
-  },
   persistentMessage: {
     type: String,
     default: '',
@@ -126,9 +122,9 @@ function sheriffCheckLabels(): string[] {
   return labels
 }
 
-function bestMoveLabels(): string[] {
+function bestMoveLabels(p: LobbyPlayer | null): string[] {
   const labels: string[] = []
-  for (const raw of props.bestMove ?? []) {
+  for (const raw of p?.best_move ?? []) {
     const value = (typeof raw === 'string' ? raw : '').trim()
     if (!value) continue
     labels.push(value)
@@ -170,15 +166,15 @@ function isAnimatableBestMoveStatus(status: string | null | undefined): boolean 
   return statusKey(status) === 'best-move'
 }
 
-function shouldRunEliminationAnimation(previous: string, current: string): boolean {
+function shouldRunEliminationAnimation(previous: string, current: string, p: LobbyPlayer | null): boolean {
   if (!elimInitialized.value) return false
   if (isAnimatableEliminationStatus(current) && !isAnimatableEliminationStatus(previous)) return true
-  const hasBestMovePayload = bestMoveLabels().length > 0
+  const hasBestMovePayload = bestMoveLabels(p).length > 0
   return isAnimatableBestMoveStatus(current) && !isAnimatableBestMoveStatus(previous) && hasBestMovePayload
 }
 
 function showBestMoveFillOverlay(p: LobbyPlayer | null, idx: number): boolean {
-  return elimStage(p, idx) === 'fill' && isBestMoveSeat(p) && bestMoveLabels().length > 0
+  return elimStage(p, idx) === 'fill' && isBestMoveSeat(p) && bestMoveLabels(p).length > 0
 }
 
 function bestMoveFillNumDelay(checkIdx: number): string {
@@ -236,10 +232,10 @@ function clearRoleRevealTimers(key: string) {
   roleRevealTimersBySeat.delete(key)
 }
 
-function runEliminationAnimation(key: string, status: string) {
+function runEliminationAnimation(key: string, status: string, p: LobbyPlayer | null) {
   clearElimTimers(key)
   const isBestMove = status === 'best-move'
-  const lhCount = isBestMove ? bestMoveLabels().length : 0
+  const lhCount = isBestMove ? bestMoveLabels(p).length : 0
   const lhFillMs =
     lhCount > 0 ? LH_NUM_BASE_DELAY_MS + (lhCount - 1) * LH_NUM_STEP_MS + LH_NUM_APPEAR_MS + LH_FILL_SETTLE_MS : 0
   const fillMs = Math.max(ELIM_FILL_MS, lhFillMs)
@@ -267,15 +263,6 @@ function runRoleRevealAnimation(key: string) {
   const t1 = setTimeout(() => setRoleRevealStage(key, 'settle'), ROLE_REVEAL_INTRO_MS)
   const t2 = setTimeout(() => setRoleRevealStage(key), ROLE_REVEAL_INTRO_MS + ROLE_REVEAL_SETTLE_MS)
   roleRevealTimersBySeat.set(key, [t1, t2])
-}
-
-function triggerBestMoveAnimationsAfterSave() {
-  props.seats.forEach((p, idx) => {
-    if (!isBestMoveSeat(p)) return
-    const key = seatKey(p, idx)
-    if (elimStageBySeat.value[key]) return
-    runEliminationAnimation(key, 'best-move')
-  })
 }
 
 function finishEliminationAnimation(key: string) {
@@ -366,7 +353,7 @@ function eliminatedStatusIcon(status: string | null | undefined): string {
 
 function showEliminatedStatusBarIcon(p: LobbyPlayer | null): boolean {
   if (!eliminatedStatusIcon(p?.status ?? null)) return false
-  if (isBestMoveSeat(p) && bestMoveLabels().length > 0) return false
+  if (isBestMoveSeat(p) && bestMoveLabels(p).length > 0) return false
   return true
 }
 
@@ -405,20 +392,12 @@ watch(
       const key = seatKey(p, idx)
       const current = statusKey(p?.status)
       const previous = previousStatusBySeat.value[key] ?? ''
-      if (shouldRunEliminationAnimation(previous, current)) {
-        runEliminationAnimation(key, current)
+      if (shouldRunEliminationAnimation(previous, current, p)) {
+        runEliminationAnimation(key, current, p)
       }
       next[key] = current
     })
     previousStatusBySeat.value = next
-  },
-)
-
-watch(
-  () => bestMoveLabels().join('|'),
-  (current, previous) => {
-    if (!current || current === previous) return
-    triggerBestMoveAnimationsAfterSave()
   },
 )
 
@@ -536,7 +515,7 @@ onUnmounted(() => {
           <div v-if="showBestMoveFillOverlay(p, idx)" class="overlay-plus-card__status-fill-lh">
             <span class="overlay-plus-card__status-fill-lh-label">ЛХ</span>
             <span
-              v-for="(label, checkIdx) in bestMoveLabels()"
+              v-for="(label, checkIdx) in bestMoveLabels(p)"
               :key="`${seatKey(p, idx)}-fill-lh-${checkIdx}-${label}`"
               class="overlay-plus-card__status-fill-lh-num"
               :class="{ 'overlay-plus-card__status-fill-lh-num--mafia': isSheriffCheckMafiaLike(label) }"
@@ -569,12 +548,12 @@ onUnmounted(() => {
           class="overlay-plus-card__status-bar-icon"
         />
         <span
-          v-if="isBestMoveSeat(p) && bestMoveLabels().length"
+          v-if="isBestMoveSeat(p) && bestMoveLabels(p).length"
           class="overlay-plus-card__status-lh"
         >
           <span class="overlay-plus-card__status-lh-label">ЛХ</span>
           <span
-            v-for="(label, checkIdx) in bestMoveLabels()"
+            v-for="(label, checkIdx) in bestMoveLabels(p)"
             :key="`${seatKey(p, idx)}-best-move-${checkIdx}-${label}`"
             class="overlay-plus-card__status-lh-num"
             :class="{ 'overlay-plus-card__status-lh-num--mafia': isSheriffCheckMafiaLike(label) }"

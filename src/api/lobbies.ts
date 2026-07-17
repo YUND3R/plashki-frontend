@@ -19,6 +19,10 @@ export type LobbyPlayer = {
   display_photo_layout?: PhotoCrop | null
   game_role: string | null
   status?: string | null
+  /** 3 отметки ЛХ для этого конкретного места за столом. */
+  best_move?: string[] | null
+  /** Корректировка итогового счёта для экрана победы. */
+  bonus_points?: number
   joined_at: string
 }
 
@@ -37,6 +41,8 @@ export type GameLobby = {
   overlay_design?: string | null
   /** Активный экран в OBS overlay (lobby, roles и т.д.). */
   active_overlay_screen?: string | null
+  /** Показывать командные и дополнительные баллы на экране победы. */
+  show_victory_scores?: boolean
 }
 
 export type LobbyImportedVariant = {
@@ -242,6 +248,11 @@ function normalizeLobbyPlayer(raw: unknown): LobbyPlayer | null {
     game_role:
       typeof row.game_role === 'string' || row.game_role === null ? (row.game_role as string | null) : null,
     status: typeof row.status === 'string' || row.status === null ? (row.status as string | null) : null,
+    best_move: Array.isArray(row.best_move)
+      ? row.best_move.filter((value): value is string => typeof value === 'string')
+      : [],
+    bonus_points:
+      typeof row.bonus_points === 'number' && Number.isFinite(row.bonus_points) ? row.bonus_points : 0,
     joined_at: typeof row.joined_at === 'string' ? row.joined_at : '',
   }
 }
@@ -273,6 +284,7 @@ function toGameLobby(item: unknown): GameLobby | null {
     typeof activeOverlayScreenRaw === 'string' && activeOverlayScreenRaw.trim()
       ? activeOverlayScreenRaw.trim()
       : null
+  const showVictoryScores = row.show_victory_scores === true
   return {
     id,
     max_players: maxPlayers,
@@ -286,6 +298,7 @@ function toGameLobby(item: unknown): GameLobby | null {
     imported_state: importedState,
     overlay_design: overlayDesign,
     active_overlay_screen: activeOverlayScreen,
+    show_victory_scores: showVictoryScores,
   }
 }
 
@@ -573,10 +586,11 @@ export function clearLobbySheriffCheck(lobbyId: string) {
 }
 
 export type SetLobbyBestMoveBody = {
+  membership_id: string
   best_move: string[]
 }
 
-/** Обновить best_move (3 значения) для лобби (только хост). */
+/** Обновить best_move (3 значения) для конкретного места (только хост). */
 export function setLobbyBestMove(lobbyId: string, body: SetLobbyBestMoveBody) {
   return apiFetchJson<unknown>(`/lobbies/${lobbyId}/best-move`, body, {
     method: 'PATCH',
@@ -592,6 +606,24 @@ export function clearLobbyBestMove(lobbyId: string) {
   return apiFetch<unknown>(`/lobbies/${lobbyId}/best-move`, { method: 'DELETE' }).then((payload) => {
     const lobby = toGameLobby(payload)
     if (!lobby) throw new Error('Некорректный ответ при сбросе best move')
+    return lobby
+  })
+}
+
+export type SetLobbyBonusPointsBody = {
+  bonus_points: Array<{
+    membership_id: string
+    points: number
+  }>
+}
+
+/** Сохранить доп. баллы игроков для экрана победы (только хост). */
+export function setLobbyBonusPoints(lobbyId: string, body: SetLobbyBonusPointsBody) {
+  return apiFetchJson<unknown>(`/lobbies/${lobbyId}/bonus-points`, body, {
+    method: 'PATCH',
+  }).then((payload) => {
+    const lobby = toGameLobby(payload)
+    if (!lobby) throw new Error('Некорректный ответ при сохранении доп. баллов')
     return lobby
   })
 }
@@ -656,6 +688,10 @@ export type SetLobbyOverlayScreenBody = {
   screen_key: string
 }
 
+export type SetLobbyVictoryScoresVisibilityBody = {
+  show_scores: boolean
+}
+
 export type LobbyOverlayStateResponse = {
   lobby_id: string
   selected_overlay_design?: string | null
@@ -698,6 +734,13 @@ export function setLobbyOverlayScreen(lobbyId: string, body: SetLobbyOverlayScre
   return apiFetchJson<unknown>(`/lobbies/${lobbyId}/overlay-screen`, body, {
     method: 'PATCH',
   }).then((payload) => parseLobbyResponse(payload, 'Некорректный ответ при переключении экрана overlay'))
+}
+
+/** Показать или скрыть баллы на экране победы. */
+export function setLobbyVictoryScoresVisibility(lobbyId: string, body: SetLobbyVictoryScoresVisibilityBody) {
+  return apiFetchJson<unknown>(`/lobbies/${lobbyId}/victory-scores`, body, {
+    method: 'PATCH',
+  }).then((payload) => parseLobbyResponse(payload, 'Некорректный ответ при смене отображения баллов'))
 }
 
 /** Получить состояние overlay для OBS (дизайн + активный экран). */
