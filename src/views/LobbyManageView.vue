@@ -1998,11 +1998,14 @@ async function resetBestMove() {
             <p v-if="overlayScreenError" class="lobby-manage__victory-error" role="alert">{{ overlayScreenError }}</p>
           </article>
 
-          <section v-if="hasImportedSelection" class="lobby-manage__imported-toolbar">
-            <div ref="importedSwitcherRef" class="lobby-manage__imported-switcher">
-              <div class="lobby-manage__imported-group">
-                <span class="lobby-manage__imported-field-label">Тур</span>
-                <div class="lobby-manage__imported-picker">
+          <article v-if="hasImportedSelection" ref="importedSwitcherRef" class="lobby-manage__card lobby-manage__card--side">
+            <div class="lobby-manage__side-head">
+              <h2 class="lobby-manage__side-title">Тур и стол</h2>
+            </div>
+
+            <div class="lobby-manage__imported-fields">
+              <div class="lobby-manage__field lobby-manage__imported-field">
+                <div class="lobby-manage__imported-picker" :class="{ 'lobby-manage__imported-picker--open': importedTourMenuOpen }">
                   <button
                     type="button"
                     class="lobby-manage__imported-select-btn"
@@ -2029,9 +2032,8 @@ async function resetBestMove() {
                 </div>
               </div>
 
-              <div class="lobby-manage__imported-group">
-                <span class="lobby-manage__imported-field-label">Стол</span>
-                <div class="lobby-manage__imported-picker">
+              <div class="lobby-manage__field lobby-manage__imported-field">
+                <div class="lobby-manage__imported-picker" :class="{ 'lobby-manage__imported-picker--open': importedTableMenuOpen }">
                   <button
                     type="button"
                     class="lobby-manage__imported-select-btn"
@@ -2057,30 +2059,33 @@ async function resetBestMove() {
                   </div>
                 </div>
               </div>
+            </div>
 
+            <div class="lobby-manage__persistent-actions lobby-manage__imported-actions">
               <button
                 type="button"
-                class="lobby-manage__imported-btn lobby-manage__imported-btn--apply"
+                class="lobby-manage__link-action"
                 :disabled="importedSelectionBusy || !isLobbyHost || !canApplyImportedSelection"
                 @click="applyImportedSelection"
               >
                 {{ importedSelectionBusy ? '...' : 'Применить' }}
               </button>
+              <button
+                v-if="isLobbyHost"
+                type="button"
+                class="lobby-manage__link-action lobby-manage__link-action--ghost"
+                title="Список всех участников турнира"
+                :disabled="swapBusy || rolesResetBusy || replaceSubmitting || deleteBusy || importedSelectionBusy"
+                @click="openImportedParticipantsModal"
+              >
+                Все участники
+              </button>
             </div>
-            <button
-              v-if="isLobbyHost"
-              type="button"
-              class="lobby-manage__btn-foot lobby-manage__imported-participants-open"
-              :disabled="swapBusy || rolesResetBusy || replaceSubmitting || deleteBusy || importedSelectionBusy"
-              @click="openImportedParticipantsModal"
-            >
-              Список всех участников турнира
-            </button>
             <p v-if="!isLobbyHost" class="lobby-manage__imported-note">
               Переключать тур/стол может только хост лобби.
             </p>
             <p v-if="importedSelectionError" class="lobby-manage__imported-error" role="alert">{{ importedSelectionError }}</p>
-          </section>
+          </article>
         </aside>
       </div>
 
@@ -2490,67 +2495,49 @@ async function resetBestMove() {
   line-height: 1.4;
 }
 
-.lobby-manage__imported-toolbar {
-  display: flex;
-  flex-direction: column;
+.lobby-manage__imported-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.55rem;
   width: 100%;
   min-width: 0;
-  align-items: stretch;
-  gap: 0.55rem;
-  margin: 0;
-  padding: 0.75rem;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  background: #f8fafc;
-  box-sizing: border-box;
 }
 
-.lobby-manage__imported-switcher {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.lobby-manage__field.lobby-manage__imported-field {
+  display: block;
+  width: 100%;
   min-width: 0;
-  gap: 0.5rem;
-  align-items: end;
-}
-
-.lobby-manage__imported-group {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 0.2rem;
+  margin-bottom: 0;
   position: relative;
 }
 
-.lobby-manage__imported-field-label {
-  padding-left: 0.1rem;
-  font-size: 0.65rem;
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: 0.03em;
-  color: #64748b;
-  text-transform: uppercase;
+.lobby-manage__imported-fields .lobby-manage__imported-picker {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  min-width: 0;
 }
 
-.lobby-manage__imported-picker {
-  position: relative;
-  z-index: 140;
+.lobby-manage__imported-fields .lobby-manage__imported-picker--open {
+  z-index: 30;
 }
 
 .lobby-manage__imported-select-btn {
   position: relative;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: flex-start;
   width: 100%;
-  height: 2.15rem;
-  padding: 0.22rem 1.35rem 0.22rem 0.55rem;
+  min-width: 0;
+  min-height: 2.1rem;
+  padding: 0.4rem 1.35rem 0.4rem 0.5rem;
   font: inherit;
   font-size: 0.8125rem;
-  line-height: 1;
+  line-height: 1.2;
   color: #111827;
-  border: 1px solid #cbd5e1;
-  border-radius: 7px;
-  background-color: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fff;
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
@@ -2560,7 +2547,7 @@ async function resetBestMove() {
   white-space: nowrap;
   transition:
     border-color 0.15s ease,
-    box-shadow 0.15s ease;
+    background-color 0.15s ease;
 }
 
 .lobby-manage__imported-select-text {
@@ -2586,13 +2573,13 @@ async function resetBestMove() {
   width: 100%;
   max-height: min(28.5rem, calc(100vh - 8rem));
   overflow-y: auto;
-  z-index: 180;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
+  z-index: 31;
+  border: 1px solid #dbe3f1;
+  border-radius: 8px;
   background: #fff;
-  box-shadow: none;
-  padding: 0;
+  padding: 0.2rem 0;
   box-sizing: border-box;
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.08);
 }
 
 .lobby-manage__imported-menu-item {
@@ -2621,13 +2608,13 @@ async function resetBestMove() {
 
 .lobby-manage__imported-select-btn:focus {
   outline: none;
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.12);
 }
 
 .lobby-manage__imported-select-btn:hover:not(:disabled) {
-  border-color: #cbd5e1;
-  background-color: #fff;
+  border-color: #dbe3f1;
+  background: #fff;
 }
 
 .lobby-manage__imported-select-btn:disabled {
@@ -2642,56 +2629,19 @@ async function resetBestMove() {
 }
 
 .lobby-manage__imported-error {
-  margin: 0;
-  font-size: 0.6875rem;
+  margin: 0.4rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.35;
   color: #b91c1c;
 }
 
-.lobby-manage__imported-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 1.95rem;
-  min-width: 66px;
-  padding: 0.18rem 0.38rem;
-  font: inherit;
-  font-size: 0.6875rem;
-  line-height: 1;
-  font-weight: 600;
-  color: #374151;
-  background: #f9fafb;
-  border: 1px solid #dbe3f1;
-  border-radius: 6px;
-  cursor: pointer;
-  transition:
-    border-color 0.15s ease,
-    background-color 0.15s ease,
-    color 0.15s ease;
-  white-space: nowrap;
+.lobby-manage__imported-actions {
+  margin-top: 0.5rem;
+  width: 100%;
 }
 
-.lobby-manage__imported-btn:hover:not(:disabled) {
-  background: #eff6ff;
-  border-color: #bfdbfe;
-  color: #1d4ed8;
-}
-
-.lobby-manage__imported-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.lobby-manage__imported-btn--apply {
-  min-width: 86px;
-  border-color: #2f6feb;
-  background: #2f6feb;
-  color: #fff;
-}
-
-.lobby-manage__imported-btn--apply:hover:not(:disabled) {
-  border-color: #1d4ed8;
-  background: #1d4ed8;
-  color: #fff;
+.lobby-manage__imported-actions .lobby-manage__link-action {
+  min-height: 2.05rem;
 }
 
 .lobby-manage__table-wrap {
@@ -4273,27 +4223,6 @@ async function resetBestMove() {
   overflow: auto;
 }
 
-.lobby-manage__imported-participants-open {
-  width: 100%;
-  min-height: 2.15rem;
-  margin: 0;
-  border-color: #cbd5e1;
-  background: #fff;
-  color: #334155;
-  font-size: 0.8125rem;
-  font-weight: 600;
-}
-
-.lobby-manage__imported-toolbar .lobby-manage__imported-btn--apply {
-  grid-column: 1 / -1;
-  width: 100%;
-  min-height: 2.15rem;
-  margin: 0;
-  padding-inline: 0.8rem;
-  border-radius: 7px;
-  font-weight: 700;
-}
-
 .lobby-manage__modal-head {
   display: flex;
   align-items: center;
@@ -4689,10 +4618,6 @@ async function resetBestMove() {
     z-index: 12;
   }
 
-  .lobby-manage__main-actions--imported-open {
-    overflow: visible;
-  }
-
   .lobby-manage__main-actions > * {
     flex: 0 0 auto;
   }
@@ -4708,42 +4633,6 @@ async function resetBestMove() {
   .lobby-manage__main-actions > .lobby-manage__sheriff-checks-btn--foot {
     order: 3;
     white-space: nowrap;
-  }
-
-  .lobby-manage__main-actions > .lobby-manage__imported-toolbar {
-    order: 20;
-    flex: 1 0 100%;
-    width: 100%;
-    margin-left: 0;
-    margin-top: 0.2rem;
-    padding: 0.45rem;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-  }
-
-  .lobby-manage__main-actions > .lobby-manage__imported-switcher {
-    flex: 1 1 auto;
-    gap: 0.45rem;
-  }
-
-  .lobby-manage__main-actions > .lobby-manage__imported-switcher .lobby-manage__imported-select-btn {
-    width: 128px;
-  }
-
-  .lobby-manage__main-actions > .lobby-manage__imported-switcher .lobby-manage__imported-menu {
-    width: 128px;
-  }
-
-  .lobby-manage__main-actions > .lobby-manage__imported-switcher .lobby-manage__imported-btn--apply {
-    min-width: 76px;
-    margin-top: 0.75rem;
-  }
-
-  .lobby-manage__main-actions > .lobby-manage__imported-toolbar .lobby-manage__imported-participants-open {
-    flex: 1 1 100%;
-    min-width: 0;
-    margin-top: 0;
-    align-self: auto;
   }
 
   .lobby-manage__sheriff-checks-btn--foot {
