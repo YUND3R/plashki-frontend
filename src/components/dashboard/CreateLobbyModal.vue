@@ -272,7 +272,10 @@ onUnmounted(() => {
           aria-modal="true"
           aria-labelledby="create-lobby-title"
         >
-          <div class="app-modal__panel create-lobby-modal__panel">
+          <div
+            class="app-modal__panel create-lobby-modal__panel"
+            :class="{ 'create-lobby-modal__panel--workspace': !!token }"
+          >
             <div class="app-modal__head">
               <h2 id="create-lobby-title" class="app-modal__title">Новое лобби</h2>
               <button
@@ -486,12 +489,16 @@ onUnmounted(() => {
 
 /* Панель не выше окна: запас под padding оверлея и safe-area */
 .create-lobby-modal__panel.app-modal__panel {
-  height: min(52rem, calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 2.5rem));
   max-height: calc(
     100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 2.5rem
   );
-  min-height: min(52rem, calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 2.5rem));
+  min-height: 0;
   overflow: hidden;
+}
+
+.create-lobby-modal__panel--workspace.app-modal__panel {
+  height: min(52rem, calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 2.5rem));
+  min-height: min(52rem, calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 2.5rem));
 }
 
 .create-lobby-modal__body--scroll.app-modal__body {
@@ -969,12 +976,15 @@ onUnmounted(() => {
   }
 
   .create-lobby-modal__panel.app-modal__panel {
-    height: min(94dvh, 52rem);
-    min-height: min(94dvh, 52rem);
     width: 100%;
     border-left: none;
     border-right: none;
     border-bottom: none;
+  }
+
+  .create-lobby-modal__panel--workspace.app-modal__panel {
+    height: min(94dvh, 52rem);
+    min-height: min(94dvh, 52rem);
   }
 }
 </style>
