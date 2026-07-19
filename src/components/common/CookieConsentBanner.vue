@@ -64,7 +64,6 @@ onMounted(() => {
   border-radius: 12px;
   border: 1px solid #dbeafe;
   background: rgba(239, 246, 255, 0.98);
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
 }
 
 .cookie-banner__text {
@@ -98,8 +97,8 @@ onMounted(() => {
   border-color: #2563d4;
 }
 .cookie-banner__accept:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(47, 111, 235, 0.3);
+  outline: 2px solid #2f6feb;
+  outline-offset: 2px;
 }
 
 .cookie-banner-enter-active,

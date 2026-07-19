@@ -442,7 +442,7 @@ function onCancel() {
 
 .card-design__option--selected {
   background: #f8fbff;
-  box-shadow: inset 3px 0 0 #60a5fa;
+  border-left: 3px solid #60a5fa;
 }
 
 .card-design__option--locked {

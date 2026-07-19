@@ -308,7 +308,6 @@ function statusIcon(status: string | null): string {
   border-radius: 5px;
   border: none;
   outline: none;
-  box-shadow: none;
   background:
     radial-gradient(ellipse 220% 160% at 100% 100%, rgba(75, 85, 99, 0.22) 0%, transparent 72%),
     #0c0e11;
@@ -333,7 +332,6 @@ function statusIcon(status: string | null): string {
   border-radius: 5px;
   border: none;
   outline: none;
-  box-shadow: none;
   background:
     radial-gradient(ellipse 220% 160% at 100% 100%, rgba(75, 85, 99, 0.22) 0%, transparent 72%),
     #0c0e11;

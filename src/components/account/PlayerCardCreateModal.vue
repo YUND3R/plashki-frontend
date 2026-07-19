@@ -402,7 +402,6 @@ async function submit() {
 .pcm__input:-webkit-autofill:hover,
 .pcm__input:-webkit-autofill:focus,
 .pcm__input:-webkit-autofill:focus-visible {
-  -webkit-box-shadow: 0 0 0 1000px #fff inset;
   -webkit-text-fill-color: #111827;
 }
 

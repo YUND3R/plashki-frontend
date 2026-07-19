@@ -653,7 +653,8 @@ async function confirmDeleteLobby() {
 
 .dashboard-lobby-card__nav:focus-visible {
   border-radius: 10px;
-  box-shadow: 0 0 0 2px rgba(47, 111, 235, 0.45);
+  outline: 2px solid #2f6feb;
+  outline-offset: 2px;
 }
 
 .dashboard-lobby-card__delete {
@@ -840,9 +841,9 @@ async function confirmDeleteLobby() {
 }
 
 .dashboard-import-modal__input:focus {
-  outline: none;
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
   border-color: #2f6feb;
-  box-shadow: 0 0 0 2px rgba(47, 111, 235, 0.2);
 }
 
 .dashboard-import-modal__input:disabled {
@@ -874,20 +875,17 @@ async function confirmDeleteLobby() {
   background: #2f6feb;
   background-image: none;
   border-color: #2f6feb;
-  box-shadow: none;
 }
 
 .dashboard-import-modal__submit.app-modal__btn-primary:hover:not(:disabled) {
   background: #2563eb;
   background-image: none;
   border-color: #2563eb;
-  box-shadow: none;
 }
 
 .dashboard-import-modal__submit.app-modal__btn-primary:active:not(:disabled) {
   background: #1d4ed8;
   border-color: #1d4ed8;
-  box-shadow: none;
 }
 
 .dashboard__created-title {

@@ -288,9 +288,9 @@ const {
 }
 
 .auth__input:focus {
-  outline: none;
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
   border-color: #2f6feb;
-  box-shadow: 0 0 0 2px #2f6feb;
 }
 
 .auth__error {
@@ -344,7 +344,6 @@ const {
 .auth__consent-checkbox:checked {
   border-color: #2f6feb;
   background: #2f6feb;
-  box-shadow: 0 0 0 1px #2f6feb;
 }
 
 .auth__consent-checkbox:checked::before {
@@ -352,8 +351,8 @@ const {
 }
 
 .auth__consent-checkbox:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(47, 111, 235, 0.25);
+  outline: 2px solid #2f6feb;
+  outline-offset: 2px;
 }
 
 .auth__consent-text {

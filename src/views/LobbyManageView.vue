@@ -15,6 +15,9 @@ import foulStatusIcon from '@/assets/icons/foul.svg?url'
 import bestMoveStatusIcon from '@/assets/icons/best_move.svg?url'
 import deletedStatusIcon from '@/assets/icons/deleted.svg?url'
 import killedStatusIcon from '@/assets/icons/killed.svg?url'
+import speechTimerRightArrowIcon from '@/assets/icons/right_arrow.svg?url'
+import speechTimerGoSpeakIcon from '@/assets/icons/pause.svg?url'
+import speechTimerPauseIcon from '@/assets/icons/go_speek.svg?url'
 import LobbyMemberPhotoModal from '@/components/lobby/LobbyMemberPhotoModal.vue'
 import LobbyImportedParticipantsModal from '@/components/lobby/LobbyImportedParticipantsModal.vue'
 import CardDesignPickerPanel from '@/components/cardDesign/CardDesignPickerPanel.vue'
@@ -148,6 +151,12 @@ const toneOptions: Array<{ value: OverlayTextTone; className: string; label: str
 ]
 let popupFeedbackTimer: ReturnType<typeof setTimeout> | null = null
 let persistentFeedbackTimer: ReturnType<typeof setTimeout> | null = null
+let speechTimerTickInterval: ReturnType<typeof setInterval> | null = null
+let speechTimerStartedAtMs: number | null = null
+let speechTimerElapsedBeforeRunSec = 0
+
+const speechTimerElapsedSec = ref(0)
+const speechTimerRunning = ref(false)
 
 /** Режим ведущего: вспышка роли после клика → плавное затухание. */
 const ROLE_HOST_FLASH_VISIBLE_MS = 580
@@ -224,6 +233,13 @@ async function load() {
 
 onMounted(load)
 watch(lobbyId, load)
+watch(lobbyId, () => {
+  speechTimerStartedAtMs = null
+  speechTimerElapsedBeforeRunSec = 0
+  speechTimerElapsedSec.value = 0
+  speechTimerRunning.value = false
+  clearSpeechTimerTick()
+})
 
 let overlaySyncPrimed = false
 watch(lobbyId, () => {
@@ -245,6 +261,7 @@ watch(
 
 onMounted(() => {
   document.addEventListener('pointerdown', onDocPointerDownImported, true)
+  document.addEventListener('visibilitychange', syncSpeechTimerElapsed)
   window.addEventListener('keydown', onImportedEscapeKey)
   tabletMq = window.matchMedia('(max-width: 1024px)')
   isTabletLayout.value = tabletMq.matches
@@ -270,9 +287,11 @@ onUnmounted(() => {
   lobbyManageUi.reset()
   clearRoleHostFlashTimers()
   clearFeedbackTimers()
+  clearSpeechTimerTick()
   roleHostFlash.value = null
   document.removeEventListener('pointerdown', onDocPointerDownReplace, true)
   document.removeEventListener('pointerdown', onDocPointerDownImported, true)
+  document.removeEventListener('visibilitychange', syncSpeechTimerElapsed)
   window.removeEventListener('keydown', onReplaceEscapeKey)
   window.removeEventListener('keydown', onImportedEscapeKey)
   window.removeEventListener('pointermove', onTouchDragMove)
@@ -802,6 +821,65 @@ function clearFeedbackTimers() {
     clearTimeout(persistentFeedbackTimer)
     persistentFeedbackTimer = null
   }
+}
+
+function formatSpeechTimerDisplay(totalSec: number): string {
+  const total = Math.max(0, totalSec)
+  const mins = Math.floor(total / 60)
+  const secs = total % 60
+  return `${mins}:${String(secs).padStart(2, '0')}`
+}
+
+const speechTimerDisplay = computed(() => formatSpeechTimerDisplay(speechTimerElapsedSec.value))
+
+function clearSpeechTimerTick() {
+  if (speechTimerTickInterval) {
+    clearInterval(speechTimerTickInterval)
+    speechTimerTickInterval = null
+  }
+}
+
+function getSpeechTimerElapsedSecByClock(nowMs = Date.now()): number {
+  if (!speechTimerRunning.value || speechTimerStartedAtMs === null) {
+    return speechTimerElapsedBeforeRunSec
+  }
+  const elapsedWhileRunning = Math.max(0, Math.floor((nowMs - speechTimerStartedAtMs) / 1000))
+  return speechTimerElapsedBeforeRunSec + elapsedWhileRunning
+}
+
+function syncSpeechTimerElapsed(): void {
+  speechTimerElapsedSec.value = getSpeechTimerElapsedSecByClock()
+}
+
+function startSpeechTimerTick() {
+  clearSpeechTimerTick()
+  syncSpeechTimerElapsed()
+  speechTimerTickInterval = setInterval(syncSpeechTimerElapsed, 250)
+}
+
+function toggleSpeechTimerPause() {
+  if (!isLobbyHost.value) return
+  if (speechTimerRunning.value) {
+    syncSpeechTimerElapsed()
+    speechTimerElapsedBeforeRunSec = speechTimerElapsedSec.value
+    speechTimerStartedAtMs = null
+    speechTimerRunning.value = false
+    clearSpeechTimerTick()
+    return
+  }
+  speechTimerStartedAtMs = Date.now()
+  speechTimerRunning.value = true
+  startSpeechTimerTick()
+}
+
+function restartSpeechTimer() {
+  if (!isLobbyHost.value) return
+  clearSpeechTimerTick()
+  speechTimerElapsedBeforeRunSec = 0
+  speechTimerElapsedSec.value = 0
+  speechTimerStartedAtMs = Date.now()
+  speechTimerRunning.value = true
+  startSpeechTimerTick()
 }
 
 function loadPersistentMessageDraft() {
@@ -1502,7 +1580,12 @@ async function resetBestMove() {
 </script>
 
 <template>
-  <section class="lobby-manage" :class="{ 'lobby-manage--design-picker': designPickerOpen }">
+  <section
+    class="lobby-manage"
+    :class="{
+      'lobby-manage--design-picker': designPickerOpen,
+    }"
+  >
     <p v-if="loading" class="lobby-manage__status">Загрузка лобби…</p>
     <p v-else-if="error" class="lobby-manage__status lobby-manage__status--error" role="alert">
       {{ error }}
@@ -1781,16 +1864,117 @@ async function resetBestMove() {
             </div>
           </div>
 
+          <div class="lobby-manage__mobile-dock-wrap">
+            <div class="lobby-manage__mobile-dock-timer" aria-label="Таймер речи">
+              <span
+                class="lobby-manage__mobile-dock-timer-value"
+                role="timer"
+                aria-live="polite"
+                :aria-label="`Прошло ${speechTimerDisplay}`"
+              >
+                {{ speechTimerDisplay }}
+              </span>
+              <div class="lobby-manage__mobile-dock-timer-actions">
+                <button
+                  type="button"
+                  class="lobby-manage__mobile-dock-timer-control"
+                  :disabled="!isLobbyHost"
+                  :aria-label="speechTimerRunning ? 'Пауза' : 'Продолжить'"
+                  @click="toggleSpeechTimerPause"
+                >
+                  <img
+                    v-if="speechTimerRunning"
+                    :src="speechTimerPauseIcon"
+                    alt=""
+                    class="lobby-manage__mobile-dock-timer-control-icon"
+                    aria-hidden="true"
+                  />
+                  <img
+                    v-else
+                    :src="speechTimerGoSpeakIcon"
+                    alt=""
+                    class="lobby-manage__mobile-dock-timer-control-icon"
+                    aria-hidden="true"
+                  />
+                </button>
+                <button
+                  type="button"
+                  class="lobby-manage__mobile-dock-timer-control lobby-manage__mobile-dock-timer-control--next"
+                  :disabled="!isLobbyHost"
+                  aria-label="Обнулить таймер и начать заново"
+                  @click="restartSpeechTimer"
+                >
+                  <img
+                    :src="speechTimerRightArrowIcon"
+                    alt=""
+                    class="lobby-manage__mobile-dock-timer-control-icon lobby-manage__mobile-dock-timer-control-icon--next"
+                    aria-hidden="true"
+                  />
+                </button>
+              </div>
+            </div>
+            <div class="lobby-manage__mobile-dock" aria-label="Панель управления">
+              <button
+                type="button"
+                class="lobby-manage__btn-foot lobby-manage__mobile-dock-btn"
+                :disabled="!isLobbyHost || swapBusy || rolesResetBusy || replaceSubmitting || deleteBusy"
+                @click="resetAllRolesAndStatuses"
+              >
+                {{ rolesResetBusy ? 'Сброс…' : 'Сбросить роли и статусы' }}
+              </button>
+              <label class="lobby-manage__host-toggle lobby-manage__mobile-dock-host">
+                <span class="lobby-manage__host-toggle-label-wrap">
+                  <span class="lobby-manage__host-toggle-label">Режим ведущего</span>
+                  <span
+                    class="lobby-manage__host-info"
+                    tabindex="0"
+                    role="note"
+                    aria-label="В режиме ведущего роли участников не отображаются. Это предотвращает случайное раскрытие игровой информации во время игры."
+                    @click.stop
+                    @mousedown.stop
+                  >
+                    <span class="lobby-manage__host-info-icon" aria-hidden="true">i</span>
+                    <span class="lobby-manage__host-info-tip" role="tooltip">
+                      В режиме ведущего роли участников не отображаются. Это предотвращает случайное раскрытие
+                      игровой информации во время игры.
+                    </span>
+                  </span>
+                </span>
+                <span class="lobby-manage__host-switch" :class="{ 'lobby-manage__host-switch--on': hostMode }">
+                  <input v-model="hostMode" type="checkbox" class="lobby-manage__host-switch-input" />
+                  <span class="lobby-manage__host-switch-knob" />
+                </span>
+              </label>
+            </div>
+            <button
+              v-if="hideRoleMarks && sheriffSeatPlayer"
+              type="button"
+              class="lobby-manage__sheriff-checks-btn lobby-manage__sheriff-checks-btn--foot lobby-manage__mobile-dock-sheriff"
+              :disabled="!canOpenSheriffChecks(sheriffSeatPlayer)"
+              @click="openSheriffChecksModal(sheriffSeatPlayer)"
+            >
+              <img
+                :src="sheriffRoleIcon"
+                alt=""
+                class="lobby-manage__sheriff-checks-btn-icon"
+                width="14"
+                height="14"
+                aria-hidden="true"
+              />
+              Проверки шерифа
+            </button>
+          </div>
+
           <div class="lobby-manage__main-actions">
             <button
               type="button"
-              class="lobby-manage__btn-foot"
+              class="lobby-manage__btn-foot lobby-manage__main-actions-inline-only"
               :disabled="!isLobbyHost || swapBusy || rolesResetBusy || replaceSubmitting || deleteBusy"
               @click="resetAllRolesAndStatuses"
             >
               {{ rolesResetBusy ? 'Сброс…' : 'Сбросить роли и статусы' }}
             </button>
-            <label class="lobby-manage__host-toggle">
+            <label class="lobby-manage__host-toggle lobby-manage__main-actions-inline-only">
               <span class="lobby-manage__host-toggle-label-wrap">
                 <span class="lobby-manage__host-toggle-label">Режим ведущего</span>
                 <span
@@ -1816,7 +2000,7 @@ async function resetBestMove() {
             <button
               v-if="hideRoleMarks && sheriffSeatPlayer"
               type="button"
-              class="lobby-manage__sheriff-checks-btn lobby-manage__sheriff-checks-btn--foot"
+              class="lobby-manage__sheriff-checks-btn lobby-manage__sheriff-checks-btn--foot lobby-manage__main-actions-sheriff-inline"
               :disabled="!canOpenSheriffChecks(sheriffSeatPlayer)"
               @click="openSheriffChecksModal(sheriffSeatPlayer)"
             >
@@ -2579,7 +2763,6 @@ async function resetBestMove() {
   background: #fff;
   padding: 0.2rem 0;
   box-sizing: border-box;
-  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.08);
 }
 
 .lobby-manage__imported-menu-item {
@@ -2609,7 +2792,6 @@ async function resetBestMove() {
 .lobby-manage__imported-select-btn:focus {
   outline: none;
   border-color: #93c5fd;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.12);
 }
 
 .lobby-manage__imported-select-btn:hover:not(:disabled) {
@@ -2721,7 +2903,6 @@ async function resetBestMove() {
   position: relative;
   z-index: 2;
   outline: none;
-  box-shadow: none;
 }
 
 .lobby-manage__row--drag-source > * {
@@ -2743,15 +2924,12 @@ async function resetBestMove() {
 
 /** Внутренние линии сетки в тон рамке: и периметр (#2f6feb), и разделители между колонками. */
 .lobby-manage__row--drag-source > .lobby-manage__row-num-cell {
-  box-shadow: none;
 }
 
 .lobby-manage__row--drag-source > .lobby-manage__row-drag-cell {
-  box-shadow: none;
 }
 
 .lobby-manage__row--drag-source > .lobby-manage__row-nick-cell {
-  box-shadow: none;
 }
 
 .lobby-manage__row--drag-source > .lobby-manage__row-dots-cell {
@@ -2764,7 +2942,6 @@ async function resetBestMove() {
 }
 
 .lobby-manage__row--drag-source .lobby-manage__dot-rect:first-child {
-  box-shadow: none;
 }
 
 .lobby-manage__row--drag-source .lobby-manage__avatar-ph {
@@ -2783,7 +2960,6 @@ async function resetBestMove() {
   position: relative;
   z-index: 1;
   outline: none;
-  box-shadow: none;
 }
 
 .lobby-manage__row--drag-over:not(.lobby-manage__row--drag-source) > * {
@@ -2805,15 +2981,12 @@ async function resetBestMove() {
 }
 
 .lobby-manage__row--drag-over:not(.lobby-manage__row--drag-source) > .lobby-manage__row-num-cell {
-  box-shadow: none;
 }
 
 .lobby-manage__row--drag-over:not(.lobby-manage__row--drag-source) > .lobby-manage__row-drag-cell {
-  box-shadow: none;
 }
 
 .lobby-manage__row--drag-over:not(.lobby-manage__row--drag-source) > .lobby-manage__row-nick-cell {
-  box-shadow: none;
 }
 
 .lobby-manage__row--drag-over:not(.lobby-manage__row--drag-source) > .lobby-manage__row-dots-cell {
@@ -2825,7 +2998,6 @@ async function resetBestMove() {
 }
 
 .lobby-manage__row--drag-over:not(.lobby-manage__row--drag-source) .lobby-manage__dot-rect:first-child {
-  box-shadow: none;
 }
 
 .lobby-manage__row--drag-over:not(.lobby-manage__row--drag-source) .lobby-manage__avatar-ph {
@@ -2841,17 +3013,14 @@ async function resetBestMove() {
   position: relative;
   z-index: 5;
   outline: none;
-  box-shadow: inset 0 0 0 2px #2f6feb;
   overflow: visible;
 }
 
 .lobby-manage__row--drag-source.lobby-manage__row--replace-open {
   outline: none;
-  box-shadow: none;
 }
 
 .lobby-manage__row--replace-open.lobby-manage__row--drag-over:not(.lobby-manage__row--drag-source) {
-  box-shadow: none;
 }
 
 .lobby-manage__row--replace-open > .lobby-manage__row-num-cell,
@@ -2859,7 +3028,6 @@ async function resetBestMove() {
 .lobby-manage__row--replace-open > .lobby-manage__row-avatar,
 .lobby-manage__row--replace-open > .lobby-manage__row-nick-cell,
 .lobby-manage__row--replace-open > .lobby-manage__row-dots-cell {
-  box-shadow: none;
   background: #eff6ff;
 }
 
@@ -2876,7 +3044,6 @@ async function resetBestMove() {
 }
 
 .lobby-manage__row--replace-open .lobby-manage__avatar-btn:hover:not(:disabled) {
-  box-shadow: none;
 }
 
 .lobby-manage__row--replace-open .lobby-manage__row-num {
@@ -2896,7 +3063,6 @@ async function resetBestMove() {
   border: none;
   border-right: 1px solid #e5e7eb;
   background: #fff;
-  box-shadow: none;
 }
 
 .lobby-manage__row-num-cell--drag-active {
@@ -2934,7 +3100,6 @@ async function resetBestMove() {
   flex-shrink: 0;
   align-self: stretch;
   background: #fff;
-  box-shadow: none;
 }
 
 .lobby-manage__row-drag {
@@ -2994,7 +3159,6 @@ async function resetBestMove() {
 }
 
 .lobby-manage__avatar-btn:hover:not(:disabled) {
-  box-shadow: inset 0 0 0 2px #2f6feb;
 }
 
 .lobby-manage__avatar-btn:focus-visible {
@@ -3019,7 +3183,6 @@ async function resetBestMove() {
   box-sizing: border-box;
   border-right: 1px solid #e5e7eb;
   background: #fff;
-  box-shadow: none;
 }
 
 .lobby-manage__row-nick-cell--replace-open {
@@ -3111,7 +3274,6 @@ async function resetBestMove() {
   background: transparent;
   border: none;
   border-radius: 0;
-  box-shadow: none;
   outline: none;
   box-sizing: border-box;
   min-width: 0;
@@ -3128,7 +3290,6 @@ async function resetBestMove() {
 .lobby-manage__nick-input:focus,
 .lobby-manage__nick-input:focus-visible {
   outline: none;
-  box-shadow: none;
   border: none;
 }
 
@@ -3150,7 +3311,6 @@ async function resetBestMove() {
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
   max-height: 13.5rem;
   overflow-y: auto;
   overflow-x: hidden;
@@ -3344,7 +3504,6 @@ async function resetBestMove() {
 .lobby-manage__dot-rect:first-child {
   padding-right: 0.35rem;
   margin-right: 0.05rem;
-  box-shadow: inset -1px 0 0 #e5e7eb;
 }
 
 .lobby-manage__role-btn {
@@ -3383,7 +3542,6 @@ async function resetBestMove() {
 
 .lobby-manage__role-btn--active {
   background: #eff6ff;
-  box-shadow: inset 0 0 0 2px #93c5fd;
 }
 
 .lobby-manage__role-icon {
@@ -3405,11 +3563,9 @@ async function resetBestMove() {
 @keyframes lobby-role-host-bg-fade {
   from {
     background: #eff6ff;
-    box-shadow: inset 0 0 0 2px #93c5fd;
   }
   to {
     background: rgba(107, 114, 128, 0.12);
-    box-shadow: inset 0 0 0 2px transparent;
   }
 }
 
@@ -3472,7 +3628,6 @@ async function resetBestMove() {
 
 .lobby-manage__status-btn--active {
   background: #eff6ff;
-  box-shadow: inset 0 0 0 2px #93c5fd;
 }
 
 .lobby-manage__status-icon {
@@ -3547,6 +3702,18 @@ async function resetBestMove() {
   border-top: none;
 }
 
+.lobby-manage__mobile-dock {
+  display: none;
+}
+
+.lobby-manage__mobile-dock-wrap {
+  display: none;
+}
+
+.lobby-manage__mobile-dock-timer {
+  display: none;
+}
+
 .lobby-manage__main-actions > .lobby-manage__btn-foot,
 .lobby-manage__main-actions > .lobby-manage__host-toggle {
   display: inline-flex;
@@ -3616,7 +3783,8 @@ async function resetBestMove() {
 }
 
 .lobby-manage__host-info:focus-visible .lobby-manage__host-info-icon {
-  box-shadow: 0 0 0 2px #fff, 0 0 0 3px #2f6feb;
+  outline: 2px solid #2f6feb;
+  outline-offset: 2px;
 }
 
 .lobby-manage__host-info-tip {
@@ -3636,7 +3804,6 @@ async function resetBestMove() {
   background: #f3f4f6;
   border: 1px solid #e5e7eb;
   border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   pointer-events: none;
   opacity: 0;
   visibility: hidden;
@@ -3697,7 +3864,6 @@ async function resetBestMove() {
   height: calc(1.35rem - 4px);
   border-radius: 50%;
   background: #fff;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
   transition: transform 0.15s ease;
   pointer-events: none;
 }
@@ -4031,9 +4197,9 @@ async function resetBestMove() {
   z-index: 320;
   background: rgba(17, 24, 39, 0.5);
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
-  padding: 1rem;
+  padding: 0.75rem 0.75rem max(0.75rem, env(safe-area-inset-bottom, 0px));
 }
 
 .lobby-manage__modal-card {
@@ -4041,7 +4207,7 @@ async function resetBestMove() {
   max-height: min(82vh, 900px);
   overflow: auto;
   background: #fff;
-  border-radius: 12px;
+  border-radius: 14px 14px 0 0;
   border: 1px solid #e5e7eb;
   padding: 0.95rem;
   box-sizing: border-box;
@@ -4214,7 +4380,6 @@ async function resetBestMove() {
 .lobby-manage__nick-input--modal:focus-visible {
   border: 1px solid #d1d5db;
   outline: none;
-  box-shadow: none;
 }
 
 .lobby-manage__replace-modal-list {
@@ -4479,8 +4644,176 @@ async function resetBestMove() {
 }
 
 @media (max-width: 1024px) {
+  .lobby-manage__main-actions-inline-only,
+  .lobby-manage__main-actions-sheriff-inline {
+    display: none !important;
+  }
+
+  .lobby-manage:not(.lobby-manage--design-picker) {
+    padding-bottom: calc(13rem + max(4px, env(safe-area-inset-bottom, 0px)));
+  }
+
+  .lobby-manage__mobile-dock-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    position: fixed;
+    left: max(4px, env(safe-area-inset-left, 0px));
+    right: max(4px, env(safe-area-inset-right, 0px));
+    bottom: max(4px, env(safe-area-inset-bottom, 0px));
+    z-index: 90;
+    margin: 0;
+    background: #fff;
+    border-top: 1px solid #f3f4f6;
+    border-radius: 0 0 10px 10px;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+
+  .lobby-manage__mobile-dock-timer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.65rem 0.75rem 0.55rem;
+    border-bottom: 1px solid #f3f4f6;
+    box-sizing: border-box;
+  }
+
+  .lobby-manage__mobile-dock-timer-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-shrink: 0;
+  }
+
+  .lobby-manage__mobile-dock-timer-control {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.35rem;
+    height: 2.35rem;
+    margin: 0;
+    padding: 0;
+    color: #6b7280;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    box-sizing: border-box;
+  }
+
+  .lobby-manage__mobile-dock-timer-control--next {
+    color: #111827;
+  }
+
+  .lobby-manage__mobile-dock-timer-control:hover:not(:disabled) {
+    background: transparent;
+  }
+
+  .lobby-manage__mobile-dock-timer-control--next:hover:not(:disabled) {
+    color: #111827;
+    background: transparent;
+  }
+
+  .lobby-manage__mobile-dock-timer-control:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .lobby-manage__mobile-dock-timer-control-icon {
+    display: block;
+    width: 0.95rem;
+    height: auto;
+    object-fit: contain;
+    filter: brightness(0) saturate(100%) invert(55%) sepia(5%) saturate(300%) hue-rotate(180deg)
+      brightness(95%) contrast(88%);
+  }
+
+  .lobby-manage__mobile-dock-timer-control-icon--next {
+    width: 1.5rem;
+    filter: brightness(0) saturate(100%);
+  }
+
+  .lobby-manage__mobile-dock-timer-value {
+    margin: 0;
+    padding: 0;
+    font: inherit;
+    font-size: 3.25rem;
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.03em;
+    color: #111827;
+    line-height: 1;
+    flex-shrink: 0;
+    min-width: 5.2ch;
+    text-align: left;
+  }
+
+  .lobby-manage__mobile-dock {
+    display: flex;
+    position: static;
+    margin: 0;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.65rem 0.75rem 0.75rem;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    box-sizing: border-box;
+  }
+
+  .lobby-manage__mobile-dock-btn,
+  .lobby-manage__mobile-dock-host {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 2.75rem;
+  }
+
+  .lobby-manage__mobile-dock-btn {
+    justify-content: center;
+    padding-inline: 0.65rem;
+    font-size: 0.8125rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .lobby-manage__mobile-dock-host {
+    justify-content: space-between;
+    padding-inline: 0.75rem;
+    font-size: 0.8125rem;
+  }
+
+  .lobby-manage__mobile-dock-host .lobby-manage__host-info-tip {
+    bottom: calc(100% + 0.55rem);
+  }
+
+  .lobby-manage__mobile-dock-sheriff {
+    width: 100%;
+    height: 2.75rem;
+    justify-content: center;
+    font-size: 0.8125rem;
+    margin: 0;
+    border: none;
+    border-top: 1px solid #f3f4f6;
+    border-radius: 0;
+    background: #fff;
+  }
+
   .lobby-manage__card.lobby-manage__card--side {
     padding: 0.75rem 0.8rem;
+  }
+
+  .lobby-manage__aside {
+    width: 100%;
+    max-width: none;
+    padding: 10px 10px 0 10px;
+    box-sizing: border-box;
+  }
+
+  .lobby-manage__aside > .lobby-manage__card.lobby-manage__card--side {
+    width: 100%;
   }
 
   .lobby-manage__table-wrap {
@@ -4510,10 +4843,6 @@ async function resetBestMove() {
     margin-top: 0;
   }
 
-  .lobby-manage__aside {
-    padding: 10px 10px 0 10px;
-  }
-
   .lobby-manage__row {
     grid-template-columns: 56px 56px minmax(0, 1fr);
     grid-template-rows: 64px auto;
@@ -4533,7 +4862,6 @@ async function resetBestMove() {
   .lobby-manage__row-avatar,
   .lobby-manage__row-nick-cell {
     height: 64px;
-    box-shadow: none;
   }
 
   .lobby-manage__row-nick-cell {
@@ -4600,7 +4928,6 @@ async function resetBestMove() {
   .lobby-manage__dot-rect:first-child {
     padding-right: 0.35rem;
     margin-right: 0;
-    box-shadow: inset 0 -1px 0 #e5e7eb;
   }
 
   .lobby-manage__avatar-btn,
@@ -4622,16 +4949,7 @@ async function resetBestMove() {
     flex: 0 0 auto;
   }
 
-  .lobby-manage__main-actions > .lobby-manage__btn-foot:first-child {
-    order: 1;
-  }
-
-  .lobby-manage__main-actions > .lobby-manage__host-toggle {
-    order: 2;
-  }
-
   .lobby-manage__main-actions > .lobby-manage__sheriff-checks-btn--foot {
-    order: 3;
     white-space: nowrap;
   }
 

@@ -229,9 +229,6 @@ onUnmounted(() => {
             <button type="button" class="shell__logout" @click="logout">Выйти</button>
           </div>
           <div v-else-if="showProfilesHeader" class="shell__header-actions shell__header-actions--profiles">
-            <p class="shell-profiles-total" aria-live="polite">
-              Всего игроков: <span class="shell-profiles-total__num">{{ profilesPlayerTotal }}</span>
-            </p>
             <div class="shell-dashboard-filters shell-profiles-filters" role="radiogroup" aria-label="Показать игроков">
               <button
                 v-for="opt in PROFILES_FILTER_OPTIONS"
@@ -279,6 +276,14 @@ onUnmounted(() => {
                 @click="profilesUi.setViewMode('compact')"
               >
                 <img class="shell-profiles-view-btn__icon" :src="profilesListIcon" alt="" aria-hidden="true" />
+              </button>
+            </div>
+            <div class="shell-profiles-mobile-footer">
+              <p class="shell-profiles-mobile-footer__note" aria-live="polite">
+                Всего игроков: <span class="shell-profiles-mobile-footer__num">{{ profilesPlayerTotal }}</span>
+              </p>
+              <button type="button" class="shell-profiles-mobile-create" @click="profilesUi.requestOpenCreate">
+                Создать профиль
               </button>
             </div>
           </div>
@@ -585,9 +590,9 @@ onUnmounted(() => {
 }
 
 .shell-profiles-search:focus {
-  outline: none;
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
   border-color: #2f6feb;
-  box-shadow: 0 0 0 2px #2f6feb;
 }
 
 .shell-profiles-create {
@@ -811,7 +816,6 @@ onUnmounted(() => {
 .shell--mobile.shell--nav-open .shell__sidebar {
   pointer-events: auto;
   transform: translateX(0);
-  box-shadow: 8px 0 28px rgba(15, 23, 42, 0.18);
 }
 
 .shell--mobile .shell__panel {
@@ -946,11 +950,11 @@ onUnmounted(() => {
 .shell--mobile .shell__header-actions:has(.shell-profiles-search) {
   justify-content: flex-start;
   gap: 0.5rem;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
 }
 
 .shell--mobile .shell-profiles-search {
-  flex: 1 1 auto;
+  flex: 1 1 100%;
   min-width: 0;
 }
 
@@ -963,8 +967,135 @@ onUnmounted(() => {
   flex: 0 0 auto;
 }
 
+.shell--mobile .shell-profiles-filters {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+  padding-bottom: 2px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.shell--mobile .shell-profiles-filters::-webkit-scrollbar {
+  display: none;
+}
+
+.shell--mobile .shell__header-actions--profiles {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'filters filters'
+    'search switch';
+  gap: 0.55rem;
+  width: 100%;
+  min-width: 0;
+  padding-top: 0.15rem;
+}
+
+.shell--mobile .shell-profiles-filters {
+  grid-area: filters;
+  width: 100%;
+}
+
+.shell--mobile .shell__header-actions--profiles .shell-profiles-search {
+  grid-area: search;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+}
+
+.shell--mobile .shell-profiles-create {
+  display: none;
+}
+
+.shell-profiles-mobile-footer {
+  display: none;
+}
+
+.shell--mobile .shell-profiles-mobile-footer {
+  position: fixed;
+  left: max(4px, env(safe-area-inset-left, 0px));
+  right: max(4px, env(safe-area-inset-right, 0px));
+  bottom: max(4px, env(safe-area-inset-bottom, 0px));
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0.75rem;
+  min-height: 5.6rem;
+  padding: 0.625rem 0.75rem;
+  border-top: 1px solid #e5e7eb;
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 0;
+  border-radius: 0;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.shell-profiles-mobile-footer__note {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: #6b7280;
+  line-height: 1.3;
+}
+
+.shell-profiles-mobile-footer__num {
+  color: #374151;
+  font-variant-numeric: tabular-nums;
+}
+
+.shell-profiles-mobile-create {
+  border: 1px solid #2f6feb;
+  background: #2f6feb;
+  color: #fff;
+  border-radius: 8px;
+  min-height: 2.25rem;
+  width: 100%;
+  padding: 0.45rem 1rem;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.shell-profiles-mobile-create:hover:not(:disabled) {
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+.shell-profiles-mobile-create:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+}
+
+.shell-profiles-mobile-create:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: #9ca3af;
+  border-color: #9ca3af;
+}
+
+.shell--mobile .shell-profiles-view-switch {
+  grid-area: switch;
+}
+
+.shell--mobile .shell-profiles-filters .shell-dashboard-filters__btn {
+  flex: 0 0 auto;
+}
+
 .shell--mobile .shell__body {
   padding: 4px;
+}
+
+.shell--mobile:has(.shell__header-actions--profiles) .shell__body {
+  padding-bottom: calc(6rem + env(safe-area-inset-bottom, 0px));
 }
 
 .shell--mobile .shell__body.shell__body--flush {
@@ -992,7 +1123,6 @@ onUnmounted(() => {
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
   text-align: center;
   pointer-events: none;
 }

@@ -28,9 +28,17 @@ const submitting = ref(false)
 const serverError = ref<string | null>(null)
 const pickerPanelRef = ref<HTMLElement | null>(null)
 const slotsSectionRef = ref<HTMLElement | null>(null)
+const slotsStripRef = ref<HTMLElement | null>(null)
+const slotButtonRefs = ref<Array<HTMLElement | null>>([])
+const slotsStripDragging = ref(false)
 
 let escHandler: ((e: KeyboardEvent) => void) | null = null
 let prevBodyOverflow = ''
+let slotAutoScrollRaf: number | null = null
+let slotsStripStartClientX = 0
+let slotsStripStartScrollLeft = 0
+let slotsStripMoved = false
+let slotsStripSuppressClickUntil = 0
 
 const filteredRoster = computed(() => {
   const q = rosterSearchQuery.value.trim().toLowerCase()
@@ -52,6 +60,7 @@ function cardFullName(c: PlayerCard): string {
 }
 
 function openSlotPicker(i: number) {
+  if (Date.now() < slotsStripSuppressClickUntil) return
   rosterPanelOpen.value = true
   pickForSlot.value = i
 }
@@ -70,12 +79,88 @@ function assignToSlot(slotIndex: number, card: PlayerCard) {
   pickForSlot.value = firstEmptySlotIndex()
 }
 
+function setSlotButtonRef(index: number, el: Element | null) {
+  slotButtonRefs.value[index] = el instanceof HTMLElement ? el : null
+}
+
+function scrollToActiveSlot(behavior: ScrollBehavior = 'smooth') {
+  const index = pickForSlot.value
+  if (index === null) return
+  const btn = slotButtonRefs.value[index]
+  const strip = slotsStripRef.value
+  if (!btn || !strip) return
+  const stripRect = strip.getBoundingClientRect()
+  const btnRect = btn.getBoundingClientRect()
+  const currentLeft = strip.scrollLeft
+  const deltaLeft = btnRect.left - stripRect.left
+  const targetLeft = currentLeft + deltaLeft - (stripRect.width - btnRect.width) / 2
+  const maxScrollLeft = Math.max(0, strip.scrollWidth - strip.clientWidth)
+  const safeLeft = Math.max(0, Math.min(maxScrollLeft, targetLeft))
+  if (Math.abs(strip.scrollLeft - safeLeft) < 1) return
+  strip.scrollTo({ left: safeLeft, behavior })
+}
+
+function scheduleScrollToActiveSlot() {
+  if (slotAutoScrollRaf !== null) {
+    cancelAnimationFrame(slotAutoScrollRaf)
+    slotAutoScrollRaf = null
+  }
+  slotAutoScrollRaf = requestAnimationFrame(() => {
+    slotAutoScrollRaf = null
+    scrollToActiveSlot('smooth')
+  })
+}
+
+function teardownSlotAutoScroll() {
+  if (slotAutoScrollRaf !== null) {
+    cancelAnimationFrame(slotAutoScrollRaf)
+    slotAutoScrollRaf = null
+  }
+}
+
+function onSlotsStripPointerDown(ev: PointerEvent) {
+  if (ev.pointerType === 'mouse' && ev.button !== 0) return
+  const strip = slotsStripRef.value
+  if (!strip) return
+  slotsStripDragging.value = true
+  slotsStripMoved = false
+  slotsStripStartClientX = ev.clientX
+  slotsStripStartScrollLeft = strip.scrollLeft
+  strip.setPointerCapture(ev.pointerId)
+}
+
+function onSlotsStripPointerMove(ev: PointerEvent) {
+  if (!slotsStripDragging.value) return
+  const strip = slotsStripRef.value
+  if (!strip) return
+  const deltaX = ev.clientX - slotsStripStartClientX
+  if (!slotsStripMoved && Math.abs(deltaX) > 4) {
+    slotsStripMoved = true
+  }
+  if (!slotsStripMoved) return
+  strip.scrollLeft = slotsStripStartScrollLeft - deltaX
+  ev.preventDefault()
+}
+
+function stopSlotsStripPointerDrag(ev?: PointerEvent) {
+  const strip = slotsStripRef.value
+  if (strip && ev && strip.hasPointerCapture(ev.pointerId)) {
+    strip.releasePointerCapture(ev.pointerId)
+  }
+  if (slotsStripDragging.value && slotsStripMoved) {
+    slotsStripSuppressClickUntil = Date.now() + 180
+  }
+  slotsStripDragging.value = false
+  slotsStripMoved = false
+}
+
 async function confirmPick(card: PlayerCard) {
   const i = pickForSlot.value
   if (i === null) return
   assignToSlot(i, card)
   await nextTick()
   slotsSectionRef.value?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  scheduleScrollToActiveSlot()
 }
 
 async function loadRoster() {
@@ -138,8 +223,8 @@ watch(
     if (open) {
       serverError.value = null
       loadError.value = null
-      rosterPanelOpen.value = false
-      pickForSlot.value = null
+      rosterPanelOpen.value = true
+      pickForSlot.value = 0
       rosterSearchQuery.value = ''
       lobbyName.value = ''
       slots.value = Array.from({ length: 10 }, () => null)
@@ -151,8 +236,8 @@ watch(
       }
       document.addEventListener('keydown', escHandler)
     } else {
-      pickForSlot.value = null
-      rosterPanelOpen.value = false
+      pickForSlot.value = 0
+      rosterPanelOpen.value = true
       teardownOverlay()
     }
   },
@@ -166,9 +251,12 @@ watch(pickForSlot, async (v) => {
   await nextTick()
   if (!rosterPanelOpen.value) return
   pickerPanelRef.value?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  scheduleScrollToActiveSlot()
 })
 
 onUnmounted(() => {
+  stopSlotsStripPointerDrag()
+  teardownSlotAutoScroll()
   teardownOverlay()
 })
 </script>
@@ -236,10 +324,19 @@ onUnmounted(() => {
 
                 <div
                   class="create-lobby-modal__split"
-                  :class="{ 'create-lobby-modal__split--with-roster': rosterPanelOpen }"
                 >
                   <div ref="slotsSectionRef" class="create-lobby-modal__slots-col">
-                    <div class="create-lobby-modal__slots" role="list">
+                    <div
+                      ref="slotsStripRef"
+                      class="create-lobby-modal__slots"
+                      :class="{ 'create-lobby-modal__slots--dragging': slotsStripDragging }"
+                      role="list"
+                      @pointerdown="onSlotsStripPointerDown"
+                      @pointermove="onSlotsStripPointerMove"
+                      @pointerup="stopSlotsStripPointerDrag"
+                      @pointercancel="stopSlotsStripPointerDrag"
+                      @lostpointercapture="stopSlotsStripPointerDrag"
+                    >
                       <div
                         v-for="i in 10"
                         :key="i - 1"
@@ -253,30 +350,25 @@ onUnmounted(() => {
                             'create-lobby-modal__slot--filled': slots[i - 1],
                             'create-lobby-modal__slot--pick': pickForSlot === i - 1,
                           }"
+                          :ref="(el) => setSlotButtonRef(i - 1, el as Element | null)"
                           :disabled="submitting"
                           @click="openSlotPicker(i - 1)"
                         >
-                          <template v-if="!slots[i - 1]">
-                            <span class="create-lobby-modal__slot-plus" aria-hidden="true">+</span>
-                            <span class="create-lobby-modal__slot-placeholder">Добавить игрока</span>
-                          </template>
-                          <template v-else>
+                          <template v-if="slots[i - 1]">
                             <img
                               v-if="slotPhoto(slots[i - 1]!)"
                               class="create-lobby-modal__slot-photo"
                               :src="slotPhoto(slots[i - 1]!)"
                               alt=""
                             />
-                            <span
-                              v-else
-                              class="create-lobby-modal__slot-initials"
-                              aria-hidden="true"
-                            >
-                              {{
-                                (slots[i - 1]!.first_name?.[0] || '') + (slots[i - 1]!.last_name?.[0] || '')
-                              }}
+                            <span v-else class="create-lobby-modal__slot-initials" aria-hidden="true">
+                              {{ (slots[i - 1]!.first_name?.[0] || '') + (slots[i - 1]!.last_name?.[0] || '') }}
                             </span>
                             <span class="create-lobby-modal__slot-nick">{{ slots[i - 1]!.nickname }}</span>
+                          </template>
+                          <template v-else>
+                            <span class="create-lobby-modal__slot-number">{{ i }}</span>
+                            <span class="create-lobby-modal__slot-state">Пусто</span>
                           </template>
                         </button>
                         <button
@@ -287,36 +379,36 @@ onUnmounted(() => {
                           aria-label="Убрать игрока из слота"
                           @click.stop="clearSlot(i - 1)"
                         >
-                          ×
+                          Убрать
                         </button>
                       </div>
                     </div>
                   </div>
 
-                  <div v-if="rosterPanelOpen" ref="pickerPanelRef" class="create-lobby-modal__picker-col">
+                  <div ref="pickerPanelRef" class="create-lobby-modal__picker-col">
                     <div class="create-lobby-modal__picker">
                       <div class="create-lobby-modal__picker-head">
-                    <p class="create-lobby-modal__picker-title">
-                      Выберите игрока из раздела «Мои игроки»
-                    </p>
-                    <p v-if="!roster.length" class="create-lobby-modal__picker-empty">
-                      В «Моих составах» пока нет карточек.
-                      <RouterLink :to="{ name: 'profiles' }" class="create-lobby-modal__link" @click="close">
-                        Создать профиль
-                      </RouterLink>
-                    </p>
-                    <input
-                      v-else
-                      v-model="rosterSearchQuery"
-                      class="create-lobby-modal__picker-search"
-                      type="search"
-                      name="roster_search"
-                      placeholder="Поиск по нику или имени"
-                      autocomplete="off"
-                      aria-label="Поиск игрока в моих составах"
-                      :disabled="submitting"
-                      @keydown.stop
-                    />
+                        <p class="create-lobby-modal__picker-title">
+                          Выберите игрока из раздела «Мои игроки»
+                        </p>
+                        <p v-if="!roster.length" class="create-lobby-modal__picker-empty">
+                          В «Моих составах» пока нет карточек.
+                          <RouterLink :to="{ name: 'profiles' }" class="create-lobby-modal__link" @click="close">
+                            Создать профиль
+                          </RouterLink>
+                        </p>
+                        <input
+                          v-else
+                          v-model="rosterSearchQuery"
+                          class="create-lobby-modal__picker-search"
+                          type="search"
+                          name="roster_search"
+                          placeholder="Поиск по нику или имени"
+                          autocomplete="off"
+                          aria-label="Поиск игрока в моих составах"
+                          :disabled="submitting"
+                          @keydown.stop
+                        />
                       </div>
                       <template v-if="roster.length">
                         <div v-if="filteredRoster.length" class="create-lobby-modal__picker-list">
@@ -382,8 +474,6 @@ onUnmounted(() => {
 
 <style scoped>
 .create-lobby-modal.app-modal {
-  align-items: center;
-  justify-content: center;
   overflow: hidden;
   box-sizing: border-box;
   min-height: 100dvh;
@@ -396,10 +486,11 @@ onUnmounted(() => {
 
 /* Панель не выше окна: запас под padding оверлея и safe-area */
 .create-lobby-modal__panel.app-modal__panel {
+  height: min(52rem, calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 2.5rem));
   max-height: calc(
     100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 2.5rem
   );
-  min-height: 0;
+  min-height: min(52rem, calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 2.5rem));
   overflow: hidden;
 }
 
@@ -513,146 +604,58 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 0;
-  min-height: auto;
-}
-
-/* До открытия состава - без отдельного скролла; при открытии - см. --with-roster */
-.create-lobby-modal__split:not(.create-lobby-modal__split--with-roster) {
+  gap: 0.65rem;
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
-}
-
-/* Скролл только у списка карточек в «Мои составы»; оверлей и тело модалки без скролла */
-.create-lobby-modal__split--with-roster {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: hidden;
-  align-items: stretch;
-}
-
-.create-lobby-modal__split--with-roster .create-lobby-modal__slots-col {
-  flex-shrink: 0;
-  overflow: hidden;
-  min-height: 0;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-self: stretch;
-}
-
-.create-lobby-modal__split--with-roster .create-lobby-modal__picker-col {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  width: 100%;
-}
-
-.create-lobby-modal__split--with-roster .create-lobby-modal__picker {
-  flex: 1 1 auto;
-  min-height: 0;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  padding-top: 0;
-  border-top: none;
-}
-
-.create-lobby-modal__split--with-roster .create-lobby-modal__picker-head {
-  flex-shrink: 0;
-}
-
-.create-lobby-modal__split--with-roster .create-lobby-modal__picker-list {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  grid-template-columns: 1fr;
-}
-
-@media (min-width: 720px) {
-  .create-lobby-modal__split--with-roster {
-    flex-direction: row;
-    align-items: stretch;
-    gap: 1rem;
-  }
-
-  .create-lobby-modal__split--with-roster .create-lobby-modal__slots-col {
-    flex: 2 1 0%;
-    min-width: 0;
-    width: auto;
-    align-self: stretch;
-  }
-
-  .create-lobby-modal__split--with-roster .create-lobby-modal__picker-col {
-    flex: 1 1 0%;
-    min-width: 0;
-    max-width: 22rem;
-    width: auto;
-    align-self: stretch;
-    min-height: 0;
-    padding-left: 1rem;
-    border-left: 1px solid #f3f4f6;
-  }
-
-  /* Сетка слотов заполняет высоту колонки - без пустого места снизу, как справа у «Мои составы» */
-  .create-lobby-modal__split--with-roster .create-lobby-modal__slots {
-    flex: 1 1 auto;
-    min-height: 0;
-    align-self: stretch;
-    grid-template-rows: repeat(5, minmax(5.1rem, 1fr));
-  }
-
-  .create-lobby-modal__split--with-roster .create-lobby-modal__slot-wrap {
-    display: flex;
-    min-height: 0;
-  }
-
-  .create-lobby-modal__split--with-roster .create-lobby-modal__slot {
-    flex: 1 1 auto;
-    align-self: stretch;
-    width: 100%;
-    min-height: 5.1rem;
-    height: auto;
-  }
-}
-
-@media (max-width: 719px) {
-  .create-lobby-modal__split--with-roster .create-lobby-modal__picker-col {
-    flex: 1 1 auto;
-    min-height: 0;
-    border-top: 1px solid #f3f4f6;
-    padding-top: 0.5rem;
-    margin-top: 0.35rem;
-  }
 }
 
 .create-lobby-modal__slots {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 0.75rem;
+  --slot-gap: 0.55rem;
+  --slot-w: 7rem;
+  --slot-h: 8.5rem;
+  display: flex;
+  gap: var(--slot-gap);
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.15rem 0.05rem 0.25rem;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+  cursor: grab;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
-/* После открытия панели «Мои составы»: 5 рядов по 2 слота, а не 2 ряда по 5 */
-.create-lobby-modal__split--with-roster .create-lobby-modal__slots {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.create-lobby-modal__slots--dragging {
+  cursor: grabbing;
+  scroll-snap-type: none;
 }
 
-@media (max-width: 520px) {
-  .create-lobby-modal__slots {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.create-lobby-modal__slots--dragging .create-lobby-modal__slot,
+.create-lobby-modal__slots--dragging .create-lobby-modal__slot-clear {
+  pointer-events: none;
+}
+
+.create-lobby-modal__slots::-webkit-scrollbar {
+  display: none;
 }
 
 .create-lobby-modal__picker-col {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
   min-width: 0;
 }
 
 .create-lobby-modal__slot-wrap {
   position: relative;
-  min-width: 0;
+  flex: 0 0 auto;
+  width: var(--slot-w);
+  min-width: var(--slot-w);
+  min-height: var(--slot-h);
 }
 
 .create-lobby-modal__slot {
@@ -660,18 +663,22 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.35rem;
-  width: 100%;
-  min-height: 5.1rem;
+  gap: 0.2rem;
+  width: var(--slot-w);
+  height: var(--slot-h);
   margin: 0;
-  padding: 0.45rem 0.4rem;
+  padding: 0.3rem;
   font: inherit;
   cursor: pointer;
   color: #6b7280;
   background: #f9fafb;
   border: 1px dashed #d1d5db;
   border-radius: 14px;
+  scroll-snap-align: start;
   box-sizing: border-box;
+  touch-action: pan-x;
+  -webkit-user-select: none;
+  user-select: none;
   transition:
     border-color 0.12s ease,
     background 0.12s ease;
@@ -693,7 +700,6 @@ onUnmounted(() => {
   border-style: solid;
   border-width: 2px;
   border-color: #3b82f6;
-  box-shadow: none;
   outline: none;
 }
 
@@ -702,24 +708,25 @@ onUnmounted(() => {
   cursor: not-allowed;
 }
 
-.create-lobby-modal__slot-plus {
-  font-size: 1.5rem;
-  font-weight: 500;
+.create-lobby-modal__slot-number {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #111827;
   line-height: 1;
-  color: #9ca3af;
 }
 
-.create-lobby-modal__slot-placeholder {
-  font-size: 0.75rem;
+.create-lobby-modal__slot-state {
+  font-size: 0.6875rem;
   font-weight: 500;
   text-align: center;
   line-height: 1.2;
+  color: #6b7280;
 }
 
 .create-lobby-modal__slot-photo,
 .create-lobby-modal__slot-initials {
-  width: 2.4rem;
-  height: 2.4rem;
+  width: 3.35rem;
+  height: 3.35rem;
   border-radius: 999px;
   object-fit: cover;
   flex-shrink: 0;
@@ -736,50 +743,66 @@ onUnmounted(() => {
 }
 
 .create-lobby-modal__slot-nick {
-  font-size: 0.8125rem;
+  max-width: 100%;
+  font-size: 0.6875rem;
   font-weight: 600;
   color: #111827;
-  text-align: center;
-  line-height: 1.25;
+  line-height: 1.2;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
+  text-align: center;
+}
+
+.create-lobby-modal__slot--filled .create-lobby-modal__slot-photo,
+.create-lobby-modal__slot--filled .create-lobby-modal__slot-initials,
+.create-lobby-modal__slot--filled .create-lobby-modal__slot-nick {
+  transform: translateY(-8px);
 }
 
 .create-lobby-modal__slot-clear {
   position: absolute;
-  top: -0.2rem;
-  right: -0.2rem;
-  width: 1.75rem;
+  left: 0.45rem;
+  right: 0.45rem;
+  bottom: 0.45rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
   height: 1.75rem;
   padding: 0;
-  font-size: 1.15rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
   line-height: 1;
-  color: #6b7280;
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 999px;
+  color: #64748b;
+  background: rgba(248, 250, 252, 0.92);
+  border: 1px solid #dbe3ee;
+  border-radius: 8px;
   cursor: pointer;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  transition: color 0.14s ease, border-color 0.14s ease, background-color 0.14s ease;
+  touch-action: manipulation;
 }
 
 .create-lobby-modal__slot-clear:hover:not(:disabled) {
   color: #b91c1c;
-  border-color: #fecaca;
+  border-color: #fca5a5;
+  background: #fff5f5;
+}
+
+.create-lobby-modal__slot-clear:focus-visible {
+  outline: 2px solid #2f6feb;
+  outline-offset: 2px;
 }
 
 .create-lobby-modal__picker {
   margin: 0;
-  padding: 0.75rem 0 0.5rem;
+  padding: 0.65rem 0 0.4rem;
   border-top: 1px solid #f3f4f6;
   box-sizing: border-box;
-}
-
-@media (max-width: 719px) {
-  .create-lobby-modal__picker-col .create-lobby-modal__picker {
-    padding-top: 0.75rem;
-  }
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .create-lobby-modal__picker-head {
@@ -840,6 +863,9 @@ onUnmounted(() => {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.5rem;
+  overflow-y: auto;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
 }
 
 @media (max-width: 380px) {
@@ -934,5 +960,21 @@ onUnmounted(() => {
   padding: 0.65rem;
   border-top: 1px solid #f3f4f6;
   background: #fff;
+}
+
+@media (max-width: 767px) {
+  .create-lobby-modal__wrap {
+    width: 100vw;
+    max-width: 100vw;
+  }
+
+  .create-lobby-modal__panel.app-modal__panel {
+    height: min(94dvh, 52rem);
+    min-height: min(94dvh, 52rem);
+    width: 100%;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+  }
 }
 </style>

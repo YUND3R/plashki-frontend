@@ -441,7 +441,6 @@ async function deletePhoto(url: string) {
 
 .lmp__cell--selected {
   border-color: #2f6feb;
-  box-shadow: 0 0 0 1px rgba(47, 111, 235, 0.2);
 }
 
 .lmp__cell-photo {

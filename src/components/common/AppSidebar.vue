@@ -184,7 +184,7 @@ const adminSection = [{ to: '/admin/users', label: 'Пользователи', i
 }
 
 .sidebar--admin {
-  box-shadow: inset 0 0 0 1px #fde68a;
+  border-color: #fde68a;
 }
 
 .sidebar--collapsed {

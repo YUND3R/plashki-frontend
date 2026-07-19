@@ -457,7 +457,6 @@ onUnmounted(() => {
   border-radius: 5px;
   border: none;
   outline: none;
-  box-shadow: none;
   background:
     radial-gradient(ellipse 220% 160% at 100% 100%, rgba(75, 85, 99, 0.2) 0%, transparent 72%),
     #0a0a0a;

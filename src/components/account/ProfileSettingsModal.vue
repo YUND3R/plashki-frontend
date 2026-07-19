@@ -433,7 +433,6 @@ onUnmounted(() => {
 .psv__input--readonly:focus-visible {
   outline: none;
   border-color: #e5e7eb;
-  box-shadow: none;
 }
 
 .psv__banner {

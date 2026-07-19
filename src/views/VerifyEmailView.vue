@@ -143,7 +143,6 @@ onUnmounted(() => {
   border-radius: 22px;
   border: 1px solid #e5e7eb;
   box-sizing: border-box;
-  box-shadow: 0 18px 45px rgba(17, 24, 39, 0.12);
 }
 
 .auth__logo {

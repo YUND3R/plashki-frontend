@@ -626,7 +626,6 @@ function cardPhoto(c: PlayerCard): string {
 
 .profiles__compact-item--selected {
   border-color: #2f6feb;
-  box-shadow: 0 0 0 2px #2f6feb;
 }
 
 .profiles__compact-item--menu-open {
@@ -726,7 +725,6 @@ function cardPhoto(c: PlayerCard): string {
 .profiles__card--selected {
   z-index: 1;
   border-color: #2f6feb;
-  box-shadow: 0 0 0 2px #2f6feb;
 }
 
 .profiles__card--menu-open {
@@ -876,7 +874,6 @@ function cardPhoto(c: PlayerCard): string {
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
   z-index: 50;
 }
 

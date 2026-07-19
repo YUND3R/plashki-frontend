@@ -206,9 +206,9 @@ onMounted(async () => {
 }
 
 .auth__input:focus {
-  outline: none;
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
   border-color: #2f6feb;
-  box-shadow: 0 0 0 2px #2f6feb;
 }
 
 .auth__toggle {
