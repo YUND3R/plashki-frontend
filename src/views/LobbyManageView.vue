@@ -4197,9 +4197,9 @@ async function resetBestMove() {
   z-index: 320;
   background: rgba(17, 24, 39, 0.5);
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
-  padding: 0.75rem 0.75rem max(0.75rem, env(safe-area-inset-bottom, 0px));
+  padding: 1rem;
 }
 
 .lobby-manage__modal-card {
@@ -4207,7 +4207,7 @@ async function resetBestMove() {
   max-height: min(82vh, 900px);
   overflow: auto;
   background: #fff;
-  border-radius: 14px 14px 0 0;
+  border-radius: 12px;
   border: 1px solid #e5e7eb;
   padding: 0.95rem;
   box-sizing: border-box;
@@ -4957,18 +4957,6 @@ async function resetBestMove() {
     flex: 0 0 auto;
   }
 
-  .lobby-manage__modal-overlay {
-    align-items: flex-end;
-    padding: 0;
-  }
-
-  .lobby-manage__modal-card {
-    width: 100%;
-    max-height: min(88dvh, 900px);
-    border-radius: 14px 14px 0 0;
-    padding: 0.85rem 0.9rem calc(0.85rem + env(safe-area-inset-bottom, 0px));
-  }
-
   .lobby-manage__modal-card--design-picker {
     max-height: none;
     overflow: visible;
@@ -4990,6 +4978,20 @@ async function resetBestMove() {
 
   .lobby-manage__sheriff-checks-form {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767px) {
+  .lobby-manage__modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .lobby-manage__modal-card {
+    width: 100%;
+    max-height: min(88dvh, 900px);
+    border-radius: 14px 14px 0 0;
+    padding: 0.85rem 0.9rem calc(0.85rem + env(safe-area-inset-bottom, 0px));
   }
 }
 
