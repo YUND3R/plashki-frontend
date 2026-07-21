@@ -723,7 +723,10 @@ onUnmounted(() => {
   height: 224px;
   border-radius: 8px;
   overflow: visible;
-  background: #0c0e11;
+  background:
+    radial-gradient(circle at 82% 18%, rgba(52, 211, 153, 0.22) 0%, transparent 42%),
+    radial-gradient(circle at 12% 88%, rgba(251, 191, 36, 0.08) 0%, transparent 48%),
+    linear-gradient(180deg, #0f172a 0%, #020617 100%);
   --plus-lh-space: 0.35rem;
   --plus-lh-nums-gap: 0.2rem;
   --plus-status-check-num-size: 1.5rem;
@@ -1021,7 +1024,7 @@ onUnmounted(() => {
 .overlay-plus-card__photo {
   width: 100%;
   height: 100%;
-  background: #0c0e11;
+  background: transparent;
   overflow: hidden;
 }
 

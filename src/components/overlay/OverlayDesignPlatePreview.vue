@@ -434,7 +434,7 @@ onUnmounted(() => {
 .odpp-plus__photo {
   width: 100%;
   height: 100%;
-  background: #0c0e11;
+  background: transparent;
   overflow: hidden;
 }
 

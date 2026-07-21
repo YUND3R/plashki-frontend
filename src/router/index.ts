@@ -60,6 +60,12 @@ const router = createRouter({
       component: () => import('@/views/OverlayView.vue'),
     },
     {
+      path: '/lobby/:lobbyId/members/:membershipId/photo-crop',
+      name: 'lobby-member-photo-crop',
+      meta: { title: 'Кадрирование' },
+      component: () => import('@/views/LobbyMemberPhotoCropView.vue'),
+    },
+    {
       path: '/',
       component: MainLayout,
       children: [

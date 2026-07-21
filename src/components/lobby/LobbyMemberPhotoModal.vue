@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import PhotoCropModal from '@/components/photos/PhotoCropModal.vue'
 import {
   getPlayerCard,
@@ -10,10 +11,12 @@ import {
 import { setLobbyMemberDisplayPhoto, type GameLobby, type LobbyPlayer } from '@/api/lobbies'
 import { normalizeOverlayDesignCode } from '@/utils/overlayPersistentMessage'
 import { overlayPhotoSpecForDesign } from '@/utils/overlayPhotoSpec'
-import { DEFAULT_PHOTO_CROP, MIN_PHOTO_CROP_ZOOM, type PhotoCrop } from '@/utils/photoCrop'
-import { writeCachedPhotoLayouts } from '@/utils/overlayPhotoLayoutBridge'
+import { DEFAULT_PHOTO_CROP, normalizePhotoCrop, type PhotoCrop } from '@/utils/photoCrop'
+import { readCachedPhotoLayouts, writeCachedPhotoLayouts } from '@/utils/overlayPhotoLayoutBridge'
 import cropIcon from '@/assets/icons/cadr.svg?url'
 import deleteIcon from '@/assets/icons/delete.svg?url'
+
+const router = useRouter()
 
 const open = defineModel<boolean>({ default: false })
 
@@ -91,6 +94,21 @@ function buildLobbyAfterCrop(
   }
 }
 
+function mergePhotoLayouts(
+  ...sources: (Record<string, PhotoCrop> | null | undefined)[]
+): Record<string, PhotoCrop> {
+  const out: Record<string, PhotoCrop> = {}
+  for (const src of sources) {
+    if (!src) continue
+    for (const [url, crop] of Object.entries(src)) {
+      const key = url.trim()
+      if (!key) continue
+      out[key] = normalizePhotoCrop(crop)
+    }
+  }
+  return out
+}
+
 async function loadPhotos(pl: LobbyPlayer) {
   loading.value = true
   loadError.value = null
@@ -99,13 +117,15 @@ async function loadPhotos(pl: LobbyPlayer) {
   try {
     const c = await getPlayerCard(pl.user_id, pl.player_card_id)
     photoUrls.value = (c.photo_urls ?? []).filter(Boolean)
-    photoLayouts.value = { ...(c.photo_layouts ?? {}) }
+    const cached = pl.player_card_id ? readCachedPhotoLayouts(pl.player_card_id) : null
+    photoLayouts.value = mergePhotoLayouts(pl.photo_layouts, cached, c.photo_layouts ?? {})
     if (pl.player_card_id && Object.keys(photoLayouts.value).length) {
       writeCachedPhotoLayouts(pl.player_card_id, photoLayouts.value)
     }
   } catch (e) {
     photoUrls.value = (pl.photo_urls ?? []).map((u) => u.trim()).filter(Boolean)
-    photoLayouts.value = {}
+    const cached = pl.player_card_id ? readCachedPhotoLayouts(pl.player_card_id) : null
+    photoLayouts.value = mergePhotoLayouts(pl.photo_layouts, cached)
     if (photoUrls.value.length) {
       loadError.value =
         'Не удалось загрузить карточку - показаны фото из лобби. Кадрирование может быть недоступно.'
@@ -165,16 +185,26 @@ function openCropForNew(file: File) {
   pendingFile.value = file
   cropTargetUrl.value = null
   cropImageSrc.value = URL.createObjectURL(file)
-  cropInitial.value = { ...DEFAULT_PHOTO_CROP, zoom: MIN_PHOTO_CROP_ZOOM }
+  cropInitial.value = { ...DEFAULT_PHOTO_CROP }
   cropModalOpen.value = true
 }
 
 function openCropForExisting(url: string) {
-  pendingFile.value = null
-  cropTargetUrl.value = url
-  cropImageSrc.value = url
-  cropInitial.value = { ...DEFAULT_PHOTO_CROP, zoom: MIN_PHOTO_CROP_ZOOM }
-  cropModalOpen.value = true
+  const pl = props.player
+  const trimmed = url.trim()
+  if (!pl?.membership_id || !props.lobbyId || !trimmed) return
+  open.value = false
+  void router.push({
+    name: 'lobby-member-photo-crop',
+    params: {
+      lobbyId: props.lobbyId,
+      membershipId: pl.membership_id,
+    },
+    query: {
+      photo: trimmed,
+      design: props.overlayDesign,
+    },
+  })
 }
 
 function onAddPhoto(ev: Event) {

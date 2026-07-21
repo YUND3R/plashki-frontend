@@ -193,7 +193,7 @@ watch(
 
 function onCardClick(c: PlayerCard) {
   selectedId.value = c.id
-  menuOpenId.value = null
+  openInfoModal(c)
 }
 
 function toggleMenu(id: string) {
@@ -226,10 +226,19 @@ function cardPhoto(c: PlayerCard): string {
   return typeof u === 'string' && u.trim() ? u.trim() : ''
 }
 
+function cardFullName(c: PlayerCard): string {
+  const parts = [c.first_name?.trim(), c.last_name?.trim()].filter(Boolean)
+  return parts.join(' ')
+}
+
+function cardInitials(c: PlayerCard): string {
+  return `${c.first_name?.[0] || ''}${c.last_name?.[0] || ''}`
+}
+
 </script>
 
 <template>
-  <section class="profiles" :class="{ 'profiles--compact-layout': !!token && viewMode === 'compact' }">
+  <section class="profiles">
     <PlayerCardCreateModal
       v-model="cardModalOpen"
       :editing-card="cardModalEditTarget"
@@ -388,65 +397,68 @@ function cardPhoto(c: PlayerCard): string {
           }"
           @click="onCardClick(c)"
         >
-          <div class="profiles__compact-main">
-            <div class="profiles__compact-photo">
-              <img v-if="cardPhoto(c)" :src="cardPhoto(c)" alt="" class="profiles__compact-photo-img" />
-            </div>
-            <div class="profiles__compact-text">
-              <span class="profiles__compact-nick">{{ c.nickname }}</span>
-              <span class="profiles__compact-name">{{ c.first_name }} {{ c.last_name }}</span>
-            </div>
-          </div>
-          <div class="profiles__compact-actions" @click.stop>
+          <img
+            v-if="cardPhoto(c)"
+            class="profiles__compact-photo"
+            :src="cardPhoto(c)"
+            alt=""
+          />
+          <span v-else class="profiles__compact-initials" aria-hidden="true">
+            {{ cardInitials(c) }}
+          </span>
+          <span class="profiles__compact-text">
             <a
               v-if="hasGomafiaProfileLink(c)"
-              class="profiles__compact-gm"
+              class="profiles__gomafia-link profiles__compact-gm"
               :href="c.gomafia_url!.trim()"
               target="_blank"
               rel="noopener noreferrer"
               title="Профиль GoMafia"
               aria-label="Открыть профиль GoMafia"
+              @click.stop
             >
               gomafia
             </a>
-            <span v-else class="profiles__compact-gm profiles__compact-gm--muted" title="Нет аккаунта GoMafia">gomafia</span>
-            <div class="profiles__menu-wrap">
+            <span v-else class="profiles__gomafia-muted profiles__compact-gm" title="Нет аккаунта GoMafia">gomafia</span>
+            <span class="profiles__compact-nick">{{ c.nickname }}</span>
+            <span v-if="cardFullName(c)" class="profiles__compact-name">{{ cardFullName(c) }}</span>
+          </span>
+          <div class="profiles__compact-menu" @click.stop>
+            <button
+              type="button"
+              class="profiles__menu-trigger profiles__compact-menu-trigger"
+              aria-label="Меню профиля"
+              aria-haspopup="true"
+              :aria-expanded="menuOpenId === c.id"
+              @click.stop="toggleMenu(c.id)"
+            >
+              ⋮
+            </button>
+            <div v-if="menuOpenId === c.id" class="profiles__menu" role="menu">
               <button
                 type="button"
-                class="profiles__menu-trigger"
-                aria-label="Меню профиля"
-                aria-haspopup="true"
-                :aria-expanded="menuOpenId === c.id"
-                @click.stop="toggleMenu(c.id)"
+                class="profiles__menu-item profiles__menu-item--edit"
+                role="menuitem"
+                @click="openInfoModal(c)"
               >
-                ⋮
+                Информация о игроке
               </button>
-              <div v-if="menuOpenId === c.id" class="profiles__menu" role="menu">
-                <button
-                  type="button"
-                  class="profiles__menu-item profiles__menu-item--edit"
-                  role="menuitem"
-                  @click="openInfoModal(c)"
-                >
-                  Информация о игроке
-                </button>
-                <button
-                  type="button"
-                  class="profiles__menu-item profiles__menu-item--edit"
-                  role="menuitem"
-                  @click="openEditModal(c)"
-                >
-                  Редактировать
-                </button>
-                <button
-                  type="button"
-                  class="profiles__menu-item profiles__menu-item--danger"
-                  role="menuitem"
-                  @click="openDeleteConfirm(c)"
-                >
-                  Удалить
-                </button>
-              </div>
+              <button
+                type="button"
+                class="profiles__menu-item profiles__menu-item--edit"
+                role="menuitem"
+                @click="openEditModal(c)"
+              >
+                Редактировать
+              </button>
+              <button
+                type="button"
+                class="profiles__menu-item profiles__menu-item--danger"
+                role="menuitem"
+                @click="openDeleteConfirm(c)"
+              >
+                Удалить
+              </button>
             </div>
           </div>
         </article>
@@ -479,11 +491,6 @@ function cardPhoto(c: PlayerCard): string {
   padding: 0 0 1rem;
   box-sizing: border-box;
   overflow: visible;
-}
-
-.profiles--compact-layout {
-  max-width: 760px;
-  margin: 0 auto;
 }
 
 .profiles__guest {
@@ -599,33 +606,41 @@ function cardPhoto(c: PlayerCard): string {
 }
 
 .profiles__compact-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  align-items: start;
+}
+
+@media (max-width: 380px) {
+  .profiles__compact-list {
+    grid-template-columns: 1fr;
+  }
 }
 
 .profiles__compact-item {
+  position: relative;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.6rem;
-  padding: 0.45rem 0.6rem 0.45rem 0.7rem;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  background: #fff;
-  cursor: pointer;
-}
-
-.profiles__compact-main {
-  display: inline-flex;
   align-items: center;
   gap: 0.5rem;
   min-width: 0;
-  flex: 1 1 auto;
+  width: 100%;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #f9fafb;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.profiles__compact-item:hover {
+  background: #eff6ff;
+  border-color: #93c5fd;
 }
 
 .profiles__compact-item--selected {
-  border-color: #2f6feb;
+  background: #eff6ff;
+  border-color: #93c5fd;
 }
 
 .profiles__compact-item--menu-open {
@@ -635,73 +650,113 @@ function cardPhoto(c: PlayerCard): string {
 .profiles__compact-text {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
   min-width: 0;
-}
-
-.profiles__compact-nick {
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: #111827;
-  line-height: 1.2;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.profiles__compact-name {
-  margin-top: 0.02rem;
-  font-size: 0.75rem;
-  color: #6b7280;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.profiles__compact-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  flex-shrink: 0;
+  flex: 1 1 auto;
+  padding-right: 1.75rem;
 }
 
 .profiles__compact-gm {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 4.4rem;
-  height: 1.45rem;
-  padding: 0 0.6rem;
-  font-size: 0.75rem;
+  flex-shrink: 0;
+  transform: none;
+}
+
+.profiles__compact-nick {
+  font-size: 0.9375rem;
   font-weight: 600;
-  letter-spacing: 0.01em;
-  color: #8977FE;
-  text-decoration: none;
-  border: 1px solid rgba(137, 119, 254, 0.3);
-  border-radius: 6px;
-  background: rgba(137, 119, 254, 0.22);
-}
-
-.profiles__compact-gm--muted {
-  color: #6b7280;
-  border-color: #e5e7eb;
-  background: #f3f4f6;
-}
-
-.profiles__compact-photo {
-  width: 2.3125rem;
-  height: 2.3125rem;
-  border-radius: 999px;
-  background: #f3f4f6;
+  color: #111827;
+  line-height: 1.25;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.profiles__compact-name {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: #6b7280;
+  line-height: 1.3;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  width: 100%;
+}
+
+.profiles__compact-photo,
+.profiles__compact-initials {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 999px;
+  object-fit: cover;
   flex-shrink: 0;
 }
 
-.profiles__compact-photo-img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  object-position: center;
-  display: block;
+.profiles__compact-initials {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #e5e7eb;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #4b5563;
+}
+
+.profiles__compact-menu {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+}
+
+.profiles__compact-menu-trigger {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .profiles__compact-list {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+
+  .profiles__compact-item {
+    gap: 0.95rem;
+    padding: 0.95rem 1rem;
+    border-radius: 12px;
+  }
+
+  .profiles__compact-photo,
+  .profiles__compact-initials {
+    width: 5.75rem;
+    height: 5.75rem;
+  }
+
+  .profiles__compact-initials {
+    font-size: 1.3125rem;
+  }
+
+  .profiles__compact-text {
+    gap: 0.25rem;
+    padding-right: 2rem;
+  }
+
+  .profiles__compact-nick {
+    font-size: 1.3125rem;
+    line-height: 1.2;
+  }
+
+  .profiles__compact-name {
+    font-size: 0.9375rem;
+  }
+
+  .profiles__compact-menu {
+    top: 0.55rem;
+    right: 0.55rem;
+  }
 }
 
 .profiles__card {

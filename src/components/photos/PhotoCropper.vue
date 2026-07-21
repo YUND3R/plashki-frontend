@@ -675,7 +675,7 @@ onUnmounted(() => {
 }
 
 .photo-cropper__source--plus .photo-cropper__frame {
-  background: #0c0e11;
+  background: transparent;
   border-radius: 8px 8px 0 0;
 }
 
