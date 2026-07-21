@@ -19,6 +19,7 @@ const open = defineModel<boolean>({ default: false })
 
 const props = defineProps<{
   lobbyId: string
+  lobby: GameLobby | null
   player: LobbyPlayer | null
   overlayDesign: string
 }>()
@@ -66,6 +67,28 @@ function lobbyShownPhoto(pl: LobbyPlayer): string {
   if (lobby) return lobby
   const x = pl.photo_urls?.[0]
   return typeof x === 'string' ? x.trim() : ''
+}
+
+function buildLobbyAfterCrop(
+  base: GameLobby,
+  pl: LobbyPlayer,
+  url: string,
+  crop: PhotoCrop,
+  layouts: Record<string, PhotoCrop>,
+): GameLobby {
+  return {
+    ...base,
+    players: base.players.map((p) => {
+      if (p.membership_id !== pl.membership_id) return p
+      const photo_layouts = { ...(p.photo_layouts ?? {}), ...layouts }
+      const shown = lobbyShownPhoto({ ...p, photo_layouts })
+      return {
+        ...p,
+        photo_layouts,
+        display_photo_layout: shown === url ? crop : p.display_photo_layout,
+      }
+    }),
+  }
 }
 
 async function loadPhotos(pl: LobbyPlayer) {
@@ -198,15 +221,19 @@ async function onCropSave(crop: PhotoCrop) {
         : photoUrls.value[photoUrls.value.length - 1] ?? selectedUrl.value
       uploadedAndSelectedUrl = selectedUrl.value
     } else if (cropTargetUrl.value) {
+      const url = cropTargetUrl.value
       await patchPlayerCardPhotoLayout(
         pl.user_id,
         pl.player_card_id,
-        cropTargetUrl.value,
+        url,
         crop,
         photoLayouts.value,
       )
-      photoLayouts.value[cropTargetUrl.value] = crop
+      photoLayouts.value[url] = crop
       if (pl.player_card_id) writeCachedPhotoLayouts(pl.player_card_id, photoLayouts.value)
+      if (props.lobby && lobbyShownPhoto(pl) === url) {
+        emit('applied', buildLobbyAfterCrop(props.lobby, pl, url, crop, photoLayouts.value))
+      }
     }
     cropModalOpen.value = false
     // После загрузки нового фото сразу применяем его в лобби,

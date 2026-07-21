@@ -70,7 +70,16 @@ export function mergePlayerPhotoLayouts(prev: LobbyPlayer | undefined, next: Lob
   const cardId = next.player_card_id?.trim()
   const cached = cardId ? readCachedPhotoLayouts(cardId) : null
   const layouts = mergePhotoLayouts(prev?.photo_layouts, next.photo_layouts, cached)
-  const displayPhotoLayout = next.display_photo_layout ?? prev?.display_photo_layout ?? null
+  let displayPhotoLayout = next.display_photo_layout ?? prev?.display_photo_layout ?? null
+
+  const shown = rowPhoto(next)
+  if (shown && layouts) {
+    const layoutForShown = findPhotoLayoutForUrl(layouts, shown)
+    const lobbyUrl = (next.lobby_photo_url ?? '').trim()
+    if (layoutForShown && lobbyUrl && shown === lobbyUrl) {
+      displayPhotoLayout = layoutForShown
+    }
+  }
 
   if (!layouts && !displayPhotoLayout) return next
 

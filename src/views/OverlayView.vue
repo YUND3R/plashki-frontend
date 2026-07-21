@@ -200,7 +200,7 @@ async function enrichLobbyInBackground(merged: GameLobby, seq: number) {
   }
 }
 
-async function fetchFullLobby() {
+async function fetchFullLobby(forceLayoutRefresh = false) {
   if (!effectiveLobbyId.value && !isLiveRoute.value) {
     loading.value = false
     error.value = 'Не указан lobbyId'
@@ -239,8 +239,8 @@ async function fetchFullLobby() {
     const nextSignature = lobbyDataSignature(merged)
     const dataChanged = nextSignature !== lastAppliedLobbySignature
 
-    if (dataChanged) {
-      lastAppliedLobbySignature = nextSignature
+    if (dataChanged || forceLayoutRefresh) {
+      if (dataChanged) lastAppliedLobbySignature = nextSignature
       lobby.value = applyStablePhotoLayouts(lobby.value, merged)
       void enrichLobbyInBackground(merged, seq)
     }
@@ -300,8 +300,9 @@ async function pollOverlay() {
 
   if (!needFull) return
 
+  const forceLayoutRefresh = syncFetchPending
   syncFetchPending = false
-  await fetchFullLobby()
+  await fetchFullLobby(forceLayoutRefresh)
 }
 
 function loadPersistentMessage() {

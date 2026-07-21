@@ -1118,8 +1118,17 @@ function openPhotoModal(p: LobbyPlayer) {
 
 function onPhotoModalApplied(next: GameLobby) {
   lobby.value = next
-  photoModalPlayer.value = null
+  const membershipId = photoModalPlayer.value?.membership_id
+  if (membershipId) {
+    photoModalPlayer.value =
+      next.players.find((p) => p.membership_id === membershipId) ?? photoModalPlayer.value
+  }
+  notifyOverlayLobbyChanged(lobbyId.value)
 }
+
+watch(photoModalOpen, (isOpen) => {
+  if (!isOpen) photoModalPlayer.value = null
+})
 
 function closeReplace() {
   replaceOpenSeatIndex.value = null
@@ -2356,6 +2365,7 @@ async function resetBestMove() {
       <LobbyMemberPhotoModal
         v-model="photoModalOpen"
         :lobby-id="lobby.id"
+        :lobby="lobby"
         :player="photoModalPlayer"
         :overlay-design="activePersistentDesignCode"
         @applied="onPhotoModalApplied"
