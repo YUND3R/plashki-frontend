@@ -118,15 +118,20 @@ function teardownSlotAutoScroll() {
   }
 }
 
+function isSlotStripInteractiveTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false
+  return !!target.closest('.create-lobby-modal__slot-clear')
+}
+
 function onSlotsStripPointerDown(ev: PointerEvent) {
   if (ev.pointerType === 'mouse' && ev.button !== 0) return
+  if (isSlotStripInteractiveTarget(ev.target)) return
   const strip = slotsStripRef.value
   if (!strip) return
   slotsStripDragging.value = true
   slotsStripMoved = false
   slotsStripStartClientX = ev.clientX
   slotsStripStartScrollLeft = strip.scrollLeft
-  strip.setPointerCapture(ev.pointerId)
 }
 
 function onSlotsStripPointerMove(ev: PointerEvent) {
@@ -134,8 +139,9 @@ function onSlotsStripPointerMove(ev: PointerEvent) {
   const strip = slotsStripRef.value
   if (!strip) return
   const deltaX = ev.clientX - slotsStripStartClientX
-  if (!slotsStripMoved && Math.abs(deltaX) > 4) {
+  if (!slotsStripMoved && Math.abs(deltaX) > 6) {
     slotsStripMoved = true
+    strip.setPointerCapture(ev.pointerId)
   }
   if (!slotsStripMoved) return
   strip.scrollLeft = slotsStripStartScrollLeft - deltaX
@@ -380,6 +386,7 @@ onUnmounted(() => {
                           class="create-lobby-modal__slot-clear"
                           :disabled="submitting"
                           aria-label="Убрать игрока из слота"
+                          @pointerdown.stop
                           @click.stop="clearSlot(i - 1)"
                         >
                           Убрать
@@ -640,8 +647,7 @@ onUnmounted(() => {
   scroll-snap-type: none;
 }
 
-.create-lobby-modal__slots--dragging .create-lobby-modal__slot,
-.create-lobby-modal__slots--dragging .create-lobby-modal__slot-clear {
+.create-lobby-modal__slots--dragging .create-lobby-modal__slot {
   pointer-events: none;
 }
 
@@ -769,6 +775,7 @@ onUnmounted(() => {
 
 .create-lobby-modal__slot-clear {
   position: absolute;
+  z-index: 2;
   left: 0.45rem;
   right: 0.45rem;
   bottom: 0.45rem;
