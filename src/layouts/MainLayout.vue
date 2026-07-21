@@ -1116,6 +1116,10 @@ onUnmounted(() => {
   padding: 0;
 }
 
+.shell--mobile .shell__body.shell__body--flush:has(.lobby-manage:not(.lobby-manage--design-picker)) {
+  scroll-padding-bottom: calc(10.5rem + env(safe-area-inset-bottom, 0px));
+}
+
 @media (prefers-reduced-motion: reduce) {
   .shell--mobile .shell__sidebar {
     transition: none;

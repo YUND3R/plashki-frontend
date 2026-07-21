@@ -79,8 +79,24 @@ const dragActiveIndex = ref<number | null>(null)
 const dragOverIndex = ref<number | null>(null)
 /** Pointer drag для touch/pen, т.к. HTML5 drag-and-drop на мобильных браузерах почти не работает. */
 const touchDragPointerId = ref<number | null>(null)
+/** Строка, которую сейчас удерживают перед началом touch-drag. */
+const touchDragHoldIndex = ref<number | null>(null)
 
 const SEAT_DND_MIME = 'application/x-plashki-seat'
+const SEAT_TOUCH_HOLD_MS = 450
+const SEAT_TOUCH_HOLD_MOVE_PX = 28
+const SEAT_TOUCH_AUTO_SCROLL_EDGE_PX = 88
+const SEAT_TOUCH_AUTO_SCROLL_MAX_STEP_PX = 16
+
+let touchDragHoldTimer: ReturnType<typeof setTimeout> | null = null
+let touchDragPendingPointerId: number | null = null
+let touchDragPendingIdx: number | null = null
+let touchDragPendingStart = { x: 0, y: 0 }
+let touchDragCaptureEl: HTMLElement | null = null
+let touchDragAutoScrollFrame: number | null = null
+let touchDragLastPoint: { x: number; y: number } | null = null
+let touchDragScrollHost: HTMLElement | null = null
+let suppressRowSelectClick = false
 
 const photoModalOpen = ref(false)
 const photoModalPlayer = ref<LobbyPlayer | null>(null)
@@ -94,6 +110,8 @@ const replaceRosterLoading = ref(false)
 const replaceSubmitting = ref(false)
 const replaceSearchInputRef = ref<HTMLInputElement | null>(null)
 const isTabletLayout = ref(false)
+/** Активная карточка игрока на мобильной панели (фиолетовая рамка). */
+const selectedSeatIndex = ref<number | null>(null)
 let tabletMq: MediaQueryList | null = null
 const roleSubmittingMembershipId = ref<string | null>(null)
 const statusSubmittingMembershipId = ref<string | null>(null)
@@ -208,8 +226,7 @@ async function load() {
   }
   loading.value = true
   error.value = null
-  dragActiveIndex.value = null
-  dragOverIndex.value = null
+  resetSeatDragState()
   swapHint.value = null
   importedSelectionError.value = null
   importedSelectionBusy.value = false
@@ -263,6 +280,8 @@ onMounted(() => {
   document.addEventListener('pointerdown', onDocPointerDownImported, true)
   document.addEventListener('visibilitychange', syncSpeechTimerElapsed)
   window.addEventListener('keydown', onImportedEscapeKey)
+  window.addEventListener('dragend', onGlobalSeatDragEnd)
+  window.addEventListener('blur', onWindowSeatDragBlur)
   tabletMq = window.matchMedia('(max-width: 1024px)')
   isTabletLayout.value = tabletMq.matches
   if (typeof tabletMq.addEventListener === 'function') {
@@ -294,9 +313,9 @@ onUnmounted(() => {
   document.removeEventListener('visibilitychange', syncSpeechTimerElapsed)
   window.removeEventListener('keydown', onReplaceEscapeKey)
   window.removeEventListener('keydown', onImportedEscapeKey)
-  window.removeEventListener('pointermove', onTouchDragMove)
-  window.removeEventListener('pointerup', onTouchDragEnd)
-  window.removeEventListener('pointercancel', onTouchDragCancel)
+  window.removeEventListener('dragend', onGlobalSeatDragEnd)
+  window.removeEventListener('blur', onWindowSeatDragBlur)
+  resetSeatDragState()
   if (tabletMq) {
     if (typeof tabletMq.removeEventListener === 'function') {
       tabletMq.removeEventListener('change', onTabletMqChange)
@@ -635,8 +654,22 @@ function onDocPointerDownReplace(e: PointerEvent) {
 }
 
 function onTabletMqChange(e: MediaQueryListEvent) {
+  resetSeatDragState()
   isTabletLayout.value = e.matches
+  if (!e.matches) selectedSeatIndex.value = null
   closeReplace()
+}
+
+function onMobileRowSelect(idx: number, ev: MouseEvent) {
+  if (!isTabletLayout.value) return
+  if (suppressRowSelectClick) {
+    suppressRowSelectClick = false
+    return
+  }
+  const t = ev.target
+  if (!(t instanceof Element)) return
+  if (t.closest('button, input, label, a, [contenteditable="true"]')) return
+  selectedSeatIndex.value = selectedSeatIndex.value === idx ? null : idx
 }
 
 function onDragStart(e: DragEvent, idx: number, p: LobbyPlayer | null) {
@@ -651,9 +684,143 @@ function onDragStart(e: DragEvent, idx: number, p: LobbyPlayer | null) {
   if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'
 }
 
-function onDragEnd() {
+function resetSeatDragState() {
+  const activePointerId = touchDragPointerId.value
+  if (activePointerId !== null) releaseTouchDragCapture(activePointerId)
+  touchDragPointerId.value = null
+  removeTouchDragListeners()
   dragActiveIndex.value = null
   dragOverIndex.value = null
+  stopTouchDragAutoScroll()
+  clearTouchDragHold()
+}
+
+function onDragEnd() {
+  resetSeatDragState()
+}
+
+function onGlobalSeatDragEnd() {
+  if (dragActiveIndex.value === null && touchDragPointerId.value === null) return
+  resetSeatDragState()
+}
+
+function onWindowSeatDragBlur() {
+  if (dragActiveIndex.value === null && touchDragPointerId.value === null) return
+  resetSeatDragState()
+}
+
+function onTableDragLeave(e: DragEvent) {
+  const table = e.currentTarget
+  const next = e.relatedTarget
+  if (!(table instanceof HTMLElement)) return
+  if (next instanceof Node && table.contains(next)) return
+  dragOverIndex.value = null
+}
+
+function seatHasPlayer(idx: number): boolean {
+  return !!seatRows.value[idx]?.membership_id
+}
+
+function rowIndexFromPoint(clientX: number, clientY: number): number | null {
+  const el = document.elementFromPoint(clientX, clientY)
+  const row = el?.closest('.lobby-manage__row')
+  if (!(row instanceof HTMLElement)) return null
+  const raw = row.dataset.rowIndex ?? ''
+  const idx = Number.parseInt(raw, 10)
+  return Number.isFinite(idx) ? idx : null
+}
+
+function resolveSwapTargetIndex(
+  clientX: number,
+  clientY: number,
+  sourceIdx: number | null,
+): number | null {
+  const idx = rowIndexFromPoint(clientX, clientY)
+  if (idx === null || idx === sourceIdx || !seatHasPlayer(idx)) return null
+  return idx
+}
+
+function getScrollableAncestor(startEl: HTMLElement | null): HTMLElement | null {
+  let el: HTMLElement | null = startEl
+  while (el) {
+    const style = window.getComputedStyle(el)
+    const overflowY = style.overflowY
+    const canScrollY =
+      (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') &&
+      el.scrollHeight > el.clientHeight + 1
+    if (canScrollY) return el
+    el = el.parentElement
+  }
+  return null
+}
+
+function applyTouchDragAutoScrollStep() {
+  if (dragActiveIndex.value === null || !touchDragLastPoint) return
+  const host = touchDragScrollHost
+  const docScroller = document.scrollingElement as HTMLElement | null
+  let top = 0
+  let bottom = window.innerHeight
+  let canScrollUp = false
+  let canScrollDown = false
+  let scrollByY = (deltaY: number) => window.scrollBy({ top: deltaY })
+
+  if (host) {
+    const rect = host.getBoundingClientRect()
+    top = rect.top
+    bottom = rect.bottom
+    canScrollUp = host.scrollTop > 0
+    canScrollDown = host.scrollTop + host.clientHeight < host.scrollHeight - 1
+    scrollByY = (deltaY: number) => host.scrollBy({ top: deltaY })
+  } else if (docScroller) {
+    canScrollUp = docScroller.scrollTop > 0
+    canScrollDown = docScroller.scrollTop + window.innerHeight < docScroller.scrollHeight - 1
+  }
+
+  const fromTop = touchDragLastPoint.y - top
+  const fromBottom = bottom - touchDragLastPoint.y
+  let delta = 0
+  if (fromTop < SEAT_TOUCH_AUTO_SCROLL_EDGE_PX && canScrollUp) {
+    const force = (SEAT_TOUCH_AUTO_SCROLL_EDGE_PX - Math.max(fromTop, 0)) / SEAT_TOUCH_AUTO_SCROLL_EDGE_PX
+    delta = -Math.max(1, Math.ceil(force * SEAT_TOUCH_AUTO_SCROLL_MAX_STEP_PX))
+  } else if (fromBottom < SEAT_TOUCH_AUTO_SCROLL_EDGE_PX && canScrollDown) {
+    const force =
+      (SEAT_TOUCH_AUTO_SCROLL_EDGE_PX - Math.max(fromBottom, 0)) / SEAT_TOUCH_AUTO_SCROLL_EDGE_PX
+    delta = Math.max(1, Math.ceil(force * SEAT_TOUCH_AUTO_SCROLL_MAX_STEP_PX))
+  }
+
+  if (!delta) return
+  scrollByY(delta)
+  if (dragActiveIndex.value !== null && touchDragLastPoint) {
+    dragOverIndex.value = resolveSwapTargetIndex(
+      touchDragLastPoint.x,
+      touchDragLastPoint.y,
+      dragActiveIndex.value,
+    )
+  }
+}
+
+function tickTouchDragAutoScroll() {
+  if (dragActiveIndex.value === null) {
+    stopTouchDragAutoScroll()
+    return
+  }
+  applyTouchDragAutoScrollStep()
+  touchDragAutoScrollFrame = window.requestAnimationFrame(tickTouchDragAutoScroll)
+}
+
+function startTouchDragAutoScroll(captureEl: HTMLElement | null) {
+  touchDragScrollHost = getScrollableAncestor(captureEl)
+  if (touchDragAutoScrollFrame !== null) return
+  touchDragAutoScrollFrame = window.requestAnimationFrame(tickTouchDragAutoScroll)
+}
+
+function stopTouchDragAutoScroll() {
+  if (touchDragAutoScrollFrame !== null) {
+    window.cancelAnimationFrame(touchDragAutoScrollFrame)
+    touchDragAutoScrollFrame = null
+  }
+  touchDragLastPoint = null
+  touchDragScrollHost = null
 }
 
 function addTouchDragListeners() {
@@ -668,13 +835,74 @@ function removeTouchDragListeners() {
   window.removeEventListener('pointercancel', onTouchDragCancel)
 }
 
-function rowIndexFromPoint(clientX: number, clientY: number): number | null {
-  const el = document.elementFromPoint(clientX, clientY)
-  const row = el?.closest('.lobby-manage__row')
-  if (!(row instanceof HTMLElement)) return null
-  const raw = row.dataset.rowIndex ?? ''
-  const idx = Number.parseInt(raw, 10)
-  return Number.isFinite(idx) ? idx : null
+function releaseTouchDragCapture(pointerId: number) {
+  const el = touchDragCaptureEl
+  if (!el) return
+  try {
+    if (el.hasPointerCapture(pointerId)) el.releasePointerCapture(pointerId)
+  } catch {
+    // ignore
+  }
+  touchDragCaptureEl = null
+}
+
+function captureTouchDragPointer(el: HTMLElement | null, pointerId: number) {
+  if (!el) return
+  try {
+    el.setPointerCapture(pointerId)
+    touchDragCaptureEl = el
+  } catch {
+    // ignore
+  }
+}
+
+function clearTouchDragHold() {
+  if (touchDragHoldTimer) {
+    clearTimeout(touchDragHoldTimer)
+    touchDragHoldTimer = null
+  }
+  if (touchDragPendingPointerId !== null) {
+    releaseTouchDragCapture(touchDragPendingPointerId)
+  }
+  touchDragPendingPointerId = null
+  touchDragPendingIdx = null
+  touchDragHoldIndex.value = null
+  touchDragLastPoint = null
+  window.removeEventListener('pointermove', onTouchDragHoldPendingMove)
+  window.removeEventListener('pointerup', onTouchDragHoldPendingUp)
+  window.removeEventListener('pointercancel', onTouchDragHoldPendingUp)
+}
+
+function activateTouchDrag(pointerId: number, idx: number, captureEl: HTMLElement | null) {
+  touchDragHoldIndex.value = null
+  touchDragPointerId.value = pointerId
+  dragActiveIndex.value = idx
+  dragOverIndex.value = null
+  suppressRowSelectClick = true
+  if (captureEl) captureTouchDragPointer(captureEl, pointerId)
+  startTouchDragAutoScroll(captureEl)
+  if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+    try {
+      navigator.vibrate(12)
+    } catch {
+      // ignore
+    }
+  }
+  addTouchDragListeners()
+}
+
+function onTouchDragHoldPendingMove(e: PointerEvent) {
+  if (touchDragPendingPointerId !== e.pointerId || touchDragPendingIdx === null) return
+  const dx = e.clientX - touchDragPendingStart.x
+  const dy = e.clientY - touchDragPendingStart.y
+  if (Math.hypot(dx, dy) > SEAT_TOUCH_HOLD_MOVE_PX) {
+    clearTouchDragHold()
+  }
+}
+
+function onTouchDragHoldPendingUp(e: PointerEvent) {
+  if (touchDragPendingPointerId !== e.pointerId) return
+  clearTouchDragHold()
 }
 
 async function swapSeatsByIndex(sourceIdx: number, targetIdx: number) {
@@ -711,36 +939,87 @@ async function swapSeatsByIndex(sourceIdx: number, targetIdx: number) {
   }
 }
 
-function onTouchDragStart(e: PointerEvent, idx: number, p: LobbyPlayer | null) {
-  if (e.pointerType === 'mouse') return
+function onTouchDragStart(
+  e: PointerEvent,
+  idx: number,
+  p: LobbyPlayer | null,
+  captureEl: HTMLElement | null,
+  instant = false,
+) {
   swapHint.value = null
-  if (!isLobbyHost.value || swapBusy.value || rolesResetBusy.value || !p?.membership_id) {
-    e.preventDefault()
+  if (!isLobbyHost.value || swapBusy.value || rolesResetBusy.value || !p?.membership_id) return
+
+  clearTouchDragHold()
+  touchDragLastPoint = { x: e.clientX, y: e.clientY }
+  captureTouchDragPointer(captureEl, e.pointerId)
+
+  if (instant) {
+    activateTouchDrag(e.pointerId, idx, captureEl)
     return
   }
-  touchDragPointerId.value = e.pointerId
-  dragActiveIndex.value = idx
-  dragOverIndex.value = null
-  addTouchDragListeners()
+
+  touchDragPendingPointerId = e.pointerId
+  touchDragPendingIdx = idx
+  touchDragHoldIndex.value = idx
+  touchDragPendingStart = { x: e.clientX, y: e.clientY }
+
+  window.addEventListener('pointermove', onTouchDragHoldPendingMove, { passive: true })
+  window.addEventListener('pointerup', onTouchDragHoldPendingUp)
+  window.addEventListener('pointercancel', onTouchDragHoldPendingUp)
+
+  touchDragHoldTimer = window.setTimeout(() => {
+    touchDragHoldTimer = null
+    const pointerId = touchDragPendingPointerId
+    const pendingIdx = touchDragPendingIdx
+    const pendingCaptureEl = touchDragCaptureEl
+    window.removeEventListener('pointermove', onTouchDragHoldPendingMove)
+    window.removeEventListener('pointerup', onTouchDragHoldPendingUp)
+    window.removeEventListener('pointercancel', onTouchDragHoldPendingUp)
+    touchDragPendingPointerId = null
+    touchDragPendingIdx = null
+    if (pointerId === null || pendingIdx === null) return
+    activateTouchDrag(pointerId, pendingIdx, pendingCaptureEl)
+  }, SEAT_TOUCH_HOLD_MS)
+}
+
+function onTouchDragNumPointerDown(e: PointerEvent, idx: number, p: LobbyPlayer | null) {
+  if (!isTabletLayout.value) return
+  if (!isLobbyHost.value || swapBusy.value || rolesResetBusy.value || !p?.membership_id) return
+  if (e.button !== 0) return
   e.preventDefault()
+  e.stopPropagation()
+  const cell = e.currentTarget
+  if (!(cell instanceof HTMLElement)) return
+  onTouchDragStart(e, idx, p, cell, true)
+}
+
+function onTouchDragRowPointerDown(e: PointerEvent, idx: number, p: LobbyPlayer | null) {
+  if (!isTabletLayout.value) return
+  const t = e.target
+  if (!(t instanceof Element)) return
+  if (t.closest('.lobby-manage__row-num-cell')) return
+  if (t.closest('.lobby-manage__row-dots-cell')) return
+  if (t.closest('button, input, label, a, [contenteditable="true"]')) return
+  if (!isLobbyHost.value || swapBusy.value || rolesResetBusy.value || !p?.membership_id) return
+  const row = e.currentTarget
+  if (!(row instanceof HTMLElement)) return
+  onTouchDragStart(e, idx, p, row)
 }
 
 function onTouchDragMove(e: PointerEvent) {
   if (touchDragPointerId.value !== e.pointerId || dragActiveIndex.value === null) return
-  const targetIdx = rowIndexFromPoint(e.clientX, e.clientY)
-  dragOverIndex.value =
-    targetIdx !== null && targetIdx !== dragActiveIndex.value ? targetIdx : null
+  touchDragLastPoint = { x: e.clientX, y: e.clientY }
+  dragOverIndex.value = resolveSwapTargetIndex(e.clientX, e.clientY, dragActiveIndex.value)
+  applyTouchDragAutoScrollStep()
   e.preventDefault()
 }
 
 async function onTouchDragEnd(e: PointerEvent) {
   if (touchDragPointerId.value !== e.pointerId) return
   const sourceIdx = dragActiveIndex.value
-  const targetIdx = rowIndexFromPoint(e.clientX, e.clientY)
-  touchDragPointerId.value = null
-  removeTouchDragListeners()
+  const targetIdx = resolveSwapTargetIndex(e.clientX, e.clientY, sourceIdx)
+  resetSeatDragState()
   if (sourceIdx === null || targetIdx === null || swapBusy.value || rolesResetBusy.value) {
-    onDragEnd()
     return
   }
   await swapSeatsByIndex(sourceIdx, targetIdx)
@@ -748,9 +1027,7 @@ async function onTouchDragEnd(e: PointerEvent) {
 
 function onTouchDragCancel(e: PointerEvent) {
   if (touchDragPointerId.value !== e.pointerId) return
-  touchDragPointerId.value = null
-  removeTouchDragListeners()
-  onDragEnd()
+  resetSeatDragState()
 }
 
 function onDragOver(e: DragEvent, idx: number) {
@@ -758,22 +1035,27 @@ function onDragOver(e: DragEvent, idx: number) {
     return
   e.preventDefault()
   if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
-  dragOverIndex.value = idx === dragActiveIndex.value ? null : idx
+  if (idx === dragActiveIndex.value || !seatHasPlayer(idx)) {
+    dragOverIndex.value = null
+    return
+  }
+  dragOverIndex.value = idx
 }
 
 async function onDrop(e: DragEvent, targetIdx: number) {
-  dragOverIndex.value = null
+  e.preventDefault()
   if (swapBusy.value || rolesResetBusy.value) {
-    onDragEnd()
+    resetSeatDragState()
     return
   }
   const raw =
     e.dataTransfer?.getData(SEAT_DND_MIME) || e.dataTransfer?.getData('text/plain') || ''
   const sourceIdx = Number.parseInt(raw, 10)
   if (!Number.isFinite(sourceIdx)) {
-    onDragEnd()
+    resetSeatDragState()
     return
   }
+  resetSeatDragState()
   await swapSeatsByIndex(sourceIdx, targetIdx)
 }
 
@@ -1616,7 +1898,11 @@ async function resetBestMove() {
       <div class="lobby-manage__grid">
         <article class="lobby-manage__card lobby-manage__card--main">
           <p v-if="swapHint" class="lobby-manage__swap-hint" role="status">{{ swapHint }}</p>
-          <div class="lobby-manage__table-wrap" :class="{ 'lobby-manage__table-wrap--replace': isReplacePanelOpen }">
+          <div
+            class="lobby-manage__table-wrap"
+            :class="{ 'lobby-manage__table-wrap--replace': isReplacePanelOpen }"
+            @dragleave="onTableDragLeave"
+          >
             <div
               v-for="(p, idx) in seatRows"
               :key="rowKey(idx, p)"
@@ -1625,20 +1911,28 @@ async function resetBestMove() {
               :class="{
                 'lobby-manage__row--drag-over': dragOverIndex === idx && dragActiveIndex !== null,
                 'lobby-manage__row--drag-source': dragActiveIndex === idx,
+                'lobby-manage__row--grab-holding': touchDragHoldIndex === idx && dragActiveIndex === null,
                 'lobby-manage__row--replace-open': replaceOpenSeatIndex === idx && !!p?.membership_id,
+                'lobby-manage__row--selected': selectedSeatIndex === idx,
               }"
+              @click="onMobileRowSelect(idx, $event)"
+              @pointerdown="onTouchDragRowPointerDown($event, idx, p)"
               @dragover="onDragOver($event, idx)"
               @drop="onDrop($event, idx)"
             >
+              <svg class="lobby-manage__grab-outline" aria-hidden="true">
+                <rect class="lobby-manage__grab-outline-rect" />
+              </svg>
               <div
                 class="lobby-manage__row-num-cell"
                 :class="{
                   'lobby-manage__row-num-cell--drag-active':
                     isLobbyHost && !!p?.membership_id && !swapBusy && !rolesResetBusy,
                 }"
-                :draggable="isLobbyHost && !!p?.membership_id && !swapBusy && !rolesResetBusy"
+                :draggable="!isTabletLayout && isLobbyHost && !!p?.membership_id && !swapBusy && !rolesResetBusy"
                 role="button"
                 :tabindex="isLobbyHost && p?.membership_id && !swapBusy && !rolesResetBusy ? 0 : -1"
+                @pointerdown="onTouchDragNumPointerDown($event, idx, p)"
                 :aria-label="
                   isLobbyHost && p?.membership_id
                     ? 'Перетащите на другую строку с игроком, чтобы поменять местами'
@@ -1646,14 +1940,13 @@ async function resetBestMove() {
                 "
                 :title="
                   isLobbyHost && p?.membership_id
-                    ? 'Зажмите и перетащите на другого игрока - поменять местами'
+                    ? 'Перетащите на другого игрока - поменять местами'
                     : isLobbyHost
                       ? 'Пустое место - сюда нельзя перетащить обмен'
                       : 'Порядок может менять только хост лобби.'
                 "
                 @dragstart.stop="onDragStart($event, idx, p)"
                 @dragend.stop="onDragEnd"
-                @pointerdown.stop="onTouchDragStart($event, idx, p)"
               >
                 <span class="lobby-manage__row-num">{{ idx + 1 }}</span>
               </div>
@@ -1681,7 +1974,6 @@ async function resetBestMove() {
                   "
                   @dragstart.stop="onDragStart($event, idx, p)"
                   @dragend.stop="onDragEnd"
-                  @pointerdown.stop="onTouchDragStart($event, idx, p)"
                 >
                   <svg
                     class="lobby-manage__row-drag-svg"
@@ -1808,40 +2100,82 @@ async function resetBestMove() {
                 </div>
               </div>
               <div class="lobby-manage__row-dots-cell">
-                <div class="lobby-manage__dot-rect">
-                  <template v-for="role in ROLE_OPTIONS" :key="role.value">
+                <div
+                  class="lobby-manage__dot-rect"
+                  :class="{ 'lobby-manage__dot-rect--sheriff-active': isRoleActive(p, 'sheriff') && !hideRoleMarks }"
+                >
+                  <template v-if="isTabletLayout && isRoleActive(p, 'sheriff') && !hideRoleMarks">
                     <button
                       type="button"
-                      class="lobby-manage__role-btn"
+                      class="lobby-manage__role-btn lobby-manage__role-btn--sheriff-slot"
                       :class="{
-                        'lobby-manage__role-btn--active': isRoleShownActive(p, role.value),
-                        'lobby-manage__role-btn--host-flash-fade': isRoleHostFlashFading(p, role.value),
+                        'lobby-manage__role-btn--active': isRoleShownActive(p, 'sheriff'),
+                        'lobby-manage__role-btn--host-flash-fade': isRoleHostFlashFading(p, 'sheriff'),
                       }"
                       :disabled="!isLobbyHost || swapBusy || rolesResetBusy || !p?.membership_id || isRoleBusy(p)"
                       :title="
                         hideRoleMarks
-                          ? role.label
-                          : `${role.label}${isRoleActive(p, role.value) ? ' (снять)' : ' (назначить)'}`
+                          ? 'Шериф'
+                          : `Шериф${isRoleActive(p, 'sheriff') ? ' (снять)' : ' (назначить)'}`
                       "
-                      :aria-pressed="hideRoleMarks ? false : isRoleActive(p, role.value)"
-                      :aria-label="
-                        hideRoleMarks
-                          ? role.label
-                          : `${role.label}: ${isRoleActive(p, role.value) ? 'активна' : 'неактивна'}`
-                      "
-                      @click="toggleRole(p, role.value)"
+                      :aria-pressed="hideRoleMarks ? false : isRoleActive(p, 'sheriff')"
+                      aria-label="Шериф"
+                      @click="toggleRole(p, 'sheriff')"
                     >
-                      <img :src="role.icon" :alt="role.label" class="lobby-manage__role-icon" />
+                      <img :src="sheriffRoleIcon" alt="Шериф" class="lobby-manage__role-icon" />
                     </button>
                     <button
-                      v-if="!hideRoleMarks && role.value === 'sheriff' && isRoleActive(p, 'sheriff')"
                       type="button"
-                      class="lobby-manage__sheriff-checks-btn"
+                      class="lobby-manage__sheriff-checks-btn lobby-manage__sheriff-checks-btn--inline"
                       :disabled="!canOpenSheriffChecks(p)"
                       @click="openSheriffChecksModal(p)"
                     >
-                      Проверки шерифа
+                      <img
+                        :src="sheriffRoleIcon"
+                        alt=""
+                        class="lobby-manage__sheriff-checks-btn-icon"
+                        width="14"
+                        height="14"
+                        aria-hidden="true"
+                      />
+                      <span class="lobby-manage__sheriff-checks-btn-text">Проверки шерифа</span>
                     </button>
+                  </template>
+                  <template v-else>
+                    <template v-for="role in ROLE_OPTIONS" :key="role.value">
+                      <button
+                        type="button"
+                        class="lobby-manage__role-btn"
+                        :class="{
+                          'lobby-manage__role-btn--active': isRoleShownActive(p, role.value),
+                          'lobby-manage__role-btn--host-flash-fade': isRoleHostFlashFading(p, role.value),
+                        }"
+                        :disabled="!isLobbyHost || swapBusy || rolesResetBusy || !p?.membership_id || isRoleBusy(p)"
+                        :title="
+                          hideRoleMarks
+                            ? role.label
+                            : `${role.label}${isRoleActive(p, role.value) ? ' (снять)' : ' (назначить)'}`
+                        "
+                        :aria-pressed="hideRoleMarks ? false : isRoleActive(p, role.value)"
+                        :aria-label="
+                          hideRoleMarks
+                            ? role.label
+                            : `${role.label}: ${isRoleActive(p, role.value) ? 'активна' : 'неактивна'}`
+                        "
+                        @click="toggleRole(p, role.value)"
+                      >
+                        <img :src="role.icon" :alt="role.label" class="lobby-manage__role-icon" />
+                      </button>
+                      <button
+                        v-if="!isTabletLayout && !hideRoleMarks && role.value === 'sheriff' && isRoleActive(p, 'sheriff')"
+                        type="button"
+                        class="lobby-manage__sheriff-checks-btn"
+                        :disabled="!canOpenSheriffChecks(p)"
+                        @click="openSheriffChecksModal(p)"
+                      >
+                        Проверки шерифа
+                      </button>
+                    </template>
                   </template>
                 </div>
                 <div class="lobby-manage__dot-rect">
@@ -2281,6 +2615,8 @@ async function resetBestMove() {
           </article>
         </aside>
       </div>
+
+      <div class="lobby-manage__mobile-bottom-spacer" aria-hidden="true" />
 
       <div
         v-if="isTabletLayout && replaceOpenSeatIndex !== null"
@@ -2889,6 +3225,10 @@ async function resetBestMove() {
 }
 
 .lobby-manage__row::after {
+  display: none;
+}
+
+.lobby-manage__grab-outline {
   display: none;
 }
 
@@ -3702,6 +4042,13 @@ async function resetBestMove() {
   height: 2.25rem;
 }
 
+.lobby-manage__sheriff-checks-btn-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .lobby-manage__main-actions {
   display: flex;
   flex-wrap: wrap;
@@ -3905,6 +4252,10 @@ async function resetBestMove() {
   color: #991b1b;
   border-color: #fca5a5;
   background: #fee2e2;
+}
+
+.lobby-manage__mobile-bottom-spacer {
+  display: none;
 }
 
 .lobby-manage__aside {
@@ -4660,7 +5011,19 @@ async function resetBestMove() {
   }
 
   .lobby-manage:not(.lobby-manage--design-picker) {
-    padding-bottom: calc(13rem + max(4px, env(safe-area-inset-bottom, 0px)));
+    padding-bottom: 0;
+  }
+
+  .lobby-manage__mobile-bottom-spacer {
+    display: block;
+    flex-shrink: 0;
+    width: 100%;
+    height: calc(10.5rem + env(safe-area-inset-bottom, 0px));
+    pointer-events: none;
+  }
+
+  .lobby-manage:has(.lobby-manage__mobile-dock-sheriff) .lobby-manage__mobile-bottom-spacer {
+    height: calc(13.25rem + env(safe-area-inset-bottom, 0px));
   }
 
   .lobby-manage__mobile-dock-wrap {
@@ -4827,9 +5190,9 @@ async function resetBestMove() {
   }
 
   .lobby-manage__table-wrap {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
     border-top: none;
     overflow: visible;
     margin: 10px 10px 0;
@@ -4838,8 +5201,8 @@ async function resetBestMove() {
   .lobby-manage__table-wrap--replace {
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
-    border-top: 1px solid #e5e7eb;
+    gap: 0.45rem;
+    border-top: none;
     overflow-x: visible;
     overflow-y: visible;
     margin: 10px 10px 0;
@@ -4854,14 +5217,130 @@ async function resetBestMove() {
   }
 
   .lobby-manage__row {
-    grid-template-columns: 56px 56px minmax(0, 1fr);
-    grid-template-rows: 64px auto;
+    grid-template-columns: 3.25rem 3.25rem minmax(0, 1fr);
+    grid-template-rows: 3.25rem auto;
     height: auto;
-    min-height: 64px;
+    min-height: 0;
     border: 1px solid #e5e7eb;
-    border-radius: 12px;
+    border-radius: 10px;
     background: #fff;
     overflow: hidden;
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .lobby-manage__row:has(.lobby-manage__row-num-cell--drag-active) {
+    position: relative;
+    z-index: 1;
+    border-color: transparent;
+    cursor: grab;
+    touch-action: none;
+    overflow: visible;
+  }
+
+  .lobby-manage__row:has(.lobby-manage__row-num-cell--drag-active) .lobby-manage__row-num-cell {
+    border-top-left-radius: 10px;
+    overflow: hidden;
+  }
+
+  .lobby-manage__row:has(.lobby-manage__row-num-cell--drag-active) .lobby-manage__row-nick-cell {
+    border-top-right-radius: 10px;
+    overflow: hidden;
+  }
+
+  .lobby-manage__row:has(.lobby-manage__row-num-cell--drag-active) .lobby-manage__row-dots-cell {
+    border-bottom-left-radius: 10px;
+    border-bottom-right-radius: 10px;
+    overflow: hidden;
+  }
+
+  .lobby-manage__row > .lobby-manage__grab-outline {
+    display: block;
+    position: absolute;
+    inset: -2px;
+    box-sizing: border-box;
+    width: calc(100% + 4px);
+    height: calc(100% + 4px);
+    overflow: visible;
+    pointer-events: none;
+    z-index: 4;
+    opacity: 0.92;
+    transition: opacity 0.15s ease;
+  }
+
+  .lobby-manage__grab-outline-rect {
+    x: 0.75px;
+    y: 0.75px;
+    width: calc(100% - 1.5px);
+    height: calc(100% - 1.5px);
+    rx: 11px;
+    ry: 11px;
+    fill: none;
+    stroke: #aeb3bc;
+    stroke-width: 1.5px;
+    stroke-linecap: round;
+    stroke-dasharray: 18px 9px;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .lobby-manage__row--grab-holding .lobby-manage__grab-outline {
+    opacity: 0.72;
+  }
+
+  .lobby-manage__row--grab-holding .lobby-manage__grab-outline-rect {
+    stroke: #959aa3;
+  }
+
+  .lobby-manage__row--grab-holding:has(.lobby-manage__row-num-cell--drag-active) {
+    touch-action: none;
+  }
+
+  .lobby-manage__row--drag-source .lobby-manage__grab-outline {
+    display: none;
+  }
+
+  .lobby-manage__row--drag-source::before,
+  .lobby-manage__row--drag-over:not(.lobby-manage__row--drag-source)::before {
+    inset: -2px;
+    border-radius: 12px;
+    border-width: 2px;
+  }
+
+  .lobby-manage__row--drag-source,
+  .lobby-manage__row--drag-over:not(.lobby-manage__row--drag-source) {
+    overflow: visible;
+  }
+
+  .lobby-manage__row--drag-source,
+  .lobby-manage__row--grab-holding {
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  .lobby-manage__row:has(.lobby-manage__row-num-cell--drag-active):active,
+  .lobby-manage__row--drag-source {
+    cursor: grabbing;
+  }
+
+  .lobby-manage__row--selected {
+    border: 2px solid #2f6feb;
+    box-shadow: 0 0 0 1px #2f6feb;
+  }
+
+  .lobby-manage__row--selected:has(.lobby-manage__row-num-cell--drag-active) {
+    border-style: solid;
+  }
+
+  .lobby-manage__row--selected .lobby-manage__grab-outline {
+    display: none;
+  }
+
+  .lobby-manage__row--selected > .lobby-manage__row-num-cell,
+  .lobby-manage__row--selected > .lobby-manage__row-avatar,
+  .lobby-manage__row--selected > .lobby-manage__row-nick-cell,
+  .lobby-manage__row--selected > .lobby-manage__row-dots-cell {
+    background: #fff;
   }
 
   .lobby-manage__row::after {
@@ -4869,13 +5348,14 @@ async function resetBestMove() {
   }
 
   .lobby-manage__row-num-cell,
-  .lobby-manage__row-avatar,
   .lobby-manage__row-nick-cell {
-    height: 64px;
+    height: 3.25rem;
+    min-height: 3.25rem;
   }
 
   .lobby-manage__row-nick-cell {
     border-right: none;
+    padding-right: 0.65rem;
   }
 
   .lobby-manage__row-drag-cell {
@@ -4883,61 +5363,171 @@ async function resetBestMove() {
   }
 
   .lobby-manage__row-num-cell {
-    display: grid;
-    place-items: center;
+    display: flex;
+    align-items: stretch;
+    justify-content: stretch;
     padding: 0;
-    min-width: 56px;
-    width: 56px;
+    min-width: 3.25rem;
+    width: 3.25rem;
+    max-width: 3.25rem;
+    height: 3.25rem;
+    min-height: 3.25rem;
+    align-self: stretch;
+    border-right: none;
+    background: #fff;
+    box-sizing: border-box;
   }
 
   .lobby-manage__row-num {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     justify-content: center;
-    width: 2rem;
-    height: 2rem;
+    width: 100%;
+    height: 100%;
     line-height: 1;
-    border: 1px solid #d1d5db;
-    border-radius: 8px;
-    background: #f9fafb;
+    font-size: 1.125rem;
+    font-weight: 400;
+    color: #374151;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    box-sizing: border-box;
   }
 
-  .lobby-manage__row-num-cell--drag-active .lobby-manage__row-num {
-    border-width: 2px;
-    border-style: dashed;
-    border-color: #9ca3af;
+  .lobby-manage__row-num-cell--drag-active {
+    cursor: grab;
+  }
+
+  .lobby-manage__row-num-cell--drag-active:active {
+    cursor: grabbing;
+  }
+
+  .lobby-manage__row-avatar {
+    width: 3.25rem;
+    min-width: 3.25rem;
+    max-width: 3.25rem;
+    align-self: stretch;
+    height: 3.25rem;
+    min-height: 3.25rem;
+    max-height: 3.25rem;
+    aspect-ratio: 1 / 1;
+    border-radius: 0;
+    overflow: hidden;
+  }
+
+  .lobby-manage__avatar-btn {
+    width: 100%;
+    height: 100%;
+  }
+
+  .lobby-manage__avatar-ph {
+    background: #d1d5db;
+  }
+
+  .lobby-manage__avatar-upload-icon {
+    opacity: 0.35;
+  }
+
+  .lobby-manage__nick-text {
+    padding-left: 0;
+    font-size: 1rem;
+    font-weight: 400;
+    color: #111827;
+  }
+
+  .lobby-manage__nick-edit {
+    width: 1.75rem;
+    height: 1.75rem;
+    border: none;
+    background: transparent;
   }
 
   .lobby-manage__row-dots-cell {
-    --lobby-dot-size: 36px;
-    --lobby-dot-gap: 0.3rem;
+    --lobby-dot-gap: 0.2rem;
     grid-column: 1 / -1;
     grid-row: 2;
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto auto;
+    grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
+    grid-template-rows: minmax(2.25rem, auto);
     align-items: stretch;
     width: 100%;
     min-width: 0;
     max-width: 100%;
     height: auto;
-    min-height: 52px;
-    padding: 0.15rem 0;
+    min-height: 2.75rem;
+    padding: 0.35rem 0.45rem 0.45rem;
     border-right: none;
-    border-top: 1px solid #e5e7eb;
+    border-top: 1px solid #eceff3;
     gap: 0;
+    background: #fff;
+  }
+
+  .lobby-manage__row-dots-cell::before {
+    content: '';
+    grid-column: 2;
+    grid-row: 1;
+    width: 1px;
+    background: #eceff3;
+    align-self: stretch;
   }
 
   .lobby-manage__dot-rect {
+    display: flex;
+    align-items: stretch;
     width: 100%;
     min-width: 0;
-    justify-content: flex-start;
-    padding: 0.25rem 0.35rem;
+    height: 100%;
+    min-height: 2.25rem;
+    gap: var(--lobby-dot-gap);
+    padding: 0;
+    background: transparent;
   }
 
   .lobby-manage__dot-rect:first-child {
+    grid-column: 1;
     padding-right: 0.35rem;
     margin-right: 0;
+    border-right: none;
+  }
+
+  .lobby-manage__dot-rect:last-child {
+    grid-column: 3;
+    padding-left: 0.35rem;
+  }
+
+  .lobby-manage__dot-rect--sheriff-active {
+    gap: 0.28rem;
+  }
+
+  .lobby-manage__dot-rect--sheriff-active .lobby-manage__role-btn--sheriff-slot {
+    flex: 0 0 var(--lobby-dot-size, 2.25rem);
+    width: var(--lobby-dot-size, 2.25rem);
+    min-width: var(--lobby-dot-size, 2.25rem);
+    max-width: var(--lobby-dot-size, 2.25rem);
+  }
+
+  .lobby-manage__dot-rect--sheriff-active .lobby-manage__sheriff-checks-btn--inline {
+    display: inline-flex;
+    flex: 1 1 0;
+    min-width: 0;
+    width: auto;
+    height: auto;
+    min-height: 2.25rem;
+    align-self: stretch;
+    justify-content: flex-start;
+    border-radius: 10px;
+    font-size: 0.75rem;
+  }
+
+  .lobby-manage__role-btn,
+  .lobby-manage__status-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    width: auto;
+    height: auto;
+    min-height: 2.25rem;
+    align-self: stretch;
+    border-radius: 10px;
   }
 
   .lobby-manage__avatar-btn,
@@ -4991,6 +5581,105 @@ async function resetBestMove() {
   }
 }
 
+@media (min-width: 900px) and (max-width: 1024px) {
+  .lobby-manage__row-dots-cell {
+    --lobby-dot-gap: 0.14rem;
+    min-height: 2.45rem;
+    padding: 0.28rem 0.38rem 0.34rem;
+  }
+
+  .lobby-manage__dot-rect {
+    min-height: 1.95rem;
+  }
+
+  .lobby-manage__role-btn,
+  .lobby-manage__status-btn {
+    min-height: 1.95rem;
+    border-radius: 8px;
+  }
+
+  .lobby-manage__role-icon,
+  .lobby-manage__status-icon {
+    width: 50%;
+    height: 50%;
+    max-width: 18px;
+    max-height: 18px;
+  }
+
+  .lobby-manage__dot-rect--sheriff-active .lobby-manage__role-btn--sheriff-slot {
+    flex-basis: 1.95rem;
+    width: 1.95rem;
+    min-width: 1.95rem;
+    max-width: 1.95rem;
+  }
+
+  .lobby-manage__dot-rect--sheriff-active .lobby-manage__sheriff-checks-btn--inline {
+    min-height: 1.95rem;
+    font-size: 0.6875rem;
+  }
+}
+
+@media (min-width: 501px) and (max-width: 1024px) {
+  .lobby-manage__row-dots-cell {
+    grid-template-rows: 2.25rem;
+    min-height: 2.95rem;
+  }
+
+  .lobby-manage__dot-rect {
+    height: 2.25rem;
+    min-height: 2.25rem;
+    align-items: center;
+  }
+
+  .lobby-manage__role-btn,
+  .lobby-manage__status-btn {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
+    height: 2.25rem;
+    min-height: 2.25rem;
+    max-height: 2.25rem;
+    align-self: center;
+  }
+
+  .lobby-manage__role-icon,
+  .lobby-manage__status-icon {
+    width: 20px;
+    height: 20px;
+    max-width: 20px;
+    max-height: 20px;
+    flex: 0 0 20px;
+  }
+
+  .lobby-manage__dot-rect--sheriff-active .lobby-manage__sheriff-checks-btn--inline {
+    height: 2.25rem;
+    min-height: 2.25rem;
+    max-height: 2.25rem;
+    align-self: center;
+  }
+}
+
+/*
+ * При раскрытой десктопной боковой навигации на узких экранах для таблицы и
+ * правой колонки недостаточно места. Оставляем панели в один столбец, пока
+ * рабочая область не станет достаточно широкой.
+ */
+@media (min-width: 1025px) and (max-width: 1360px) {
+  .lobby-manage__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lobby-manage__aside {
+    width: 100%;
+    max-width: none;
+    padding: 10px;
+  }
+
+  .lobby-manage__aside > .lobby-manage__card.lobby-manage__card--side {
+    width: 100%;
+  }
+}
+
 @media (max-width: 767px) {
   .lobby-manage__modal-overlay {
     align-items: flex-end;
@@ -5006,56 +5695,18 @@ async function resetBestMove() {
 }
 
 @media (max-width: 500px) {
-  .lobby-manage__table-wrap {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-    border-top: none;
-    overflow-x: visible;
-  }
-
-  .lobby-manage__table-wrap > .lobby-manage__row + .lobby-manage__row {
-    margin-top: -1px;
-  }
-
-  .lobby-manage__row {
-    grid-template-columns: 48px 52px minmax(0, 1fr);
-    grid-template-rows: 60px auto;
-    min-height: 60px;
-    border: 1px solid #e5e7eb;
-    border-radius: 12px;
-    overflow: hidden;
-  }
-
-  .lobby-manage__row::after {
-    display: none;
-  }
-
-  .lobby-manage__row-num-cell,
-  .lobby-manage__row-avatar,
-  .lobby-manage__row-nick-cell {
-    height: 60px;
-  }
-
-  .lobby-manage__row-nick-cell {
-    border-right: none;
-  }
-
-  .lobby-manage__row-num-cell {
-    display: grid;
-    place-items: center;
-  }
-
-  .lobby-manage__row-num {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 2rem;
-    height: 2rem;
-  }
-
   .lobby-manage__row-dots-cell {
-    --lobby-dot-size: 34px;
+    --lobby-dot-gap: 0.15rem;
+    padding-inline: 0.35rem;
+  }
+
+  .lobby-manage__role-btn,
+  .lobby-manage__status-btn {
+    min-height: 2rem;
+  }
+
+  .lobby-manage__dot-rect {
+    min-height: 2rem;
   }
 
   .lobby-manage__sheriff-checks-form {
