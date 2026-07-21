@@ -26,15 +26,14 @@ const rosterSearchQuery = ref('')
 const loadError = ref<string | null>(null)
 const submitting = ref(false)
 const serverError = ref<string | null>(null)
-const pickerPanelRef = ref<HTMLElement | null>(null)
-const slotsSectionRef = ref<HTMLElement | null>(null)
 const slotsStripRef = ref<HTMLElement | null>(null)
 const slotButtonRefs = ref<Array<HTMLElement | null>>([])
-const slotsStripDragging = ref(false)
+const slotsStripPanning = ref(false)
 
 let escHandler: ((e: KeyboardEvent) => void) | null = null
 let prevBodyOverflow = ''
 let slotAutoScrollRaf: number | null = null
+let slotsStripPointerDown = false
 let slotsStripStartClientX = 0
 let slotsStripStartScrollLeft = 0
 let slotsStripMoved = false
@@ -63,32 +62,35 @@ function openSlotPicker(i: number) {
   if (Date.now() < slotsStripSuppressClickUntil) return
   rosterPanelOpen.value = true
   pickForSlot.value = i
+  void nextTick(() => scheduleEnsureActiveSlotVisible())
 }
 
 function clearSlot(i: number) {
   slots.value[i] = null
+  pickForSlot.value = i
 }
 
-function firstEmptySlotIndex(): number {
-  const i = slots.value.findIndex((s) => s === null)
-  return i >= 0 ? i : slots.value.length - 1
+/** Следующий слот для выбора: сначала следующий по номеру, без прыжка к началу. */
+function nextPickSlotIndex(afterIndex: number): number {
+  for (let j = afterIndex + 1; j < slots.value.length; j++) {
+    if (slots.value[j] === null) return j
+  }
+  for (let j = 0; j < afterIndex; j++) {
+    if (slots.value[j] === null) return j
+  }
+  return afterIndex
 }
 
 function assignToSlot(slotIndex: number, card: PlayerCard) {
-  for (let j = 0; j < slots.value.length; j++) {
-    if (j !== slotIndex && slots.value[j]?.id === card.id) {
-      slots.value[j] = null
-    }
-  }
   slots.value[slotIndex] = card
-  pickForSlot.value = firstEmptySlotIndex()
+  pickForSlot.value = nextPickSlotIndex(slotIndex)
 }
 
 function setSlotButtonRef(index: number, el: Element | null) {
   slotButtonRefs.value[index] = el instanceof HTMLElement ? el : null
 }
 
-function scrollToActiveSlot(behavior: ScrollBehavior = 'smooth') {
+function ensureActiveSlotVisible() {
   const index = pickForSlot.value
   if (index === null) return
   const btn = slotButtonRefs.value[index]
@@ -96,23 +98,23 @@ function scrollToActiveSlot(behavior: ScrollBehavior = 'smooth') {
   if (!btn || !strip) return
   const stripRect = strip.getBoundingClientRect()
   const btnRect = btn.getBoundingClientRect()
-  const currentLeft = strip.scrollLeft
-  const deltaLeft = btnRect.left - stripRect.left
-  const targetLeft = currentLeft + deltaLeft - (stripRect.width - btnRect.width) / 2
-  const maxScrollLeft = Math.max(0, strip.scrollWidth - strip.clientWidth)
-  const safeLeft = Math.max(0, Math.min(maxScrollLeft, targetLeft))
-  if (Math.abs(strip.scrollLeft - safeLeft) < 1) return
-  strip.scrollTo({ left: safeLeft, behavior })
+  const pad = 8
+  if (btnRect.left >= stripRect.left + pad && btnRect.right <= stripRect.right - pad) return
+  if (btnRect.left < stripRect.left) {
+    strip.scrollLeft += btnRect.left - stripRect.left - pad
+  } else if (btnRect.right > stripRect.right) {
+    strip.scrollLeft += btnRect.right - stripRect.right + pad
+  }
 }
 
-function scheduleScrollToActiveSlot() {
+function scheduleEnsureActiveSlotVisible() {
   if (slotAutoScrollRaf !== null) {
     cancelAnimationFrame(slotAutoScrollRaf)
     slotAutoScrollRaf = null
   }
   slotAutoScrollRaf = requestAnimationFrame(() => {
     slotAutoScrollRaf = null
-    scrollToActiveSlot('smooth')
+    ensureActiveSlotVisible()
   })
 }
 
@@ -125,10 +127,7 @@ function teardownSlotAutoScroll() {
 
 function isSlotStripInteractiveTarget(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return false
-  return (
-    !!target.closest('.create-lobby-modal__slot-clear') ||
-    !!target.closest('.create-lobby-modal__slot')
-  )
+  return !!target.closest('.create-lobby-modal__slot-clear')
 }
 
 function onSlotsStripPointerDown(ev: PointerEvent) {
@@ -136,19 +135,21 @@ function onSlotsStripPointerDown(ev: PointerEvent) {
   if (isSlotStripInteractiveTarget(ev.target)) return
   const strip = slotsStripRef.value
   if (!strip) return
-  slotsStripDragging.value = true
+  slotsStripPointerDown = true
   slotsStripMoved = false
+  slotsStripPanning.value = false
   slotsStripStartClientX = ev.clientX
   slotsStripStartScrollLeft = strip.scrollLeft
 }
 
 function onSlotsStripPointerMove(ev: PointerEvent) {
-  if (!slotsStripDragging.value) return
+  if (!slotsStripPointerDown) return
   const strip = slotsStripRef.value
   if (!strip) return
   const deltaX = ev.clientX - slotsStripStartClientX
   if (!slotsStripMoved && Math.abs(deltaX) > 6) {
     slotsStripMoved = true
+    slotsStripPanning.value = true
     strip.setPointerCapture(ev.pointerId)
   }
   if (!slotsStripMoved) return
@@ -161,11 +162,12 @@ function stopSlotsStripPointerDrag(ev?: PointerEvent) {
   if (strip && ev && strip.hasPointerCapture(ev.pointerId)) {
     strip.releasePointerCapture(ev.pointerId)
   }
-  if (slotsStripDragging.value && slotsStripMoved) {
+  if (slotsStripPointerDown && slotsStripMoved) {
     slotsStripSuppressClickUntil = Date.now() + 180
   }
-  slotsStripDragging.value = false
+  slotsStripPointerDown = false
   slotsStripMoved = false
+  slotsStripPanning.value = false
 }
 
 async function confirmPick(card: PlayerCard) {
@@ -173,8 +175,7 @@ async function confirmPick(card: PlayerCard) {
   if (i === null) return
   assignToSlot(i, card)
   await nextTick()
-  slotsSectionRef.value?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-  scheduleScrollToActiveSlot()
+  scheduleEnsureActiveSlotVisible()
 }
 
 async function loadRoster() {
@@ -257,15 +258,8 @@ watch(
   },
 )
 
-watch(pickForSlot, async (v) => {
-  if (v === null) {
-    rosterSearchQuery.value = ''
-    return
-  }
-  await nextTick()
-  if (!rosterPanelOpen.value) return
-  pickerPanelRef.value?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-  scheduleScrollToActiveSlot()
+watch(pickForSlot, (v) => {
+  if (v === null) rosterSearchQuery.value = ''
 })
 
 onUnmounted(() => {
@@ -342,11 +336,11 @@ onUnmounted(() => {
                 <div
                   class="create-lobby-modal__split"
                 >
-                  <div ref="slotsSectionRef" class="create-lobby-modal__slots-col">
+                  <div class="create-lobby-modal__slots-col">
                     <div
                       ref="slotsStripRef"
                       class="create-lobby-modal__slots"
-                      :class="{ 'create-lobby-modal__slots--dragging': slotsStripDragging }"
+                      :class="{ 'create-lobby-modal__slots--dragging': slotsStripPanning }"
                       role="list"
                       @pointerdown="onSlotsStripPointerDown"
                       @pointermove="onSlotsStripPointerMove"
@@ -369,7 +363,6 @@ onUnmounted(() => {
                           }"
                           :ref="(el) => setSlotButtonRef(i - 1, el as Element | null)"
                           :disabled="submitting"
-                          @pointerdown.stop
                           @click="openSlotPicker(i - 1)"
                         >
                           <template v-if="slots[i - 1]">
@@ -404,7 +397,7 @@ onUnmounted(() => {
                     </div>
                   </div>
 
-                  <div ref="pickerPanelRef" class="create-lobby-modal__picker-col">
+                  <div class="create-lobby-modal__picker-col">
                     <div class="create-lobby-modal__picker">
                       <div class="create-lobby-modal__picker-head">
                         <p class="create-lobby-modal__picker-title">
@@ -643,9 +636,10 @@ onUnmounted(() => {
   overflow-y: hidden;
   padding: 0.15rem 0.05rem 0.25rem;
   scroll-snap-type: x proximity;
+  scroll-behavior: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
-  touch-action: pan-x;
+  touch-action: pan-x pinch-zoom;
   cursor: grab;
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -698,9 +692,9 @@ onUnmounted(() => {
   border-radius: 14px;
   scroll-snap-align: start;
   box-sizing: border-box;
-  touch-action: pan-x;
   -webkit-user-select: none;
   user-select: none;
+  touch-action: pan-x pinch-zoom;
   transition:
     border-color 0.12s ease,
     background 0.12s ease;
