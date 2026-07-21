@@ -15,8 +15,11 @@ RUN echo "build ${SOURCE_VERSION}" && npm run build
 FROM nginx:1.27-alpine AS runtime
 WORKDIR /usr/share/nginx/html
 
+ARG SOURCE_VERSION=dev
+
 COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist ./
+RUN printf '%s\n' "$SOURCE_VERSION" > /usr/share/nginx/html/.build-id
 
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
