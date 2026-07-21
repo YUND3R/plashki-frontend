@@ -1920,9 +1920,19 @@ async function resetBestMove() {
               @dragover="onDragOver($event, idx)"
               @drop="onDrop($event, idx)"
             >
-              <svg class="lobby-manage__grab-outline" aria-hidden="true">
-                <rect class="lobby-manage__grab-outline-rect" />
-              </svg>
+              <div class="lobby-manage__grab-outline" aria-hidden="true">
+                <svg class="lobby-manage__grab-outline-svg" xmlns="http://www.w3.org/2000/svg">
+                  <rect
+                    class="lobby-manage__grab-outline-rect"
+                    x="0.75"
+                    y="0.75"
+                    width="calc(100% - 1.5px)"
+                    height="calc(100% - 1.5px)"
+                    rx="12"
+                    ry="12"
+                  />
+                </svg>
+              </div>
               <div
                 class="lobby-manage__row-num-cell"
                 :class="{
@@ -5255,6 +5265,7 @@ async function resetBestMove() {
   }
 
   .lobby-manage__row > .lobby-manage__grab-outline {
+    --grab-dash-color: #aeb3bc;
     display: block;
     position: absolute;
     inset: -2px;
@@ -5266,29 +5277,30 @@ async function resetBestMove() {
     z-index: 4;
     opacity: 0.92;
     transition: opacity 0.15s ease;
+    background: transparent;
+  }
+
+  .lobby-manage__grab-outline-svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    shape-rendering: geometricPrecision;
   }
 
   .lobby-manage__grab-outline-rect {
-    x: 0.75px;
-    y: 0.75px;
-    width: calc(100% - 1.5px);
-    height: calc(100% - 1.5px);
-    rx: 11px;
-    ry: 11px;
     fill: none;
-    stroke: #aeb3bc;
+    stroke: var(--grab-dash-color);
     stroke-width: 1.5px;
-    stroke-linecap: round;
-    stroke-dasharray: 18px 9px;
     vector-effect: non-scaling-stroke;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 3 4;
   }
 
   .lobby-manage__row--grab-holding .lobby-manage__grab-outline {
+    --grab-dash-color: #959aa3;
     opacity: 0.72;
-  }
-
-  .lobby-manage__row--grab-holding .lobby-manage__grab-outline-rect {
-    stroke: #959aa3;
   }
 
   .lobby-manage__row--grab-holding:has(.lobby-manage__row-num-cell--drag-active) {
