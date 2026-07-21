@@ -3,12 +3,14 @@ WORKDIR /app
 
 ARG VITE_API_BASE_URL=""
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+ARG SOURCE_VERSION=dev
+ENV SOURCE_VERSION=$SOURCE_VERSION
 
 COPY package*.json ./
 RUN npm ci
 
 COPY . .
-RUN npm run build
+RUN echo "build ${SOURCE_VERSION}" && npm run build
 
 FROM nginx:1.27-alpine AS runtime
 WORKDIR /usr/share/nginx/html

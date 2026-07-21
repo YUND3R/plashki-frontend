@@ -95,6 +95,7 @@ jobs:
           file: ./Dockerfile
           build-args: |
             VITE_API_BASE_URL=${{ secrets.FRONTEND_API_BASE_URL }}
+            SOURCE_VERSION=${{ github.sha }}
           push: true
           tags: |
             ${{ steps.vars.outputs.image_repo }}:sha-${{ github.sha }}
