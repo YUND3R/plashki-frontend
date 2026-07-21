@@ -160,8 +160,16 @@ onMounted(() => {
 
 onUnmounted(() => {
   dashboardUi.resetLobbyFilter()
-  dashboardUi.closeCreateLobby()
 })
+
+watch(
+  () => router.currentRoute.value.name,
+  (name) => {
+    if (name !== 'dashboard' && createLobbyOpen.value) {
+      dashboardUi.closeCreateLobby()
+    }
+  },
+)
 
 watch(deleteConfirmOpen, async (open) => {
   if (!open) return
@@ -201,7 +209,7 @@ function onDeleteBackdropPointerDown() {
 }
 
 function openCreateModal() {
-  createLobbyOpen.value = true
+  dashboardUi.openCreateLobby()
 }
 
 function openImportForm() {
