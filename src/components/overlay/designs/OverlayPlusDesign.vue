@@ -148,8 +148,26 @@ function isSheriffCheckMafiaLike(label: string): boolean {
   return role === 'mafia' || role === 'don'
 }
 
+function sheriffCheckSquareClass(label: string): string {
+  return isSheriffCheckMafiaLike(label)
+    ? 'overlay-plus-card__check-num--mafia'
+    : 'overlay-plus-card__check-num--peaceful'
+}
+
 function showSheriffChecksAbove(p: LobbyPlayer | null): boolean {
   return isSheriffSeat(p) && sheriffCheckLabels().length > 0
+}
+
+function sheriffChecksBadgeClass(): Record<string, boolean> {
+  const count = sheriffCheckLabels().length
+  return {
+    'overlay-plus-card__checks-badge--wrap': count >= 4 && count < 5,
+    'overlay-plus-card__checks-badge--full': count >= 5,
+  }
+}
+
+function showSheriffCheckIcon(): boolean {
+  return sheriffCheckLabels().length < 5
 }
 
 function isEliminatedStatus(status: string | null | undefined): boolean {
@@ -473,15 +491,22 @@ onUnmounted(() => {
       :style="elimCardAnimStyle(p, idx)"
     >
       <div v-if="showSheriffChecksAbove(p)" class="overlay-plus-card__checks">
-        <div class="overlay-plus-card__checks-badge">
-          <img :src="sheriffCheckIcon" alt="" class="overlay-plus-card__checks-icon" />
-          <span
-            v-for="(label, checkIdx) in sheriffCheckLabels()"
-            :key="`${seatKey(p, idx)}-check-${checkIdx}-${label}`"
-            class="overlay-plus-card__check-num"
-            :class="{ 'overlay-plus-card__check-num--mafia': isSheriffCheckMafiaLike(label) }"
-          >
-            {{ label }}
+        <div class="overlay-plus-card__checks-badge" :class="sheriffChecksBadgeClass()">
+          <img
+            v-if="showSheriffCheckIcon()"
+            :src="sheriffCheckIcon"
+            alt=""
+            class="overlay-plus-card__checks-icon"
+          />
+          <span class="overlay-plus-card__checks-nums">
+            <span
+              v-for="(label, checkIdx) in sheriffCheckLabels()"
+              :key="`${seatKey(p, idx)}-check-${checkIdx}-${label}`"
+              class="overlay-plus-card__check-num"
+              :class="sheriffCheckSquareClass(label)"
+            >
+              {{ label }}
+            </span>
           </span>
         </div>
       </div>
@@ -514,14 +539,16 @@ onUnmounted(() => {
         >
           <div v-if="showBestMoveFillOverlay(p, idx)" class="overlay-plus-card__status-fill-lh">
             <span class="overlay-plus-card__status-fill-lh-label">ЛХ</span>
-            <span
-              v-for="(label, checkIdx) in bestMoveLabels(p)"
-              :key="`${seatKey(p, idx)}-fill-lh-${checkIdx}-${label}`"
-              class="overlay-plus-card__status-fill-lh-num"
-              :class="{ 'overlay-plus-card__status-fill-lh-num--mafia': isSheriffCheckMafiaLike(label) }"
-              :style="{ animationDelay: bestMoveFillNumDelay(checkIdx) }"
-            >
-              {{ label }}
+            <span class="overlay-plus-card__status-fill-lh-nums">
+              <span
+                v-for="(label, checkIdx) in bestMoveLabels(p)"
+                :key="`${seatKey(p, idx)}-fill-lh-${checkIdx}-${label}`"
+                class="overlay-plus-card__status-fill-lh-num overlay-plus-card__check-num overlay-plus-card__check-num--fill"
+                :class="sheriffCheckSquareClass(label)"
+                :style="{ animationDelay: bestMoveFillNumDelay(checkIdx) }"
+              >
+                {{ label }}
+              </span>
             </span>
           </div>
           <img
@@ -547,18 +574,17 @@ onUnmounted(() => {
           alt=""
           class="overlay-plus-card__status-bar-icon"
         />
-        <span
-          v-if="isBestMoveSeat(p) && bestMoveLabels(p).length"
-          class="overlay-plus-card__status-lh"
-        >
+        <span v-if="isBestMoveSeat(p) && bestMoveLabels(p).length" class="overlay-plus-card__status-lh">
           <span class="overlay-plus-card__status-lh-label">ЛХ</span>
-          <span
-            v-for="(label, checkIdx) in bestMoveLabels(p)"
-            :key="`${seatKey(p, idx)}-best-move-${checkIdx}-${label}`"
-            class="overlay-plus-card__status-lh-num"
-            :class="{ 'overlay-plus-card__status-lh-num--mafia': isSheriffCheckMafiaLike(label) }"
-          >
-            {{ label }}
+          <span class="overlay-plus-card__status-lh-nums">
+            <span
+              v-for="(label, checkIdx) in bestMoveLabels(p)"
+              :key="`${seatKey(p, idx)}-best-move-${checkIdx}-${label}`"
+              class="overlay-plus-card__status-lh-num overlay-plus-card__check-num"
+              :class="sheriffCheckSquareClass(label)"
+            >
+              {{ label }}
+            </span>
           </span>
         </span>
       </div>
@@ -698,6 +724,9 @@ onUnmounted(() => {
   border-radius: 8px;
   overflow: visible;
   background: #0c0e11;
+  --plus-lh-space: 0.35rem;
+  --plus-lh-nums-gap: 0.2rem;
+  --plus-status-check-num-size: 1.5rem;
 }
 
 .overlay-plus-card--anim-drop {
@@ -742,6 +771,7 @@ onUnmounted(() => {
   justify-content: center;
   gap: 0.45rem;
   width: 100%;
+  height: 36px;
   min-height: 36px;
   padding: 0.35rem 0.55rem;
   box-sizing: border-box;
@@ -763,9 +793,12 @@ onUnmounted(() => {
 }
 
 .overlay-plus-card__status-lh {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: var(--plus-lh-space, 0.35rem);
+  flex: 1;
+  width: 100%;
+  min-width: 0;
   color: #f8fafc;
   font-size: 0.8125rem;
   font-weight: inherit;
@@ -773,15 +806,61 @@ onUnmounted(() => {
 }
 
 .overlay-plus-card__status-lh-label {
+  flex-shrink: 0;
+  font-size: 0.8125rem;
+}
+
+.overlay-plus-card__status-lh-nums {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: var(--plus-lh-nums-gap, 0.2rem);
+  align-items: center;
+}
+
+.overlay-plus-card__status-lh-nums .overlay-plus-card__check-num {
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto;
+  height: var(--plus-status-check-num-size, 1.5rem);
+  min-height: var(--plus-status-check-num-size, 1.5rem);
   font-size: 0.9375rem;
 }
 
-.overlay-plus-card__status-lh-num {
-  font-size: 0.9375rem;
+.overlay-plus-card__status-fill-lh {
+  display: flex;
+  align-items: center;
+  gap: var(--plus-lh-space, 0.35rem);
+  width: 100%;
+  padding: var(--plus-lh-space, 0.35rem);
+  box-sizing: border-box;
 }
 
-.overlay-plus-card__status-lh-num--mafia {
-  color: #60a5fa;
+.overlay-plus-card__status-fill-lh-nums {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: var(--plus-lh-nums-gap, 0.2rem);
+  align-items: center;
+}
+
+.overlay-plus-card__status-fill-lh-nums .overlay-plus-card__check-num--fill {
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto;
+  height: 2.35rem;
+  min-height: 2.35rem;
+}
+
+.overlay-plus-card__status-fill-lh-num.overlay-plus-card__check-num--fill {
+  font-size: 1.75rem;
+  padding: 0;
+  opacity: 0;
+  transform: scale(0.35);
+}
+
+.overlay-plus-card__photo-wrap--anim-fill .overlay-plus-card__status-fill-lh-num.overlay-plus-card__check-num--fill {
+  animation: overlay-plus-fill-icon 360ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .overlay-plus-card__photo-wrap {
@@ -849,17 +928,9 @@ onUnmounted(() => {
   gap: 0.65rem;
 }
 
-.overlay-plus-card__status-fill-lh {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 0.55rem;
-  padding: 0 0.75rem;
-}
-
 .overlay-plus-card__status-fill-lh-label {
-  font-size: 1.75rem;
+  flex-shrink: 0;
+  font-size: 1.5rem;
   font-weight: inherit;
   line-height: 1;
   color: #f8fafc;
@@ -869,23 +940,6 @@ onUnmounted(() => {
 
 .overlay-plus-card__photo-wrap--anim-fill .overlay-plus-card__status-fill-lh-label {
   animation: overlay-plus-fill-icon 360ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
-.overlay-plus-card__status-fill-lh-num {
-  font-size: 1.75rem;
-  font-weight: inherit;
-  line-height: 1;
-  color: #f8fafc;
-  opacity: 0;
-  transform: scale(0.35);
-}
-
-.overlay-plus-card__photo-wrap--anim-fill .overlay-plus-card__status-fill-lh-num {
-  animation: overlay-plus-fill-icon 360ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
-.overlay-plus-card__status-fill-lh-num--mafia {
-  color: #60a5fa;
 }
 
 @keyframes overlay-plus-photo-dim {
@@ -987,7 +1041,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 0.5rem;
   flex-shrink: 0;
-  padding: 0.4rem;
+  padding: 0.4rem calc(0.4rem + 2px);
   border-radius: 6px;
   box-sizing: border-box;
 }
@@ -1157,7 +1211,9 @@ onUnmounted(() => {
   left: 0;
   bottom: calc(100% + 3px);
   z-index: 12;
-  display: inline-flex;
+  display: flex;
+  width: 100%;
+  max-width: 100%;
   align-items: center;
   pointer-events: none;
 }
@@ -1166,28 +1222,71 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  padding: 0.45rem 0.65rem;
-  border-radius: 5px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 0.4rem;
+  border-radius: 6px;
   box-sizing: border-box;
   background: rgba(12, 14, 17, 0.88);
 }
 
+.overlay-plus-card__checks-nums {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.overlay-plus-card__checks-badge--wrap .overlay-plus-card__checks-icon {
+  flex-shrink: 0;
+}
+
+.overlay-plus-card__checks-badge--wrap .overlay-plus-card__checks-nums {
+  display: flex;
+  flex: 1 1 0;
+  flex-wrap: wrap;
+  align-items: center;
+  min-width: 0;
+  gap: 0.35rem;
+}
+
+.overlay-plus-card__checks-badge--full .overlay-plus-card__checks-nums {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
 .overlay-plus-card__checks-icon {
-  width: 20px;
-  height: 15px;
+  width: 26px;
+  height: 20px;
   flex-shrink: 0;
   display: block;
   object-fit: contain;
 }
 
 .overlay-plus-card__check-num {
-  font-size: 0.9375rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--plus-check-num-size, 1.75rem);
+  height: var(--plus-check-num-size, 1.75rem);
+  min-width: var(--plus-check-num-size, 1.75rem);
+  min-height: var(--plus-check-num-size, 1.75rem);
+  padding: 0;
+  border-radius: 6px;
+  box-sizing: border-box;
+  font-size: 1.0625rem;
   font-weight: inherit;
   line-height: 1;
   color: #ffffff;
 }
 
+.overlay-plus-card__check-num--peaceful {
+  background: linear-gradient(135deg, #ec1972 0%, #be185d 100%);
+}
+
 .overlay-plus-card__check-num--mafia {
-  color: #60a5fa;
+  background: linear-gradient(135deg, #2563eb 0%, #172554 100%);
 }
 </style>
