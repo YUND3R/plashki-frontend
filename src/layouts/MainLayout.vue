@@ -31,7 +31,7 @@ const {
   viewMode: profilesViewMode,
 } = storeToRefs(profilesUi)
 const dashboardUi = useDashboardUiStore()
-const { lobbyFilter } = storeToRefs(dashboardUi)
+const { lobbyFilter, createLobbyOpen } = storeToRefs(dashboardUi)
 const cardsUi = useCardsUiStore()
 const { designFilter } = storeToRefs(cardsUi)
 const feedbackModal = useFeedbackModalStore()
@@ -72,6 +72,9 @@ function setCardDesignFilter(next: CardDesignFilter) {
 }
 
 const pageTitle = computed(() => {
+  if (route.name === 'dashboard' && createLobbyOpen.value) {
+    return 'Новое лобби'
+  }
   if (route.name === 'lobby-manage' && designPickerOpen.value) {
     const name = designPickerLobbyTitle.value.trim()
     if (name) return `Дизайн плашек для лобби «${name}»`
@@ -84,7 +87,9 @@ const showAccountActions = computed(() => route.name === 'account' && !!token.va
 /** Страница «Мои составы»: поиск + «Создать профиль» в шапке (profilesUi store). */
 const showProfilesHeader = computed(() => route.name === 'profiles' && !!token.value)
 /** Дашборд: фильтр лобби в шапке справа. */
-const showDashboardHeader = computed(() => route.name === 'dashboard' && !!token.value)
+const showDashboardHeader = computed(
+  () => route.name === 'dashboard' && !!token.value && !createLobbyOpen.value,
+)
 /** Страница «Все дизайны карточек» и выбор в лобби: фильтр плашек в шапке справа. */
 const showCardDesignHeader = computed(() => {
   if (!token.value) return false
@@ -97,7 +102,11 @@ const showLobbyManageHeader = computed(
 )
 /** Контент без отступа от краёв белой панели. */
 const isFlushContentRoute = computed(
-  () => route.name === 'lobby-manage' || route.name === 'card-design' || route.name === 'docs',
+  () =>
+    route.name === 'lobby-manage' ||
+    route.name === 'card-design' ||
+    route.name === 'docs' ||
+    (route.name === 'dashboard' && createLobbyOpen.value),
 )
 
 async function logout() {
@@ -223,7 +232,12 @@ onUnmounted(() => {
             <span class="shell__menu-sr">Меню</span>
           </button>
           <div class="shell__title-wrap">
-            <h1 class="shell__title">{{ pageTitle }}</h1>
+            <h1
+              class="shell__title"
+              :id="route.name === 'dashboard' && createLobbyOpen ? 'create-lobby-title' : undefined"
+            >
+              {{ pageTitle }}
+            </h1>
           </div>
           <div v-if="showAccountActions" class="shell__header-actions">
             <button type="button" class="shell__logout" @click="logout">Выйти</button>

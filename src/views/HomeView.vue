@@ -44,10 +44,9 @@ function overlayDesignFallbackLabel(code: string): string {
 
 const router = useRouter()
 const dashboardUi = useDashboardUiStore()
-const { tournamentSearchQuery, lobbyFilter } = storeToRefs(dashboardUi)
+const { tournamentSearchQuery, lobbyFilter, createLobbyOpen } = storeToRefs(dashboardUi)
 const apiBase = computed(() => import.meta.env.VITE_API_BASE_URL ?? '(не задан - скопируйте .env.example в .env)')
 
-const modalOpen = ref(false)
 const importOpen = ref(false)
 const importUrl = ref('')
 const importSubmitting = ref(false)
@@ -161,6 +160,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   dashboardUi.resetLobbyFilter()
+  dashboardUi.closeCreateLobby()
 })
 
 watch(deleteConfirmOpen, async (open) => {
@@ -201,7 +201,7 @@ function onDeleteBackdropPointerDown() {
 }
 
 function openCreateModal() {
-  modalOpen.value = true
+  createLobbyOpen.value = true
 }
 
 function openImportForm() {
@@ -331,7 +331,15 @@ async function confirmDeleteLobby() {
 </script>
 
 <template>
-  <section class="dashboard">
+  <section class="dashboard" :class="{ 'dashboard--create-lobby': createLobbyOpen }">
+    <CreateLobbyModal
+      v-if="createLobbyOpen"
+      v-model="createLobbyOpen"
+      embedded
+      @created="onLobbyCreated"
+    />
+
+    <template v-else>
     <div class="dashboard__actions">
       <button type="button" class="dashboard-lobby-card dashboard-lobby-card--action" @click="openCreateModal">
         <span class="dashboard-lobby-card__icon" aria-hidden="true">
@@ -373,8 +381,6 @@ async function confirmDeleteLobby() {
         </span>
       </button>
     </div>
-
-    <CreateLobbyModal v-model="modalOpen" @created="onLobbyCreated" />
 
     <p v-if="loading" class="dashboard__text">Загружаем лобби из базы…</p>
     <p v-else-if="loadError" class="dashboard__text dashboard__text--error" role="alert">{{ loadError }}</p>
@@ -448,6 +454,7 @@ async function confirmDeleteLobby() {
     </div>
 
     <p class="dashboard__text">База API: <code>{{ apiBase }}</code></p>
+    </template>
   </section>
 
   <Teleport to="body">
@@ -576,6 +583,17 @@ async function confirmDeleteLobby() {
   margin-inline: auto;
   padding: 0.15rem 0 0.5rem;
   box-sizing: border-box;
+}
+
+.dashboard.dashboard--create-lobby {
+  flex: 1;
+  min-height: 0;
+  max-width: none;
+  width: 100%;
+  margin-inline: 0;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
 }
 
 .dashboard__actions {

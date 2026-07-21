@@ -7,7 +7,14 @@ import { addCardToLobby, createLobby, type GameLobby } from '@/api/lobbies'
 import { listPlayerCards, type PlayerCard } from '@/api/playerCards'
 import { useAuthStore } from '@/stores/auth'
 
-const props = defineProps<{ modelValue: boolean }>()
+const props = withDefaults(
+  defineProps<{
+    modelValue: boolean
+    /** Встроенная панель в main (дашборд), без модального оверлея */
+    embedded?: boolean
+  }>(),
+  { embedded: false },
+)
 const emit = defineEmits<{
   'update:modelValue': [open: boolean]
   created: [payload: { lobby: GameLobby; name: string }]
@@ -232,30 +239,44 @@ function teardownOverlay() {
   prevBodyOverflow = ''
 }
 
+function resetFormOnOpen() {
+  serverError.value = null
+  loadError.value = null
+  rosterPanelOpen.value = true
+  pickForSlot.value = 0
+  rosterSearchQuery.value = ''
+  lobbyName.value = ''
+  slots.value = Array.from({ length: 10 }, () => null)
+  void loadRoster()
+}
+
+function bindOpenOverlay() {
+  if (props.embedded) return
+  prevBodyOverflow = document.body.style.overflow
+  document.body.style.overflow = 'hidden'
+}
+
+function bindEscClose() {
+  escHandler = (e: KeyboardEvent) => {
+    if (e.key === 'Escape' && !submitting.value) close()
+  }
+  document.addEventListener('keydown', escHandler)
+}
+
 watch(
   () => props.modelValue,
-  async (open) => {
+  (open) => {
     if (open) {
-      serverError.value = null
-      loadError.value = null
-      rosterPanelOpen.value = true
-      pickForSlot.value = 0
-      rosterSearchQuery.value = ''
-      lobbyName.value = ''
-      slots.value = Array.from({ length: 10 }, () => null)
-      void loadRoster()
-      prevBodyOverflow = document.body.style.overflow
-      document.body.style.overflow = 'hidden'
-      escHandler = (e: KeyboardEvent) => {
-        if (e.key === 'Escape' && !submitting.value) close()
-      }
-      document.addEventListener('keydown', escHandler)
+      resetFormOnOpen()
+      bindOpenOverlay()
+      bindEscClose()
     } else {
       pickForSlot.value = 0
       rosterPanelOpen.value = true
       teardownOverlay()
     }
   },
+  { immediate: true },
 )
 
 watch(pickForSlot, (v) => {
@@ -270,21 +291,32 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <Teleport to="body">
-    <Transition name="app-modal">
-      <div v-if="modelValue" class="app-modal create-lobby-modal" role="presentation">
-        <div class="app-modal__backdrop" aria-hidden="true" @click.self="close" />
+  <Teleport to="body" :disabled="embedded">
+    <Transition :name="embedded ? '' : 'app-modal'">
+      <div
+        v-if="modelValue"
+        :class="embedded ? 'create-lobby-panel' : 'app-modal create-lobby-modal'"
+        :role="embedded ? undefined : 'presentation'"
+      >
+        <div v-if="!embedded" class="app-modal__backdrop" aria-hidden="true" @click.self="close" />
         <div
-          class="app-modal__wrap create-lobby-modal__wrap"
-          role="dialog"
-          aria-modal="true"
+          :class="
+            embedded
+              ? 'create-lobby-panel__wrap create-lobby-modal__wrap'
+              : 'app-modal__wrap create-lobby-modal__wrap'
+          "
+          :role="embedded ? undefined : 'dialog'"
+          :aria-modal="embedded ? undefined : true"
           aria-labelledby="create-lobby-title"
         >
           <div
             class="app-modal__panel create-lobby-modal__panel"
-            :class="{ 'create-lobby-modal__panel--workspace': !!token }"
+            :class="{
+              'create-lobby-modal__panel--workspace': !!token,
+              'create-lobby-modal__panel--embedded': embedded,
+            }"
           >
-            <div class="app-modal__head">
+            <div v-if="!embedded" class="app-modal__head">
               <h2 id="create-lobby-title" class="app-modal__title">Новое лобби</h2>
               <button
                 type="button"
@@ -303,10 +335,18 @@ onUnmounted(() => {
                   Войдите в аккаунт, чтобы создать лобби и выбрать игроков из раздела «Мои игроки».
                 </p>
                 <div class="create-lobby-modal__auth-actions">
-                  <RouterLink class="create-lobby-modal__auth-btn create-lobby-modal__auth-btn--primary" :to="{ name: 'login' }" @click="close">
+                  <RouterLink
+                    class="create-lobby-modal__auth-btn create-lobby-modal__auth-btn--primary"
+                    :to="{ name: 'login' }"
+                    @click="close"
+                  >
                     Вход
                   </RouterLink>
-                  <RouterLink class="create-lobby-modal__auth-btn create-lobby-modal__auth-btn--outline" :to="{ name: 'register' }" @click="close">
+                  <RouterLink
+                    class="create-lobby-modal__auth-btn create-lobby-modal__auth-btn--outline"
+                    :to="{ name: 'register' }"
+                    @click="close"
+                  >
                     Регистрация
                   </RouterLink>
                 </div>
@@ -340,7 +380,10 @@ onUnmounted(() => {
                     <div
                       ref="slotsStripRef"
                       class="create-lobby-modal__slots"
-                      :class="{ 'create-lobby-modal__slots--dragging': slotsStripPanning }"
+                      :class="{
+                        'create-lobby-modal__slots--dragging': slotsStripPanning,
+                        'create-lobby-modal__slots--fill-width': embedded,
+                      }"
                       role="list"
                       @pointerdown="onSlotsStripPointerDown"
                       @pointermove="onSlotsStripPointerMove"
@@ -379,7 +422,7 @@ onUnmounted(() => {
                           </template>
                           <template v-else>
                             <span class="create-lobby-modal__slot-number">{{ i }}</span>
-                            <span class="create-lobby-modal__slot-state">Пусто</span>
+                            <span class="create-lobby-modal__slot-state">Добавьте игрока</span>
                           </template>
                         </button>
                         <button
@@ -400,9 +443,6 @@ onUnmounted(() => {
                   <div class="create-lobby-modal__picker-col">
                     <div class="create-lobby-modal__picker">
                       <div class="create-lobby-modal__picker-head">
-                        <p class="create-lobby-modal__picker-title">
-                          Выберите игрока из раздела «Мои игроки»
-                        </p>
                         <p v-if="!roster.length" class="create-lobby-modal__picker-empty">
                           В «Моих составах» пока нет карточек.
                           <RouterLink :to="{ name: 'profiles' }" class="create-lobby-modal__link" @click="close">
@@ -458,7 +498,7 @@ onUnmounted(() => {
                 <p v-if="serverError" class="create-lobby-modal__banner" role="alert">{{ serverError }}</p>
               </div>
 
-              <div class="create-lobby-modal__footer">
+              <div v-if="!embedded" class="create-lobby-modal__footer">
                 <button
                   type="button"
                   class="app-modal__btn-secondary"
@@ -478,6 +518,31 @@ onUnmounted(() => {
               </div>
             </template>
           </div>
+        </div>
+
+        <div
+          v-if="embedded"
+          class="create-lobby-panel__bottom-bar"
+          role="toolbar"
+          aria-label="Создание лобби"
+        >
+          <button
+            type="button"
+            class="app-modal__btn-secondary"
+            :disabled="submitting"
+            @click="close"
+          >
+            Отмена
+          </button>
+          <button
+            v-if="token"
+            type="button"
+            class="app-modal__btn-primary"
+            :disabled="submitting || !lobbyName.trim()"
+            @click="submit"
+          >
+            {{ submitting ? 'Создание…' : 'Создать лобби' }}
+          </button>
         </div>
       </div>
     </Transition>
@@ -602,6 +667,13 @@ onUnmounted(() => {
   background: #fff;
 }
 
+.create-lobby-modal__input:focus,
+.create-lobby-modal__input:focus-visible {
+  outline: none;
+  border-color: #2f6feb;
+  box-shadow: inset 0 0 0 2px #2f6feb;
+}
+
 .create-lobby-modal__input:disabled {
   opacity: 0.65;
 }
@@ -664,6 +736,7 @@ onUnmounted(() => {
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
+  overflow: hidden;
 }
 
 .create-lobby-modal__slot-wrap {
@@ -737,6 +810,8 @@ onUnmounted(() => {
   text-align: center;
   line-height: 1.2;
   color: #6b7280;
+  padding-inline: 0.15rem;
+  max-width: 100%;
 }
 
 .create-lobby-modal__slot-photo,
@@ -814,8 +889,8 @@ onUnmounted(() => {
 
 .create-lobby-modal__picker {
   margin: 0;
-  padding: 0.65rem 0 0.4rem;
-  border-top: 1px solid #f3f4f6;
+  padding: 0.35rem 0 0.4rem;
+  border-top: none;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -827,9 +902,9 @@ onUnmounted(() => {
   top: 0;
   z-index: 2;
   margin: 0 0 0.45rem;
-  padding-bottom: 0.45rem;
+  padding-bottom: 0;
   background: #fff;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: none;
 }
 
 .create-lobby-modal__picker-title {
@@ -855,6 +930,13 @@ onUnmounted(() => {
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   background: #fff;
+}
+
+.create-lobby-modal__picker-search:focus,
+.create-lobby-modal__picker-search:focus-visible {
+  outline: none;
+  border-color: #2f6feb;
+  box-shadow: inset 0 0 0 2px #2f6feb;
 }
 
 .create-lobby-modal__picker-search:disabled {
@@ -917,8 +999,8 @@ onUnmounted(() => {
 
 .create-lobby-modal__pick-photo,
 .create-lobby-modal__pick-initials {
-  width: 2.25rem;
-  height: 2.25rem;
+  width: 2.75rem;
+  height: 2.75rem;
   border-radius: 999px;
   object-fit: cover;
   flex-shrink: 0;
@@ -929,7 +1011,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   background: #e5e7eb;
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: #4b5563;
 }
@@ -943,7 +1025,7 @@ onUnmounted(() => {
 }
 
 .create-lobby-modal__pick-nickname {
-  font-size: 0.875rem;
+  font-size: 0.9375rem;
   font-weight: 600;
   color: #111827;
   line-height: 1.25;
@@ -995,6 +1077,223 @@ onUnmounted(() => {
   .create-lobby-modal__panel--workspace.app-modal__panel {
     height: min(94dvh, 52rem);
     min-height: min(94dvh, 52rem);
+  }
+}
+
+/* Встроенная панель: на широком экране слоты на всю ширину; на планшете/мобилке — полоса со скроллом */
+@media (min-width: 900px) {
+  .create-lobby-modal__slots--fill-width {
+    --slot-aspect: 7 / 8.5;
+    width: 100%;
+    overflow-x: hidden;
+    cursor: default;
+    scroll-snap-type: none;
+    touch-action: manipulation;
+    padding-inline: 0;
+  }
+
+  .create-lobby-modal__slots--fill-width .create-lobby-modal__slot-wrap {
+    position: relative;
+    flex: 1 1 0%;
+    min-width: 0;
+    width: auto;
+    aspect-ratio: var(--slot-aspect);
+    min-height: unset;
+  }
+
+  .create-lobby-modal__slots--fill-width .create-lobby-modal__slot {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    container-type: inline-size;
+    touch-action: manipulation;
+    border-radius: clamp(8px, 12cqi, 14px);
+    padding: clamp(0.2rem, 5cqi, 0.35rem);
+    gap: clamp(0.1rem, 3cqi, 0.2rem);
+  }
+
+  .create-lobby-modal__slots--fill-width .create-lobby-modal__slot-number {
+    font-size: clamp(0.85rem, 24cqi, 1.5rem);
+  }
+
+  .create-lobby-modal__slots--fill-width .create-lobby-modal__slot-state {
+    font-size: clamp(0.55rem, 11cqi, 0.75rem);
+  }
+
+  .create-lobby-modal__slots--fill-width .create-lobby-modal__slot-photo,
+  .create-lobby-modal__slots--fill-width .create-lobby-modal__slot-initials {
+    width: clamp(1.75rem, 48cqi, 4rem);
+    height: clamp(1.75rem, 48cqi, 4rem);
+  }
+
+  .create-lobby-modal__slots--fill-width .create-lobby-modal__slot-initials {
+    font-size: clamp(0.55rem, 12cqi, 0.85rem);
+  }
+
+  .create-lobby-modal__slots--fill-width .create-lobby-modal__slot-nick {
+    font-size: clamp(0.55rem, 11cqi, 0.8rem);
+  }
+
+  .create-lobby-modal__slots--fill-width .create-lobby-modal__slot--filled .create-lobby-modal__slot-photo,
+  .create-lobby-modal__slots--fill-width .create-lobby-modal__slot--filled .create-lobby-modal__slot-initials,
+  .create-lobby-modal__slots--fill-width .create-lobby-modal__slot--filled .create-lobby-modal__slot-nick {
+    transform: translateY(clamp(-4px, -10cqi, -10px));
+  }
+
+  .create-lobby-modal__slots--fill-width .create-lobby-modal__slot-clear {
+    left: clamp(0.25rem, 6cqi, 0.45rem);
+    right: clamp(0.25rem, 6cqi, 0.45rem);
+    bottom: clamp(0.25rem, 6cqi, 0.45rem);
+    height: clamp(1.35rem, 22cqi, 1.85rem);
+    font-size: clamp(0.55rem, 10cqi, 0.7rem);
+    border-radius: clamp(6px, 10cqi, 8px);
+  }
+
+  .create-lobby-modal__panel--embedded .create-lobby-modal__slots-col {
+    margin-inline: -0.875rem;
+    width: calc(100% + 1.75rem);
+    box-sizing: border-box;
+  }
+
+  .create-lobby-modal__panel--embedded .create-lobby-modal__slots--fill-width {
+    padding-inline: 0.875rem;
+    box-sizing: border-box;
+  }
+}
+
+.create-lobby-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: none;
+  align-self: stretch;
+  box-sizing: border-box;
+}
+
+.create-lobby-panel__wrap.create-lobby-modal__wrap {
+  flex: 1;
+  min-height: 0;
+  max-width: none;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.create-lobby-modal__panel--embedded.app-modal__panel {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  width: 100%;
+  border-radius: 0;
+  border: none;
+  padding: 0.65rem 0.875rem 0.5rem;
+}
+
+.create-lobby-panel__bottom-bar {
+  flex-shrink: 0;
+  width: 100%;
+  max-width: none;
+  align-self: stretch;
+  min-height: 4.25rem;
+  margin: 0;
+  padding: 0.625rem 0.875rem;
+  border-top: 1px solid #e5e7eb;
+  background: #fff;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  box-sizing: border-box;
+}
+
+.create-lobby-modal__panel--embedded.create-lobby-modal__panel--workspace.app-modal__panel {
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+}
+
+.create-lobby-modal__panel--embedded .create-lobby-modal__picker {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.create-lobby-modal__panel--embedded .create-lobby-modal__picker-list {
+  flex: 1 1 auto;
+  min-height: 8rem;
+}
+
+/* Список под поиском: крупные карточки на широком экране (после базовых стилей, иначе не применится) */
+@media (min-width: 768px) {
+  .create-lobby-modal__panel--embedded .create-lobby-modal__picker-list {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+
+  .create-lobby-modal__panel--embedded .create-lobby-modal__pick-item {
+    gap: 0.95rem;
+    padding: 0.95rem 1rem;
+    border-radius: 12px;
+  }
+
+  .create-lobby-modal__panel--embedded .create-lobby-modal__pick-photo,
+  .create-lobby-modal__panel--embedded .create-lobby-modal__pick-initials {
+    width: 5.75rem;
+    height: 5.75rem;
+  }
+
+  .create-lobby-modal__panel--embedded .create-lobby-modal__pick-initials {
+    font-size: 1.3125rem;
+  }
+
+  .create-lobby-modal__panel--embedded .create-lobby-modal__pick-nickname {
+    font-size: 1.3125rem;
+    line-height: 1.2;
+  }
+
+  .create-lobby-modal__panel--embedded .create-lobby-modal__pick-realname {
+    font-size: 0.9375rem;
+  }
+
+  .create-lobby-modal__panel--embedded .create-lobby-modal__pick-text {
+    gap: 0.25rem;
+  }
+}
+
+@media (min-width: 900px) {
+  .create-lobby-modal__panel:not(.create-lobby-modal__panel--embedded) .create-lobby-modal__picker-list {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+
+  .create-lobby-modal__panel:not(.create-lobby-modal__panel--embedded) .create-lobby-modal__pick-item {
+    gap: 0.95rem;
+    padding: 0.95rem 1rem;
+    border-radius: 12px;
+  }
+
+  .create-lobby-modal__panel:not(.create-lobby-modal__panel--embedded) .create-lobby-modal__pick-photo,
+  .create-lobby-modal__panel:not(.create-lobby-modal__panel--embedded) .create-lobby-modal__pick-initials {
+    width: 5.75rem;
+    height: 5.75rem;
+  }
+
+  .create-lobby-modal__panel:not(.create-lobby-modal__panel--embedded) .create-lobby-modal__pick-initials {
+    font-size: 1.3125rem;
+  }
+
+  .create-lobby-modal__panel:not(.create-lobby-modal__panel--embedded) .create-lobby-modal__pick-nickname {
+    font-size: 1.3125rem;
+    line-height: 1.2;
+  }
+
+  .create-lobby-modal__panel:not(.create-lobby-modal__panel--embedded) .create-lobby-modal__pick-realname {
+    font-size: 0.9375rem;
   }
 }
 </style>
