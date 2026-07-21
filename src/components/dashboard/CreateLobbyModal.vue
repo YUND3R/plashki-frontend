@@ -75,6 +75,11 @@ function firstEmptySlotIndex(): number {
 }
 
 function assignToSlot(slotIndex: number, card: PlayerCard) {
+  for (let j = 0; j < slots.value.length; j++) {
+    if (j !== slotIndex && slots.value[j]?.id === card.id) {
+      slots.value[j] = null
+    }
+  }
   slots.value[slotIndex] = card
   pickForSlot.value = firstEmptySlotIndex()
 }
@@ -120,7 +125,10 @@ function teardownSlotAutoScroll() {
 
 function isSlotStripInteractiveTarget(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return false
-  return !!target.closest('.create-lobby-modal__slot-clear')
+  return (
+    !!target.closest('.create-lobby-modal__slot-clear') ||
+    !!target.closest('.create-lobby-modal__slot')
+  )
 }
 
 function onSlotsStripPointerDown(ev: PointerEvent) {
@@ -361,6 +369,7 @@ onUnmounted(() => {
                           }"
                           :ref="(el) => setSlotButtonRef(i - 1, el as Element | null)"
                           :disabled="submitting"
+                          @pointerdown.stop
                           @click="openSlotPicker(i - 1)"
                         >
                           <template v-if="slots[i - 1]">
