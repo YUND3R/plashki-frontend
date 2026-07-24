@@ -45,7 +45,6 @@ function overlayDesignFallbackLabel(code: string): string {
 const router = useRouter()
 const dashboardUi = useDashboardUiStore()
 const { tournamentSearchQuery, lobbyFilter, createLobbyOpen } = storeToRefs(dashboardUi)
-const apiBase = computed(() => import.meta.env.VITE_API_BASE_URL ?? '(не задан - скопируйте .env.example в .env)')
 
 const importOpen = ref(false)
 const importUrl = ref('')
@@ -141,13 +140,21 @@ const filteredSavedLobbies = computed(() => {
   return savedLobbies.value.filter((item) => item.name.toLowerCase().includes(q))
 })
 
-/** Сообщение, если список пуст при ненулевом списке сохранённых лобби */
-const dashboardListEmptyHint = computed(() => {
+/** Пустой список: поиск или совсем нет лобби */
+const dashboardListEmptyState = computed(() => {
   const q = tournamentSearchQuery.value.trim()
   if (q && !filteredSavedLobbies.value.length) {
-    return 'Ничего не найдено по этому названию.'
+    return {
+      emoji: '🔍',
+      title: 'Ничего не нашли',
+      hint: 'Попробуйте другое название или сбросьте фильтры.',
+    }
   }
-  return ''
+  return {
+    emoji: '✨',
+    title: 'Здесь пока пусто',
+    hint: 'Создайте лобби или импортируйте турнир. Стол сам не соберётся.',
+  }
 })
 
 watch(lobbyFilter, () => {
@@ -348,143 +355,123 @@ async function confirmDeleteLobby() {
     />
 
     <template v-else>
-    <div class="dashboard__actions">
-      <button type="button" class="dashboard-lobby-card dashboard-lobby-card--action" @click="openCreateModal">
-        <span class="dashboard-lobby-card__icon" aria-hidden="true">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path
-              d="M12 5v14M5 12h14"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-            />
-          </svg>
-        </span>
-        <span class="dashboard-lobby-card__text">
-          <span class="dashboard-lobby-card__title">Создать игровое лобби</span>
-          <span class="dashboard-lobby-card__desc">Новая комната для игры</span>
-        </span>
-      </button>
+    <div class="dashboard__layout">
+      <div class="dashboard__actions" aria-label="Действия с лобби">
+        <div class="dashboard-lobby-card dashboard-lobby-card--action">
+          <span class="dashboard-lobby-card__text">
+            <span class="dashboard-lobby-card__title">Создать новое лобби</span>
+            <span class="dashboard-lobby-card__desc">Новая комната для игры</span>
+          </span>
+          <button type="button" class="dashboard-action-card__btn dashboard-action-card__btn--create" @click="openCreateModal">
+            Создать
+          </button>
+        </div>
 
-      <button
-        type="button"
-        class="dashboard-lobby-card dashboard-lobby-card--action"
-        :aria-expanded="importOpen"
-        @click="openImportForm"
-      >
-        <span class="dashboard-lobby-card__icon dashboard-lobby-card__icon--import" aria-hidden="true">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path
-              d="M12 3v10m0 0l-4-4m4 4l4-4M4 15v3a3 3 0 003 3h10a3 3 0 003-3v-3"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-          </svg>
-        </span>
-        <span class="dashboard-lobby-card__text">
-          <span class="dashboard-lobby-card__title">Загрузить турнир из GoMafia</span>
-          <span class="dashboard-lobby-card__desc">Вставьте ссылку на турнир и загрузите лобби</span>
-        </span>
-      </button>
+        <div class="dashboard-lobby-card dashboard-lobby-card--action">
+          <span class="dashboard-lobby-card__text">
+            <span class="dashboard-lobby-card__title">Загрузить из GoMafia</span>
+            <span class="dashboard-lobby-card__desc">Импорт турнира по ссылке</span>
+          </span>
+          <button
+            type="button"
+            class="dashboard-action-card__btn dashboard-action-card__btn--import"
+            :aria-expanded="importOpen"
+            @click="openImportForm"
+          >
+            Импортировать
+          </button>
+        </div>
 
-      <button
-        type="button"
-        class="dashboard-lobby-card dashboard-lobby-card--action dashboard-lobby-card--action-soon"
-        disabled
-      >
-        <span class="dashboard-lobby-card__icon dashboard-lobby-card__icon--mafuniverse" aria-hidden="true">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path
-              d="M12 3v10m0 0l-4-4m4 4l4-4M4 15v3a3 3 0 003 3h10a3 3 0 003-3v-3"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-          </svg>
-        </span>
-        <span class="dashboard-lobby-card__text">
-          <span class="dashboard-lobby-card__title">Загрузить из MafUniverse</span>
-          <span class="dashboard-lobby-card__desc">Импорт турнира по ссылке</span>
-        </span>
-        <span class="dashboard-lobby-card__soon">Скоро</span>
-      </button>
-    </div>
-
-    <p v-if="loading" class="dashboard__text">Загружаем лобби из базы…</p>
-    <p v-else-if="loadError" class="dashboard__text dashboard__text--error" role="alert">{{ loadError }}</p>
-
-    <div v-if="savedLobbies.length || tournamentSearchQuery.trim()" class="dashboard__created">
-      <div class="dashboard__created-head">
-        <h2 class="dashboard__created-title">Созданные лобби</h2>
+        <div class="dashboard-lobby-card dashboard-lobby-card--action">
+          <span class="dashboard-lobby-card__text">
+            <span class="dashboard-lobby-card__title">Загрузить из MafUniverse</span>
+            <span class="dashboard-lobby-card__desc">Импорт турнира по ссылке</span>
+          </span>
+          <button
+            type="button"
+            class="dashboard-action-card__btn dashboard-action-card__btn--mafuniverse"
+            disabled
+            title="Скоро"
+          >
+            Импортировать
+          </button>
+        </div>
       </div>
-      <ul v-if="filteredSavedLobbies.length" class="dashboard__created-list">
-        <li v-for="item in filteredSavedLobbies" :key="item.id">
-          <div class="dashboard-lobby-card dashboard-lobby-card--saved-shell">
-            <RouterLink
-              class="dashboard-lobby-card__nav"
-              :to="{ name: 'lobby-manage', params: { lobbyId: item.id } }"
-            >
-              <span
-                class="dashboard-lobby-card__icon"
-                :class="item.fromGomafia ? 'dashboard-lobby-card__icon--gomafia' : 'dashboard-lobby-card__icon--saved'"
-                aria-hidden="true"
-              >
-                <img
-                  v-if="item.fromGomafia"
-                  :src="goLobbyIcon"
-                  alt=""
-                  class="dashboard-lobby-card__go-icon"
-                  width="26"
-                  height="24"
-                />
-                <svg
-                  v-else
-                  width="22"
-                  height="22"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
-                </svg>
-              </span>
-              <span class="dashboard-lobby-card__text">
-                <span class="dashboard-lobby-card__title">{{ item.name }}</span>
-                <span class="dashboard-lobby-card__desc">
-                  {{ dashboardLobbyPeopleLine(item) }}
-                  <template v-if="formatLobbyDate(item.createdAt)">
-                    · {{ formatLobbyDate(item.createdAt) }}
-                  </template>
-                  <span class="dashboard-lobby-card__design-sep" aria-hidden="true"> · </span>
-                  <span class="dashboard-lobby-card__design">Дизайн карточек: {{ item.cardDesignLabel }}</span>
-                </span>
-              </span>
-            </RouterLink>
-            <button
-              type="button"
-              class="dashboard-lobby-card__delete"
-              :disabled="deletingLobbyId === item.id"
-              :aria-label="`Удалить лобби ${item.name}`"
-              @click.stop="openDeleteConfirm(item)"
-            >
-              <img :src="deleteLobbyIcon" alt="" class="dashboard-lobby-card__delete-img" width="16" height="20" />
-            </button>
-          </div>
-        </li>
-      </ul>
-      <p v-else-if="!loading" class="dashboard__filter-empty">{{ dashboardListEmptyHint || 'Список лобби пуст.' }}</p>
-    </div>
 
-    <p class="dashboard__text">База API: <code>{{ apiBase }}</code></p>
+      <div class="dashboard__main">
+        <p v-if="loading" class="dashboard__text">Загружаем лобби из базы…</p>
+        <p v-else-if="loadError" class="dashboard__text dashboard__text--error" role="alert">{{ loadError }}</p>
+
+        <div class="dashboard__created">
+          <ul v-if="filteredSavedLobbies.length" class="dashboard__created-list">
+            <li v-for="item in filteredSavedLobbies" :key="item.id">
+              <div class="dashboard-lobby-card dashboard-lobby-card--saved-shell">
+                <RouterLink
+                  class="dashboard-lobby-card__nav"
+                  :to="{ name: 'lobby-manage', params: { lobbyId: item.id } }"
+                >
+                  <span
+                    class="dashboard-lobby-card__icon"
+                    :class="item.fromGomafia ? 'dashboard-lobby-card__icon--gomafia' : 'dashboard-lobby-card__icon--saved'"
+                    aria-hidden="true"
+                  >
+                    <img
+                      v-if="item.fromGomafia"
+                      :src="goLobbyIcon"
+                      alt=""
+                      class="dashboard-lobby-card__go-icon"
+                      width="32"
+                      height="30"
+                    />
+                    <svg
+                      v-else
+                      width="28"
+                      height="28"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path
+                        d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
+                    </svg>
+                  </span>
+                  <span class="dashboard-lobby-card__text">
+                    <span class="dashboard-lobby-card__title">{{ item.name }}</span>
+                    <span class="dashboard-lobby-card__desc">
+                      {{ dashboardLobbyPeopleLine(item) }}
+                      <template v-if="formatLobbyDate(item.createdAt)">
+                        · {{ formatLobbyDate(item.createdAt) }}
+                      </template>
+                      <span class="dashboard-lobby-card__design-sep" aria-hidden="true"> · </span>
+                      <span class="dashboard-lobby-card__design">Дизайн карточек: {{ item.cardDesignLabel }}</span>
+                    </span>
+                  </span>
+                </RouterLink>
+                <button
+                  type="button"
+                  class="dashboard-lobby-card__delete"
+                  :disabled="deletingLobbyId === item.id"
+                  :aria-label="`Удалить лобби ${item.name}`"
+                  @click.stop="openDeleteConfirm(item)"
+                >
+                  <img :src="deleteLobbyIcon" alt="" class="dashboard-lobby-card__delete-img" width="16" height="20" />
+                </button>
+              </div>
+            </li>
+          </ul>
+          <div v-else-if="!loading" class="dashboard__empty">
+            <span class="dashboard__empty-emoji" aria-hidden="true">{{ dashboardListEmptyState.emoji }}</span>
+            <p class="dashboard__empty-title">{{ dashboardListEmptyState.title }}</p>
+            <p class="dashboard__empty-hint">{{ dashboardListEmptyState.hint }}</p>
+          </div>
+        </div>
+      </div>
+    </div>
     </template>
   </section>
 
@@ -606,13 +593,16 @@ async function confirmDeleteLobby() {
 
 <style scoped>
 .dashboard {
+  --dashboard-stroke: #e5e7eb;
+
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  flex: 1;
+  min-height: 0;
   width: 100%;
-  max-width: 1200px;
-  margin-inline: auto;
-  padding: 0.15rem 0 0.5rem;
+  max-width: none;
+  margin-inline: 0;
+  padding: 0;
   box-sizing: border-box;
 }
 
@@ -627,11 +617,142 @@ async function confirmDeleteLobby() {
   overflow: hidden;
 }
 
+.dashboard__layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 0;
+  border: none;
+  border-radius: 0;
+  background: #fff;
+  overflow: hidden;
+}
+
 .dashboard__actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+  flex-shrink: 0;
+  width: 100%;
+  border-bottom: 1px solid var(--dashboard-stroke);
+  background: #fff;
+}
+
+.dashboard__actions .dashboard-lobby-card--action {
+  flex: 1 1 50%;
+  min-width: 0;
+  min-height: 6.25rem;
+  height: 100%;
+  flex-direction: row;
+  align-items: center;
+  gap: 1.15rem;
+  padding: 1.25rem 1.25rem;
+  border-bottom: none;
+  background: #fff;
+  cursor: default;
+}
+
+.dashboard__actions .dashboard-lobby-card__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 0.4rem;
+}
+
+.dashboard-action-card__btn {
+  flex-shrink: 0;
+  margin-left: auto;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 2.5rem;
+  min-height: 2.5rem;
+  padding: 0 1.1rem;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.dashboard-action-card__btn--create {
+  color: #2f6feb;
+  background: #eff6ff;
+}
+
+.dashboard-action-card__btn--create:hover {
+  background: #dbeafe;
+}
+
+.dashboard-action-card__btn--import {
+  color: #8977fe;
+  background: #ebe9fe;
+}
+
+.dashboard-action-card__btn--import:hover {
+  background: #ddd6fe;
+}
+
+.dashboard-action-card__btn--mafuniverse {
+  color: #1e3a8a;
+  background: #e8ecf4;
+}
+
+.dashboard-action-card__btn--mafuniverse:disabled {
+  color: #64748b;
+  background: #eef1f6;
+  cursor: not-allowed;
+}
+
+.dashboard-action-card__btn:focus {
+  outline: none;
+}
+
+.dashboard-action-card__btn:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+}
+
+.dashboard__actions .dashboard-lobby-card--action:not(:last-child) {
+  border-right: 1px solid var(--dashboard-stroke);
+}
+
+.dashboard__main {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  align-items: stretch;
-  gap: 0.75rem;
+  gap: 0;
+  overflow-y: auto;
+  background: #fff;
+}
+
+@media (max-width: 899px) {
+  .dashboard__actions {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard__actions .dashboard-lobby-card--action:not(:last-child) {
+    border-right: none;
+    border-bottom: 1px solid var(--dashboard-stroke);
+  }
+}
+
+@media (min-width: 900px) {
+  .dashboard__actions .dashboard-lobby-card--action {
+    min-height: 7.25rem;
+    padding: 1.35rem 1.4rem;
+  }
+}
+
+.dashboard__main .dashboard__text {
+  padding: 1rem 1.15rem;
 }
 
 .dashboard-lobby-card {
@@ -646,52 +767,52 @@ async function confirmDeleteLobby() {
   cursor: pointer;
   color: inherit;
   background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 14px;
+  border: none;
+  border-radius: 0;
   box-sizing: border-box;
+}
+
+.dashboard__main .dashboard-lobby-card {
+  border-bottom: 1px solid var(--dashboard-stroke);
+}
+
+.dashboard-lobby-card--saved-shell:hover {
+  background: #fafafa;
 }
 
 .dashboard-lobby-card--action {
   min-width: 0;
-  min-height: 6.2rem;
-  align-items: center;
-  padding: 1.15rem;
 }
 
-.dashboard-lobby-card--action-soon {
-  cursor: not-allowed;
-  background: #f9fafb;
-  border-color: #e5e7eb;
+.dashboard__actions .dashboard-lobby-card__title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #374151;
 }
 
-.dashboard-lobby-card--action-soon .dashboard-lobby-card__title,
-.dashboard-lobby-card--action-soon .dashboard-lobby-card__desc {
+.dashboard__actions .dashboard-lobby-card__desc {
+  font-size: 1.0625rem;
   color: #9ca3af;
 }
 
-.dashboard-lobby-card__soon {
-  flex-shrink: 0;
-  align-self: center;
-  margin-left: auto;
-  padding: 0.35rem 0.7rem;
-  font-size: 0.8125rem;
+.dashboard-lobby-card--saved-shell {
+  padding: 1.2rem 1.2rem;
+}
+
+.dashboard-lobby-card--saved-shell .dashboard-lobby-card__title {
+  font-size: 22px;
   font-weight: 500;
-  line-height: 1;
-  color: #9ca3af;
-  background: #f3f4f6;
-  border-radius: 8px;
 }
 
-@media (min-width: 760px) {
-  .dashboard__actions {
-    flex-direction: row;
-    align-items: stretch;
-    gap: 0.9rem;
-  }
+.dashboard-lobby-card--saved-shell .dashboard-lobby-card__desc {
+  font-size: 17px;
+  font-weight: 400;
+}
 
-  .dashboard-lobby-card--action {
-    flex: 1 1 0;
-  }
+.dashboard-lobby-card--saved-shell .dashboard-lobby-card__icon {
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 12px;
 }
 
 .dashboard-lobby-card:focus {
@@ -705,15 +826,19 @@ async function confirmDeleteLobby() {
 
 .dashboard-lobby-card--saved-shell {
   align-items: center;
-  gap: 0.65rem;
+  gap: 0.85rem;
   cursor: default;
+}
+
+.dashboard-lobby-card--saved-shell .dashboard-lobby-card__text {
+  gap: 0.45rem;
 }
 
 .dashboard-lobby-card__nav {
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 1rem;
   text-decoration: none;
   cursor: pointer;
@@ -749,7 +874,7 @@ async function confirmDeleteLobby() {
 
 .dashboard-lobby-card__delete:hover:not(:disabled) {
   background: #f3f4f6;
-  border-color: #e5e7eb;
+  border-color: var(--dashboard-stroke);
 }
 
 .dashboard-lobby-card__delete:focus {
@@ -808,28 +933,22 @@ async function confirmDeleteLobby() {
 }
 
 .dashboard-lobby-card__icon--gomafia {
-  background: rgba(137, 119, 254, 0.08);
+  background: #f5f3ff;
   color: #8977FE;
 }
 
 .dashboard-lobby-card__go-icon {
   display: block;
-  width: 26px;
+  width: 32px;
   height: auto;
-  max-height: 24px;
+  max-height: 30px;
   object-fit: contain;
 }
 
 .dashboard-lobby-card__icon--import {
   background: #ebe9fe;
-  border: 1px solid #ddd6fe;
+  border: none;
   color: #8977fe;
-}
-
-.dashboard-lobby-card__icon--mafuniverse {
-  background: #f3f4f6;
-  border: 1px solid #e5e7eb;
-  color: #9ca3af;
 }
 
 .dashboard-lobby-card__text {
@@ -859,20 +978,45 @@ async function confirmDeleteLobby() {
 
 .dashboard__created {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
-  gap: 0.65rem;
+  gap: 0;
+  min-height: 0;
 }
 
-.dashboard__created-head {
+.dashboard__empty {
+  flex: 1 1 auto;
   display: flex;
+  flex-direction: column;
   align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2rem 1.5rem;
+  min-height: 14rem;
 }
 
-.dashboard__filter-empty {
+.dashboard__empty-emoji {
+  display: block;
+  margin: 0 0 0.85rem;
+  font-size: 2.75rem;
+  line-height: 1;
+}
+
+.dashboard__empty-title {
+  margin: 0 0 0.55rem;
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: #374151;
+}
+
+.dashboard__empty-hint {
   margin: 0;
-  font-size: 0.875rem;
-  line-height: 1.45;
-  color: #6b7280;
+  max-width: 24rem;
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: #9ca3af;
 }
 
 .dashboard-import-modal__wrap {
@@ -967,20 +1111,13 @@ async function confirmDeleteLobby() {
   border-color: #1d4ed8;
 }
 
-.dashboard__created-title {
-  margin: 0;
-  font-size: 0.9375rem;
-  font-weight: 600;
-  color: #374151;
-}
-
 .dashboard__created-list {
   margin: 0;
   padding: 0;
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 0.65rem;
+  gap: 0;
 }
 
 .dashboard__text {

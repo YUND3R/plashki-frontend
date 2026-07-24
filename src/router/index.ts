@@ -112,8 +112,8 @@ const router = createRouter({
         {
           path: 'contact',
           name: 'contact',
-          meta: { title: 'Связаться с нами' },
-          component: () => import('@/views/PagePlaceholder.vue'),
+          meta: { title: 'Обратная связь' },
+          component: () => import('@/views/ContactView.vue'),
         },
         {
           path: 'dashboard',

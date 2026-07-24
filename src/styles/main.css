@@ -1,5 +1,6 @@
 @import './app-modal.css';
 @import './designCutoutHint.css';
+@import './segmented-filter.css';
 
 :root {
   --text: #6b6375;

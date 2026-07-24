@@ -83,14 +83,18 @@ function onCancel() {
 <template>
   <section class="card-design__designs" aria-label="Доступные дизайны">
     <div v-if="showInlineFilter" class="card-design__inline-toolbar">
-      <div class="card-design__inline-filters" role="radiogroup" aria-label="Показать плашки">
+      <div
+        class="segmented-filter segmented-filter--inline segmented-filter--compact card-design__inline-filters"
+        role="radiogroup"
+        aria-label="Показать плашки"
+      >
         <button
           v-for="opt in CARD_DESIGN_FILTER_OPTIONS"
           :key="opt.value"
           type="button"
           role="radio"
-          class="card-design__inline-filters-btn"
-          :class="{ 'card-design__inline-filters-btn--active': designFilter === opt.value }"
+          class="segmented-filter__btn"
+          :class="{ 'segmented-filter__btn--active': designFilter === opt.value }"
           :aria-checked="designFilter === opt.value"
           @click="setDesignFilter(opt.value)"
         >
@@ -262,39 +266,7 @@ function onCancel() {
 }
 
 .card-design__inline-filters {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.card-design__inline-filters-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0;
-  min-height: 2rem;
-  height: 2rem;
-  padding: 0 0.65rem;
-  font: inherit;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: #374151;
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-.card-design__inline-filters-btn:hover:not(.card-design__inline-filters-btn--active):not(:disabled) {
-  background: #f9fafb;
-  border-color: #d1d5db;
-}
-
-.card-design__inline-filters-btn--active {
-  color: #1d4ed8;
-  background: #eff6ff;
-  border-color: #93c5fd;
+  flex-shrink: 0;
 }
 
 .card-design__designs-body {

@@ -377,9 +377,14 @@ onMounted(async () => {
 }
 
 .card-design__empty {
-  display: grid;
-  gap: 0.65rem;
-  padding: 1.5rem 0.5rem;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 2rem 1.5rem;
+  min-height: 14rem;
   text-align: center;
 }
 
@@ -399,7 +404,6 @@ onMounted(async () => {
 }
 
 .card-design__empty-link {
-  justify-self: center;
   display: inline-flex;
   align-items: center;
   justify-content: center;

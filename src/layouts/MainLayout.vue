@@ -5,7 +5,6 @@ import { RouterView, useRoute, useRouter } from 'vue-router'
 import { logout as apiLogout, me } from '@/api/auth'
 import AppSidebar from '@/components/common/AppSidebar.vue'
 import ProfileSettingsModal from '@/components/account/ProfileSettingsModal.vue'
-import FeedbackModal from '@/components/feedback/FeedbackModal.vue'
 import LobbyManageHeaderToolbar from '@/components/lobby/LobbyManageHeaderToolbar.vue'
 import profilesListIcon from '@/assets/icons/spisok.svg'
 import profilesGridIcon from '@/assets/icons/plitka.svg'
@@ -16,8 +15,10 @@ import { useCardsUiStore } from '@/stores/cardsUi'
 import type { CardDesignFilter } from '@/stores/cardsUi'
 import { useProfilesUiStore } from '@/stores/profilesUi'
 import type { ProfilesPlayerFilter } from '@/stores/profilesUi'
-import { useFeedbackModalStore } from '@/stores/feedbackModal'
 import { useLobbyManageUiStore } from '@/stores/lobbyManageUi'
+import { useContactUiStore } from '@/stores/contactUi'
+import { useDocsUiStore } from '@/stores/docsUi'
+import type { FeedbackCategory } from '@/api/feedback'
 
 const route = useRoute()
 const router = useRouter()
@@ -34,10 +35,13 @@ const dashboardUi = useDashboardUiStore()
 const { lobbyFilter, createLobbyOpen } = storeToRefs(dashboardUi)
 const cardsUi = useCardsUiStore()
 const { designFilter } = storeToRefs(cardsUi)
-const feedbackModal = useFeedbackModalStore()
-const { toastVisible, toastMessage } = storeToRefs(feedbackModal)
 const lobbyManageUi = useLobbyManageUiStore()
 const { designPickerOpen, designPickerLobbyTitle } = storeToRefs(lobbyManageUi)
+const contactUi = useContactUiStore()
+const { category: contactCategory } = storeToRefs(contactUi)
+const docsUi = useDocsUiStore()
+const { activeSection: docsActiveSection } = storeToRefs(docsUi)
+const docsHeaderNavRef = ref<HTMLElement | null>(null)
 const userRole = ref('')
 const userRoleLoading = ref(false)
 const isAdmin = computed(() => userRole.value.trim().toUpperCase() === 'ADMIN')
@@ -59,6 +63,12 @@ const PROFILES_FILTER_OPTIONS: { value: ProfilesPlayerFilter; label: string }[] 
   { value: 'gomafia', label: 'Загруженные из GoMafia' },
 ]
 
+const CONTACT_CATEGORY_OPTIONS: { value: FeedbackCategory; label: string }[] = [
+  { value: 'other', label: 'Другое' },
+  { value: 'bug', label: 'Ошибка' },
+  { value: 'idea', label: 'Идея' },
+]
+
 function setDashboardFilter(next: DashboardLobbyFilter) {
   dashboardUi.lobbyFilter = next
 }
@@ -71,14 +81,21 @@ function setCardDesignFilter(next: CardDesignFilter) {
   cardsUi.designFilter = next
 }
 
+function setContactCategory(next: FeedbackCategory) {
+  contactUi.setCategory(next)
+}
+
 const pageTitle = computed(() => {
   if (route.name === 'dashboard' && createLobbyOpen.value) {
     return 'Новое лобби'
   }
-  if (route.name === 'lobby-manage' && designPickerOpen.value) {
+  if (route.name === 'lobby-manage') {
     const name = designPickerLobbyTitle.value.trim()
-    if (name) return `Дизайн плашек для лобби «${name}»`
-    return 'Дизайн плашек для лобби'
+    if (designPickerOpen.value) {
+      if (name) return `Дизайн плашек для лобби «${name}»`
+      return 'Дизайн плашек для лобби'
+    }
+    if (name) return name
   }
   return route.meta.title ?? ''
 })
@@ -86,7 +103,7 @@ const pageTitle = computed(() => {
 const showAccountActions = computed(() => route.name === 'account' && !!token.value)
 /** Страница «Мои составы»: поиск + «Создать профиль» в шапке (profilesUi store). */
 const showProfilesHeader = computed(() => route.name === 'profiles' && !!token.value)
-/** Дашборд: фильтр лобби в шапке справа. */
+/** Дашборд: фильтр лобби слева, поиск справа в шапке. */
 const showDashboardHeader = computed(
   () => route.name === 'dashboard' && !!token.value && !createLobbyOpen.value,
 )
@@ -100,13 +117,31 @@ const showCardDesignHeader = computed(() => {
 const showLobbyManageHeader = computed(
   () => route.name === 'lobby-manage' && !!token.value && !designPickerOpen.value,
 )
+/** Contact на мобилке: категория обратной связи в шапке рядом с меню. */
+const showContactHeader = computed(
+  () => route.name === 'contact' && isMobile.value && !!token.value,
+)
+/** Docs на мобилке: вкладки разделов в шапке рядом с меню. */
+const showDocsHeader = computed(() => route.name === 'docs' && isMobile.value)
 /** Контент без отступа от краёв белой панели. */
 const isFlushContentRoute = computed(
   () =>
+    route.name === 'landing' ||
     route.name === 'lobby-manage' ||
     route.name === 'card-design' ||
     route.name === 'docs' ||
+    route.name === 'contact' ||
     (route.name === 'dashboard' && createLobbyOpen.value),
+)
+/** Лендинг, docs и contact на мобилке: шапка с кнопкой меню; contact с фильтрами при авторизации; на десктопе docs/contact без шапки. */
+const showShellHeader = computed(() => {
+  if (route.name === 'contact') return isMobile.value
+  if (route.name === 'docs') return isMobile.value
+  if (route.name === 'landing') return isMobile.value
+  return true
+})
+const hideShellHeaderTitle = computed(
+  () => route.name === 'landing' || route.name === 'contact' || route.name === 'docs',
 )
 
 async function logout() {
@@ -156,10 +191,6 @@ function toggleMobileNav() {
   mobileNavOpen.value = !mobileNavOpen.value
 }
 
-function onSidebarFeedback() {
-  mobileNavOpen.value = false
-}
-
 function onGlobalKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape' && mobileNavOpen.value) mobileNavOpen.value = false
 }
@@ -173,8 +204,13 @@ watch(
   () => route.name,
   (name) => {
     if (name !== 'lobby-manage') lobbyManageUi.closeDesignPicker()
+    if (name !== 'docs') docsUi.setHeaderNavEl(null)
   },
 )
+
+watch(docsHeaderNavRef, (el) => {
+  if (route.name === 'docs') docsUi.setHeaderNavEl(el)
+}, { flush: 'post' })
 
 watch(
   () => route.fullPath,
@@ -211,11 +247,27 @@ onUnmounted(() => {
       @click="mobileNavOpen = false"
     />
     <div class="shell__sidebar">
-      <AppSidebar :mobile-drawer="isMobile" :is-admin="isAdmin" @feedback="onSidebarFeedback" />
+      <AppSidebar :mobile-drawer="isMobile" :is-admin="isAdmin" />
     </div>
     <div class="shell__main">
-      <main class="shell__panel" :class="{ 'shell__panel--flush-border': isFlushContentRoute }">
-        <header class="shell__header">
+      <main
+        class="shell__panel"
+        :class="{
+          'shell__panel--flush-border': isFlushContentRoute && route.name !== 'docs' && route.name !== 'contact',
+          'shell__panel--docs': route.name === 'docs',
+          'shell__panel--contact': route.name === 'contact',
+        }"
+      >
+        <header
+          v-if="showShellHeader"
+          class="shell__header"
+          :class="{
+            'shell__header--landing-mobile':
+              (route.name === 'landing' || route.name === 'contact' || route.name === 'docs') &&
+              !showContactHeader &&
+              !showDocsHeader,
+          }"
+        >
           <button
             v-if="isMobile"
             type="button"
@@ -231,7 +283,10 @@ onUnmounted(() => {
             </span>
             <span class="shell__menu-sr">Меню</span>
           </button>
-          <div class="shell__title-wrap">
+          <div
+            v-if="!hideShellHeaderTitle && !showProfilesHeader && !showDashboardHeader && !showContactHeader && !showDocsHeader"
+            class="shell__title-wrap"
+          >
             <h1
               class="shell__title"
               :id="route.name === 'dashboard' && createLobbyOpen ? 'create-lobby-title' : undefined"
@@ -239,99 +294,159 @@ onUnmounted(() => {
               {{ pageTitle }}
             </h1>
           </div>
+          <div v-else-if="showDashboardHeader" class="shell__title-wrap shell__title-wrap--filters">
+            <div
+              class="segmented-filter segmented-filter--inline segmented-filter--compact segmented-filter--scroll shell-dashboard-filters"
+              role="radiogroup"
+              aria-label="Показать лобби"
+            >
+              <button
+                v-for="opt in FILTER_OPTIONS"
+                :key="opt.value"
+                type="button"
+                role="radio"
+                class="segmented-filter__btn"
+                :class="{ 'segmented-filter__btn--active': lobbyFilter === opt.value }"
+                :aria-checked="lobbyFilter === opt.value"
+                @click="setDashboardFilter(opt.value)"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
+          </div>
+          <div v-else-if="showContactHeader" class="shell__title-wrap shell__title-wrap--filters">
+            <div
+              class="segmented-filter segmented-filter--compact shell-contact-filters"
+              role="radiogroup"
+              aria-label="Категория"
+            >
+              <button
+                v-for="opt in CONTACT_CATEGORY_OPTIONS"
+                :key="opt.value"
+                type="button"
+                role="radio"
+                class="segmented-filter__btn"
+                :class="{ 'segmented-filter__btn--active': contactCategory === opt.value }"
+                :aria-checked="contactCategory === opt.value"
+                @click="setContactCategory(opt.value)"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
+          </div>
+          <div v-else-if="showDocsHeader" class="shell__title-wrap shell__title-wrap--filters">
+            <div
+              ref="docsHeaderNavRef"
+              class="segmented-filter segmented-filter--compact segmented-filter--scroll shell-docs-sections"
+              role="tablist"
+              aria-label="Разделы инструкции"
+            >
+              <button
+                v-for="section in docsUi.sections"
+                :key="section.id"
+                type="button"
+                role="tab"
+                class="segmented-filter__btn"
+                :class="{ 'segmented-filter__btn--active': docsActiveSection === section.id }"
+                :aria-selected="docsActiveSection === section.id"
+                :data-docs-section="section.id"
+                @click="docsUi.scrollToSection(section.id)"
+              >
+                {{ section.label }}
+              </button>
+            </div>
+          </div>
           <div v-if="showAccountActions" class="shell__header-actions">
             <button type="button" class="shell__logout" @click="logout">Выйти</button>
           </div>
-          <div v-else-if="showProfilesHeader" class="shell__header-actions shell__header-actions--profiles">
-            <div class="shell-dashboard-filters shell-profiles-filters" role="radiogroup" aria-label="Показать игроков">
+          <div v-else-if="showProfilesHeader" class="shell__profiles-header">
+            <div
+              class="segmented-filter segmented-filter--inline segmented-filter--compact segmented-filter--scroll shell-profiles-filters"
+              role="radiogroup"
+              aria-label="Показать игроков"
+            >
               <button
                 v-for="opt in PROFILES_FILTER_OPTIONS"
                 :key="opt.value"
                 type="button"
                 role="radio"
-                class="shell-dashboard-filters__btn"
-                :class="{ 'shell-dashboard-filters__btn--active': profilesPlayerFilter === opt.value }"
+                class="segmented-filter__btn"
+                :class="{ 'segmented-filter__btn--active': profilesPlayerFilter === opt.value }"
                 :aria-checked="profilesPlayerFilter === opt.value"
                 @click="setProfilesPlayerFilter(opt.value)"
               >
                 {{ opt.label }}
               </button>
             </div>
-            <input
-              v-model="profilesToolbarSearch"
-              class="shell-profiles-search"
-              type="search"
-              name="player_search"
-              placeholder="Поиск игрока"
-              autocomplete="off"
-              aria-label="Поиск игрока"
-            />
-            <button type="button" class="shell-profiles-create" @click="profilesUi.requestOpenCreate">
-              <span class="shell-profiles-create-plus" aria-hidden="true">+</span>
-              Создать профиль
-            </button>
-            <div class="shell-profiles-view-switch" role="toolbar" aria-label="Режим отображения карточек игроков">
+            <span class="shell__profiles-linebreak" aria-hidden="true" />
+            <div
+              class="segmented-filter segmented-filter--inline segmented-filter--compact shell-profiles-view-switch"
+              role="radiogroup"
+              aria-label="Режим отображения карточек игроков"
+            >
               <button
                 type="button"
-                class="shell-profiles-view-btn"
-                :class="{ 'shell-profiles-view-btn--active': profilesViewMode === 'grid' }"
-                aria-label="Плитка"
-                title="Плитка"
-                @click="profilesUi.setViewMode('grid')"
-              >
-                <img class="shell-profiles-view-btn__icon" :src="profilesGridIcon" alt="" aria-hidden="true" />
-              </button>
-              <button
-                type="button"
-                class="shell-profiles-view-btn"
-                :class="{ 'shell-profiles-view-btn--active': profilesViewMode === 'compact' }"
+                role="radio"
+                class="segmented-filter__btn segmented-filter__btn--icon"
+                :class="{ 'segmented-filter__btn--active': profilesViewMode === 'compact' }"
+                :aria-checked="profilesViewMode === 'compact'"
                 aria-label="Список"
                 title="Список"
                 @click="profilesUi.setViewMode('compact')"
               >
                 <img class="shell-profiles-view-btn__icon" :src="profilesListIcon" alt="" aria-hidden="true" />
               </button>
+              <button
+                type="button"
+                role="radio"
+                class="segmented-filter__btn segmented-filter__btn--icon"
+                :class="{ 'segmented-filter__btn--active': profilesViewMode === 'grid' }"
+                :aria-checked="profilesViewMode === 'grid'"
+                aria-label="Плитка"
+                title="Плитка"
+                @click="profilesUi.setViewMode('grid')"
+              >
+                <img class="shell-profiles-view-btn__icon" :src="profilesGridIcon" alt="" aria-hidden="true" />
+              </button>
             </div>
-            <div class="shell-profiles-mobile-footer">
-              <p class="shell-profiles-mobile-footer__note" aria-live="polite">
-                Всего игроков: <span class="shell-profiles-mobile-footer__num">{{ profilesPlayerTotal }}</span>
-              </p>
-              <button type="button" class="shell-profiles-mobile-create" @click="profilesUi.requestOpenCreate">
+            <div class="shell__profiles-toolbar">
+              <input
+                v-model="profilesToolbarSearch"
+                class="shell-profiles-search"
+                type="search"
+                name="player_search"
+                placeholder="Поиск игрока"
+                autocomplete="off"
+                aria-label="Поиск игрока"
+              />
+              <button type="button" class="shell-profiles-create" @click="profilesUi.requestOpenCreate">
                 Создать профиль
               </button>
+              <div class="shell-profiles-mobile-footer">
+                <p class="shell-profiles-mobile-footer__note" aria-live="polite">
+                  Всего игроков: <span class="shell-profiles-mobile-footer__num">{{ profilesPlayerTotal }}</span>
+                </p>
+                <button type="button" class="shell-profiles-mobile-create" @click="profilesUi.requestOpenCreate">
+                  Создать профиль
+                </button>
+              </div>
             </div>
           </div>
           <div
             v-else-if="showDashboardHeader"
             class="shell__header-actions shell__header-actions--dashboard"
             role="toolbar"
-            aria-label="Фильтр и поиск списка лобби"
+            aria-label="Поиск списка лобби"
           >
-            <div class="shell-dashboard-toolbar">
-              <div class="shell-dashboard-filters" role="radiogroup" aria-label="Показать лобби">
-                <button
-                  v-for="opt in FILTER_OPTIONS"
-                  :key="opt.value"
-                  type="button"
-                  role="radio"
-                  class="shell-dashboard-filters__btn"
-                  :class="{ 'shell-dashboard-filters__btn--active': lobbyFilter === opt.value }"
-                  :aria-checked="lobbyFilter === opt.value"
-                  @click="setDashboardFilter(opt.value)"
-                >
-                  {{ opt.label }}
-                </button>
-              </div>
-              <input
-                v-model="dashboardUi.tournamentSearchQuery"
-                class="shell-profiles-search shell-dashboard-search"
-                type="search"
-                name="tournament_search"
-                placeholder="Поиск по названию турнира"
-                autocomplete="off"
-                aria-label="Поиск лобби по названию турнира"
-              />
-            </div>
+            <input
+              v-model="dashboardUi.tournamentSearchQuery"
+              class="shell-profiles-search shell-dashboard-search"
+              type="search"
+              name="tournament_search"
+              placeholder="Поиск по названию турнира"
+              autocomplete="off"
+              aria-label="Поиск лобби по названию турнира"
+            />
           </div>
           <div
             v-else-if="showCardDesignHeader"
@@ -339,14 +454,18 @@ onUnmounted(() => {
             role="toolbar"
             aria-label="Фильтр списка плашек"
           >
-            <div class="shell-dashboard-filters" role="radiogroup" aria-label="Показать плашки">
+            <div
+              class="segmented-filter segmented-filter--inline segmented-filter--compact shell-dashboard-filters"
+              role="radiogroup"
+              aria-label="Показать плашки"
+            >
               <button
                 v-for="opt in CARD_DESIGN_FILTER_OPTIONS"
                 :key="opt.value"
                 type="button"
                 role="radio"
-                class="shell-dashboard-filters__btn"
-                :class="{ 'shell-dashboard-filters__btn--active': designFilter === opt.value }"
+                class="segmented-filter__btn"
+                :class="{ 'segmented-filter__btn--active': designFilter === opt.value }"
                 :aria-checked="designFilter === opt.value"
                 @click="setCardDesignFilter(opt.value)"
               >
@@ -358,25 +477,20 @@ onUnmounted(() => {
             <LobbyManageHeaderToolbar />
           </div>
         </header>
-        <div class="shell__body" :class="{ 'shell__body--flush': isFlushContentRoute }">
+        <div
+          class="shell__body"
+          :class="{
+            'shell__body--flush': isFlushContentRoute,
+            'shell__body--landing': route.name === 'landing',
+            'shell__body--docs': route.name === 'docs',
+            'shell__body--contact': route.name === 'contact',
+          }"
+        >
           <RouterView />
         </div>
       </main>
     </div>
     <ProfileSettingsModal />
-    <FeedbackModal />
-    <Teleport to="body">
-      <Transition name="shell-feedback-toast">
-        <p
-          v-if="toastVisible"
-          class="shell-feedback-toast"
-          role="status"
-          aria-live="polite"
-        >
-          {{ toastMessage }}
-        </p>
-      </Transition>
-    </Teleport>
   </div>
 </template>
 
@@ -431,12 +545,20 @@ onUnmounted(() => {
   justify-content: space-between;
   gap: 1rem;
   padding: var(--shell-header-pad-y) 0.875rem;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid #e5e7eb;
   box-sizing: border-box;
   min-height: calc(var(--shell-header-row-h) + 2 * var(--shell-header-pad-y));
   overflow: visible;
   position: relative;
   z-index: 40;
+}
+
+.shell__header--landing-mobile {
+  justify-content: flex-start;
+  min-height: calc(var(--shell-header-row-h) + 2 * var(--shell-header-pad-y));
+  padding: var(--shell-header-pad-y) 0.625rem;
+  border-bottom: none;
+  background: transparent;
 }
 
 .shell__header-actions {
@@ -481,26 +603,66 @@ onUnmounted(() => {
   color: #9d174d;
 }
 
-.shell__header-actions--profiles {
+.shell__profiles-header {
   flex: 1 1 auto;
   min-width: 0;
-  margin-left: auto;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 0.65rem;
+  display: flex;
   align-items: center;
+  gap: 0.5rem;
+  flex-wrap: nowrap;
+}
+
+.shell__profiles-linebreak {
+  display: none;
+}
+
+.shell__profiles-toolbar {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: nowrap;
+}
+
+.shell__profiles-header .shell-profiles-view-switch {
+  order: 1;
+}
+
+.shell__profiles-header .shell-profiles-filters {
+  order: 2;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.shell__profiles-toolbar {
+  order: 3;
+}
+
+.shell__profiles-header .shell-profiles-view-switch,
+.shell__profiles-header .shell-profiles-filters,
+.shell__profiles-toolbar .shell-profiles-create {
+  flex: 0 0 auto;
+}
+
+.shell__profiles-toolbar .shell-profiles-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  max-width: none;
+}
+
+.shell__title-wrap--filters {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.shell__title-wrap--filters .shell-dashboard-filters {
   max-width: 100%;
 }
 
 .shell-profiles-filters {
   flex-shrink: 0;
-}
-
-.shell__header-actions--profiles .shell-profiles-search {
-  flex: 1 1 auto;
-  min-width: 0;
-  width: auto;
-  max-width: none;
 }
 
 .shell-profiles-total {
@@ -520,58 +682,24 @@ onUnmounted(() => {
 }
 
 .shell__header-actions--dashboard {
-  margin-left: auto;
-  justify-content: flex-end;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: 0;
+  justify-content: stretch;
   max-width: 100%;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 0.5rem;
 }
 
 .shell-dashboard-filters {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
+  flex-shrink: 0;
 }
 
-.shell-dashboard-filters__btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0;
-  min-height: var(--shell-header-row-h);
-  height: var(--shell-header-row-h);
-  padding: 0 0.65rem;
-  font: inherit;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: #374151;
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  cursor: pointer;
-  white-space: nowrap;
-  box-sizing: border-box;
-}
-
-.shell-dashboard-filters__btn:hover:not(.shell-dashboard-filters__btn--active):not(:disabled) {
-  background: #f9fafb;
-  border-color: #d1d5db;
-}
-
-.shell-dashboard-filters__btn--active {
-  color: #1d4ed8;
-  background: #eff6ff;
-  border-color: #93c5fd;
-}
-
-.shell-dashboard-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  max-width: 100%;
+.shell__header-actions--dashboard .shell-dashboard-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  max-width: none;
 }
 
 .shell-profiles-search,
@@ -613,10 +741,9 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.35rem;
   color: #2f6feb;
   background: #eff6ff;
-  border: 1px solid #93c5fd;
+  border: none;
   cursor: pointer;
   white-space: nowrap;
   line-height: 1;
@@ -624,56 +751,13 @@ onUnmounted(() => {
 
 .shell-profiles-create:hover {
   background: #dbeafe;
-  border-color: #60a5fa;
-}
-
-.shell-profiles-create-plus {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.25rem;
-  height: 1.25rem;
-  font-size: 1.1rem;
-  font-weight: 500;
-  line-height: 1;
 }
 
 .shell-profiles-view-switch {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
+  flex-shrink: 0;
 }
 
-.shell-profiles-view-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--shell-header-row-h);
-  height: var(--shell-header-row-h);
-  min-height: var(--shell-header-row-h);
-  padding: 0;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  background: #fff;
-  cursor: pointer;
-}
-
-.shell-profiles-view-btn:hover {
-  background: #f9fafb;
-  border-color: #d1d5db;
-}
-
-.shell-profiles-view-btn:focus-visible {
-  outline: 2px solid #2f6feb;
-  outline-offset: 2px;
-}
-
-.shell-profiles-view-btn--active {
-  background: #eff6ff;
-  border-color: #93c5fd;
-}
-
-.shell-profiles-view-btn__icon {
+.shell-profiles-view-switch .shell-profiles-view-btn__icon {
   width: 1rem;
   height: 1rem;
   display: block;
@@ -681,7 +765,7 @@ onUnmounted(() => {
     contrast(89%);
 }
 
-.shell-profiles-view-btn--active .shell-profiles-view-btn__icon {
+.shell-profiles-view-switch .segmented-filter__btn--active .shell-profiles-view-btn__icon {
   filter: brightness(0) saturate(100%) invert(36%) sepia(70%) saturate(3975%) hue-rotate(210deg) brightness(98%)
     contrast(95%);
 }
@@ -716,6 +800,39 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+
+.shell__body.shell__body--landing {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  scrollbar-gutter: auto;
+}
+
+.shell__body.shell__body--landing::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+
+.shell__panel--docs .shell__header {
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.shell__body.shell__body--docs {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.shell__body.shell__body--contact {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
 
 @media (max-width: 1024px) {
@@ -771,16 +888,9 @@ onUnmounted(() => {
     align-items: center;
   }
 
-  .shell__header-actions--dashboard .shell-dashboard-toolbar {
-    flex: 1 1 100%;
-    justify-content: flex-start;
-    width: 100%;
-  }
-
-  .shell-dashboard-toolbar {
+  .shell__header-actions:has(.shell-dashboard-search) {
     flex-wrap: nowrap;
     align-items: center;
-    gap: 0.5rem;
   }
 
   .shell__body {
@@ -947,6 +1057,11 @@ onUnmounted(() => {
   border: 0;
 }
 
+.shell--mobile .shell__title-wrap {
+  grid-area: title;
+  min-width: 0;
+}
+
 .shell--mobile .shell__title {
   grid-area: title;
   font-size: 1.125rem;
@@ -981,46 +1096,175 @@ onUnmounted(() => {
   flex: 0 0 auto;
 }
 
-.shell--mobile .shell-profiles-filters {
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  overflow-y: hidden;
-  max-width: 100%;
-  padding-bottom: 2px;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-
-.shell--mobile .shell-profiles-filters::-webkit-scrollbar {
-  display: none;
-}
-
-.shell--mobile .shell__header-actions--profiles {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+.shell--mobile .shell__header:has(.shell__header-actions--dashboard) {
+  grid-template-columns: var(--shell-header-row-h) minmax(0, 1fr);
   grid-template-areas:
-    'filters filters'
-    'search switch';
-  gap: 0.55rem;
-  width: 100%;
-  min-width: 0;
-  padding-top: 0.15rem;
+    'menu filters'
+    'search search';
+  align-items: start;
+  gap: 0.5rem 0.65rem;
 }
 
-.shell--mobile .shell-profiles-filters {
+.shell--mobile .shell__header:has(.shell__header-actions--dashboard) .shell__title-wrap--filters {
   grid-area: filters;
+  min-width: 0;
   width: 100%;
 }
 
-.shell--mobile .shell__header-actions--profiles .shell-profiles-search {
+.shell--mobile .shell__header:has(.shell__header-actions--dashboard) .shell__header-actions--dashboard {
   grid-area: search;
   width: 100%;
   min-width: 0;
+  flex: none;
+}
+
+.shell--mobile .shell__header:has(.shell__header-actions--dashboard) .shell-dashboard-search {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+}
+
+.shell--mobile .shell__header:has(.shell-contact-filters) {
+  display: grid;
+  grid-template-columns: var(--shell-header-row-h) minmax(0, 1fr);
+  grid-template-areas: 'menu filters';
+  grid-template-rows: auto;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: calc(var(--shell-header-row-h) + 2 * var(--shell-header-pad-y));
+  padding: var(--shell-header-pad-y) 0.625rem;
+  border-bottom: 1px solid #e5e7eb;
+  background: #ffffff;
+}
+
+.shell--mobile .shell__header:has(.shell-contact-filters) .shell__title-wrap--filters {
+  grid-area: filters;
+  display: flex;
+  align-items: center;
+  align-self: center;
+  min-width: 0;
+  width: 100%;
+}
+
+.shell--mobile .shell__header:has(.shell-contact-filters) .shell-contact-filters {
+  width: 100%;
+  max-width: 100%;
+  height: var(--shell-header-row-h);
+  padding: 0.15rem;
+  box-sizing: border-box;
+  align-items: center;
+}
+
+.shell--mobile .shell__header:has(.shell-contact-filters) .shell-contact-filters .segmented-filter__btn {
+  flex: 1 1 0;
+  min-width: 0;
+  height: calc(var(--shell-header-row-h) - 0.3rem);
+  padding: 0 0.3rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8125rem;
+  line-height: 1.1;
+}
+
+.shell--mobile .shell__header:has(.shell-docs-sections) {
+  display: grid;
+  grid-template-columns: var(--shell-header-row-h) minmax(0, 1fr);
+  grid-template-areas: 'menu filters';
+  grid-template-rows: auto;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: calc(var(--shell-header-row-h) + 2 * var(--shell-header-pad-y));
+  padding: var(--shell-header-pad-y) 0.625rem;
+  border-bottom: 1px solid #e5e7eb;
+  background: #ffffff;
+}
+
+.shell--mobile .shell__header:has(.shell-docs-sections) .shell__title-wrap--filters {
+  grid-area: filters;
+  display: flex;
+  align-items: center;
+  align-self: center;
+  min-width: 0;
+  width: 100%;
+}
+
+.shell--mobile .shell__header:has(.shell-docs-sections) .shell-docs-sections {
+  width: 100%;
+  max-width: 100%;
+  height: var(--shell-header-row-h);
+  padding: 0.15rem;
+  padding-bottom: 0.15rem;
+  box-sizing: border-box;
+  align-items: center;
+}
+
+.shell--mobile .shell__header:has(.shell-docs-sections) .shell-docs-sections .segmented-filter__btn {
+  flex: 0 0 auto;
+  height: calc(var(--shell-header-row-h) - 0.3rem);
+  padding: 0 0.55rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8125rem;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.shell--mobile .shell__header:has(.shell__profiles-header) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  align-content: flex-start;
+  column-gap: 0.5rem;
+  row-gap: 0.25rem;
+}
+
+.shell--mobile .shell__header:has(.shell__profiles-header) .shell__menu-toggle {
+  order: 1;
+}
+
+.shell--mobile .shell__profiles-header {
+  display: contents;
+}
+
+.shell--mobile .shell__profiles-toolbar {
+  display: contents;
+}
+
+.shell--mobile .shell-profiles-filters {
+  order: 2;
+  flex: 0 1 auto;
+  width: auto;
+  max-width: calc(100% - var(--shell-header-row-h) - 0.5rem);
+  min-width: 0;
+  padding-bottom: 0;
+}
+
+.shell--mobile .shell__profiles-linebreak {
+  display: block;
+  order: 3;
+  flex: 0 0 100%;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.shell--mobile .shell-profiles-view-switch {
+  order: 4;
+  flex: 0 0 auto;
+}
+
+.shell--mobile .shell-profiles-search {
+  order: 5;
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+  max-width: none;
   margin: 0;
 }
 
-.shell--mobile .shell-profiles-create {
+.shell--mobile .shell__profiles-toolbar .shell-profiles-create {
   display: none;
 }
 
@@ -1096,23 +1340,23 @@ onUnmounted(() => {
   border-color: #9ca3af;
 }
 
-.shell--mobile .shell-profiles-view-switch {
-  grid-area: switch;
-}
-
-.shell--mobile .shell-profiles-filters .shell-dashboard-filters__btn {
-  flex: 0 0 auto;
-}
-
 .shell--mobile .shell__body {
   padding: 4px;
 }
 
-.shell--mobile:has(.shell__header-actions--profiles) .shell__body {
+.shell--mobile:has(.shell__profiles-header) .shell__body {
   padding-bottom: calc(6rem + env(safe-area-inset-bottom, 0px));
 }
 
 .shell--mobile .shell__body.shell__body--flush {
+  padding: 0;
+}
+
+.shell--mobile .shell__body.shell__body--docs {
+  padding: 0;
+}
+
+.shell--mobile .shell__body.shell__body--contact {
   padding: 0;
 }
 
@@ -1124,35 +1368,5 @@ onUnmounted(() => {
   .shell--mobile .shell__sidebar {
     transition: none;
   }
-}
-
-.shell-feedback-toast {
-  position: fixed;
-  left: 50%;
-  bottom: max(1.25rem, env(safe-area-inset-bottom));
-  z-index: 3200;
-  transform: translateX(-50%);
-  margin: 0;
-  padding: 0.65rem 1rem;
-  max-width: min(22rem, calc(100vw - 2rem));
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: #111827;
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  text-align: center;
-  pointer-events: none;
-}
-
-.shell-feedback-toast-enter-active,
-.shell-feedback-toast-leave-active {
-  transition: opacity 0.18s ease, transform 0.18s ease;
-}
-
-.shell-feedback-toast-enter-from,
-.shell-feedback-toast-leave-to {
-  opacity: 0;
-  transform: translateX(-50%) translateY(0.35rem);
 }
 </style>

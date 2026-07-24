@@ -7,11 +7,9 @@ import { listMyLobbies, type GameLobby } from '@/api/lobbies'
 import goLobbyIcon from '@/assets/icons/go.svg?url'
 import { useAuthStore } from '@/stores/auth'
 import { useProfileSettingsModalStore } from '@/stores/profileSettingsModal'
-import { useFeedbackModalStore } from '@/stores/feedbackModal'
 
 const { token } = storeToRefs(useAuthStore())
 const profileSettingsModal = useProfileSettingsModalStore()
-const feedbackModal = useFeedbackModalStore()
 
 const profile = ref<UserMe | null>(null)
 const myLobbies = ref<GameLobby[]>([])
@@ -179,13 +177,12 @@ watch(token, loadProfile, { immediate: true })
             </div>
           </div>
           <div class="account__head-actions">
-            <button
-              type="button"
+            <RouterLink
               class="account__settings-btn account__settings-btn--secondary"
-              @click.stop="feedbackModal.open()"
+              :to="{ name: 'contact' }"
             >
               Обратная связь
-            </button>
+            </RouterLink>
             <button
               type="button"
               class="account__settings-btn"
@@ -487,6 +484,7 @@ watch(token, loadProfile, { immediate: true })
   font-weight: 500;
   color: #374151;
   text-align: center;
+  text-decoration: none;
   background: transparent;
   border: 1px solid #e5e7eb;
   border-radius: 8px;

@@ -1622,17 +1622,13 @@ watch(
   },
 )
 
-watch(designPickerOpen, (open) => {
-  if (open) {
-    lobbyManageUi.setDesignPickerLobbyTitle(lobbyDisplayName.value)
-  }
-})
-
-watch(lobbyDisplayName, (name) => {
-  if (designPickerOpen.value) {
+watch(
+  lobbyDisplayName,
+  (name) => {
     lobbyManageUi.setDesignPickerLobbyTitle(name)
-  }
-})
+  },
+  { immediate: true },
+)
 
 watch(lobbyId, () => {
   lobbyManageUi.closeDesignPicker()

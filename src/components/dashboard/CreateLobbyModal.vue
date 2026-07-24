@@ -961,6 +961,9 @@ onUnmounted(() => {
 .create-lobby-modal__picker-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: max-content;
+  align-content: start;
+  align-items: start;
   gap: 0.5rem;
   overflow-y: auto;
   min-height: 0;
@@ -979,6 +982,8 @@ onUnmounted(() => {
   gap: 0.5rem;
   min-width: 0;
   width: 100%;
+  height: auto;
+  align-self: start;
   margin: 0;
   padding: 0.55rem 0.6rem;
   font: inherit;
