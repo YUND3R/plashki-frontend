@@ -156,6 +156,11 @@ function mockPreviewPlayer(
   }
 }
 
+function seatPhotoStyle(photo: string) {
+  const pos = landingPhotoObjectPosition(photo)
+  return pos ? { objectPosition: pos } : undefined
+}
+
 function designPreviewSeats(preview: (typeof showcaseDesigns)[number]['preview']): LobbyPlayer[] {
   return [mockPreviewPlayer(preview.nickname, preview.seat, preview.role, preview.photo)]
 }
@@ -274,11 +279,7 @@ function designPreviewSeats(preview: (typeof showcaseDesigns)[number]['preview']
                       v-if="seat.photo"
                       :src="seat.photo"
                       alt=""
-                      :style="
-                        landingPhotoObjectPosition(seat.photo)
-                          ? { objectPosition: landingPhotoObjectPosition(seat.photo) }
-                          : undefined
-                      "
+                      :style="seatPhotoStyle(seat.photo)"
                     />
                   </span>
                   <span class="landing__seat-nick">{{ seat.nick }}</span>

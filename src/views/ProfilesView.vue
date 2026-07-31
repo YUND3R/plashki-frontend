@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import { RouterLink } from 'vue-router'
 import { me } from '@/api/auth'
 import { collectGomafiaImportedPlayerCardIds } from '@/api/lobbies'
 import { deletePlayerCard, listPlayerCards, type PlayerCard } from '@/api/playerCards'
