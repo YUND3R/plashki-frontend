@@ -15,6 +15,7 @@ import type { DashboardLobbyFilter } from '@/stores/dashboardUi'
 import deleteLobbyIcon from '@/assets/icons/delete.svg?url'
 import goLobbyIcon from '@/assets/icons/go.svg?url'
 import CreateLobbyModal from '@/components/dashboard/CreateLobbyModal.vue'
+import AppPageError from '@/components/common/AppPageError.vue'
 
 type DashboardLobbyEntry = {
   id: string
@@ -349,7 +350,11 @@ async function confirmDeleteLobby() {
 
     <template v-else>
     <div class="dashboard__actions">
-      <button type="button" class="dashboard-lobby-card dashboard-lobby-card--action" @click="openCreateModal">
+      <button
+        type="button"
+        class="dashboard-lobby-card dashboard-lobby-card--action dashboard-lobby-card--action-create"
+        @click="openCreateModal"
+      >
         <span class="dashboard-lobby-card__icon" aria-hidden="true">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path
@@ -368,7 +373,7 @@ async function confirmDeleteLobby() {
 
       <button
         type="button"
-        class="dashboard-lobby-card dashboard-lobby-card--action"
+        class="dashboard-lobby-card dashboard-lobby-card--action dashboard-lobby-card--action-import"
         :aria-expanded="importOpen"
         @click="openImportForm"
       >
@@ -414,7 +419,9 @@ async function confirmDeleteLobby() {
     </div>
 
     <p v-if="loading" class="dashboard__text">Загружаем лобби из базы…</p>
-    <p v-else-if="loadError" class="dashboard__text dashboard__text--error" role="alert">{{ loadError }}</p>
+    <div v-else-if="loadError" class="dashboard__page-error">
+      <AppPageError :message="loadError" @retry="refreshLobbies" />
+    </div>
 
     <div v-if="savedLobbies.length || tournamentSearchQuery.trim()" class="dashboard__created">
       <div class="dashboard__created-head">
@@ -631,7 +638,7 @@ async function confirmDeleteLobby() {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 0.75rem;
+  gap: 0.85rem;
 }
 
 .dashboard-lobby-card {
@@ -647,21 +654,78 @@ async function confirmDeleteLobby() {
   color: inherit;
   background: #fff;
   border: 1px solid #e5e7eb;
-  border-radius: 14px;
+  border-radius: 16px;
   box-sizing: border-box;
 }
 
 .dashboard-lobby-card--action {
+  position: relative;
   min-width: 0;
-  min-height: 6.2rem;
+  min-height: 7rem;
   align-items: center;
-  padding: 1.15rem;
+  padding: 1.2rem 1.15rem;
+  overflow: hidden;
+  border: none;
+  box-shadow: none;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease;
+}
+
+.dashboard-lobby-card--action-create {
+  background:
+    radial-gradient(circle at 0% 100%, rgba(64, 118, 255, 0.14), transparent 48%),
+    linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+.dashboard-lobby-card--action-import {
+  background:
+    radial-gradient(circle at 0% 100%, rgba(137, 119, 254, 0.15), transparent 48%),
+    linear-gradient(180deg, #ffffff 0%, #f7f5ff 100%);
+}
+
+.dashboard-lobby-card--action:not(.dashboard-lobby-card--action-soon):hover {
+  transform: translateY(-1px);
+  border: none;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+}
+
+.dashboard-lobby-card--action-create:hover {
+  background:
+    radial-gradient(circle at 0% 100%, rgba(64, 118, 255, 0.18), transparent 52%),
+    linear-gradient(180deg, #ffffff 0%, #eff6ff 100%);
+}
+
+.dashboard-lobby-card--action-import:hover {
+  background:
+    radial-gradient(circle at 0% 100%, rgba(137, 119, 254, 0.2), transparent 52%),
+    linear-gradient(180deg, #ffffff 0%, #f3f0ff 100%);
+}
+
+.dashboard-lobby-card--action-create:hover .dashboard-lobby-card__icon {
+  background: #fff;
+  color: #2563eb;
+}
+
+.dashboard-lobby-card--action-import:hover .dashboard-lobby-card__icon--import {
+  background: #fff;
+  color: #7c3aed;
+}
+
+.dashboard-lobby-card--action .dashboard-lobby-card__icon,
+.dashboard-lobby-card--action .dashboard-lobby-card__icon--import,
+.dashboard-lobby-card--action .dashboard-lobby-card__icon--mafuniverse {
+  background: #fff;
 }
 
 .dashboard-lobby-card--action-soon {
   cursor: not-allowed;
-  background: #f9fafb;
-  border-color: #e5e7eb;
+  background:
+    radial-gradient(circle at 0% 100%, rgba(148, 163, 184, 0.08), transparent 48%),
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border: none;
+  box-shadow: none;
 }
 
 .dashboard-lobby-card--action-soon .dashboard-lobby-card__title,
@@ -673,13 +737,15 @@ async function confirmDeleteLobby() {
   flex-shrink: 0;
   align-self: center;
   margin-left: auto;
-  padding: 0.35rem 0.7rem;
-  font-size: 0.8125rem;
-  font-weight: 500;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   line-height: 1;
-  color: #9ca3af;
-  background: #f3f4f6;
-  border-radius: 8px;
+  color: #64748b;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 999px;
 }
 
 @media (min-width: 760px) {
@@ -795,11 +861,21 @@ async function confirmDeleteLobby() {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 2.75rem;
-  height: 2.75rem;
-  border-radius: 12px;
-  background: #eff6ff;
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 14px;
+  background: #fff;
   color: #2f6feb;
+  border: none;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition:
+    background 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s ease;
+}
+
+.dashboard-lobby-card--action:not(.dashboard-lobby-card--action-soon):hover .dashboard-lobby-card__icon {
+  transform: scale(1.03);
 }
 
 .dashboard-lobby-card__icon--saved {
@@ -821,15 +897,13 @@ async function confirmDeleteLobby() {
 }
 
 .dashboard-lobby-card__icon--import {
-  background: #ebe9fe;
-  border: 1px solid #ddd6fe;
+  background: #fff;
   color: #8977fe;
 }
 
 .dashboard-lobby-card__icon--mafuniverse {
-  background: #f3f4f6;
-  border: 1px solid #e5e7eb;
-  color: #9ca3af;
+  background: #fff;
+  color: #94a3b8;
 }
 
 .dashboard-lobby-card__text {
@@ -837,19 +911,20 @@ async function confirmDeleteLobby() {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.4rem;
 }
 
 .dashboard-lobby-card__title {
   font-size: 1.0625rem;
   font-weight: 600;
   color: #111827;
-  line-height: 1.3;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
 }
 
 .dashboard-lobby-card__desc {
   font-size: 0.8125rem;
-  color: #6b7280;
+  color: #64748b;
   line-height: 1.45;
 }
 

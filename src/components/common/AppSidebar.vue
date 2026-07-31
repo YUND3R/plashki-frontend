@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import { RouterLink } from 'vue-router'
+import { computed, ref, watch } from 'vue'
+import { RouterLink, useRoute } from 'vue-router'
 import logoFull from '@/assets/plashki.svg?url'
 import logoCompact from '@/assets/pl.svg?url'
 import iconMyAccount from '@/assets/icons/my_account.svg?url'
@@ -10,6 +10,7 @@ import iconTarifs from '@/assets/icons/tarifs.svg?url'
 import iconDocumentation from '@/assets/icons/documentation.svg?url'
 import iconMessage from '@/assets/icons/messege_with_us.svg?url'
 import iconControl from '@/assets/icons/control.svg?url'
+import iconRatings from '@/assets/icons/ratings.svg?url'
 import iconOverlay from '@/assets/icons/overlay.svg?url'
 const props = withDefaults(defineProps<{ mobileDrawer?: boolean; isAdmin?: boolean }>(), {
   mobileDrawer: false,
@@ -17,6 +18,8 @@ const props = withDefaults(defineProps<{ mobileDrawer?: boolean; isAdmin?: boole
 })
 
 const collapsed = ref(false)
+const route = useRoute()
+const isRatingsActive = computed(() => route.path === '/ratings' || route.path.startsWith('/ratings/'))
 
 watch(
   () => props.mobileDrawer,
@@ -42,6 +45,8 @@ const streamSection = [
   { to: '/card-design', label: 'Дизайн карточек', icon: iconDesignCard },
   { to: '/overlay', label: 'Overlay', icon: iconOverlay },
 ] as const
+
+const ratingsSection = [{ to: '/ratings', label: 'Рейтинги', icon: iconRatings }] as const
 
 const adminSection = [{ to: '/admin/users', label: 'Пользователи', icon: iconProfiles }] as const
 </script>
@@ -109,6 +114,21 @@ const adminSection = [{ to: '/admin/users', label: 'Пользователи', i
         :key="item.to"
         :to="item.to"
         class="sidebar__link"
+        :title="collapsed ? item.label : undefined"
+      >
+        <span class="sidebar__icon" aria-hidden="true">
+          <img class="sidebar__icon-img" :src="item.icon" alt="" width="20" height="20" />
+        </span>
+        <span v-if="!collapsed" class="sidebar__label">{{ item.label }}</span>
+      </RouterLink>
+
+      <p v-if="!collapsed" class="sidebar__group sidebar__group--spaced">Рейтинги</p>
+      <RouterLink
+        v-for="item in ratingsSection"
+        :key="item.to"
+        :to="item.to"
+        class="sidebar__link"
+        :class="{ 'router-link-active': isRatingsActive }"
         :title="collapsed ? item.label : undefined"
       >
         <span class="sidebar__icon" aria-hidden="true">

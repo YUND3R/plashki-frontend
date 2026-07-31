@@ -7,6 +7,8 @@ import { listMyLobbies, type GameLobby } from '@/api/lobbies'
 import goLobbyIcon from '@/assets/icons/go.svg?url'
 import { useAuthStore } from '@/stores/auth'
 import { useProfileSettingsModalStore } from '@/stores/profileSettingsModal'
+import AppGuestPrompt from '@/components/common/AppGuestPrompt.vue'
+import AppPageError from '@/components/common/AppPageError.vue'
 
 const { token } = storeToRefs(useAuthStore())
 const profileSettingsModal = useProfileSettingsModalStore()
@@ -130,25 +132,16 @@ watch(token, loadProfile, { immediate: true })
 
 <template>
   <section class="account" :class="{ 'account--signed': token }">
-    <div v-if="!token" class="account__guest">
-      <p class="account__emoji" aria-hidden="true">😔</p>
-      <p class="account__message">Вы не авторизованы или не зарегистрированы.</p>
-      <div class="account__actions">
-        <RouterLink class="account__btn account__btn--outline" :to="{ name: 'register' }">
-          Регистрация
-        </RouterLink>
-        <RouterLink class="account__btn account__btn--primary" :to="{ name: 'login' }">
-          Вход
-        </RouterLink>
-      </div>
-    </div>
+    <AppGuestPrompt v-if="!token" />
 
     <div v-else class="account__profile">
       <template v-if="loading">
         <p class="account__status">Загрузка…</p>
       </template>
       <template v-else-if="error">
-        <p class="account__status account__status--error" role="alert">{{ error }}</p>
+        <div class="account__page-error">
+          <AppPageError compact :message="error" @retry="loadProfile" />
+        </div>
       </template>
       <template v-else-if="profile">
         <div class="account__head-card">
@@ -285,74 +278,6 @@ watch(token, loadProfile, { immediate: true })
 .account--signed > .account__profile {
   flex: 1;
   min-height: 0;
-}
-
-.account__guest {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1.25rem;
-  max-width: none;
-  transform: translateY(10px);
-}
-
-.account__emoji {
-  margin: 0;
-  font-size: 2rem;
-  line-height: 1;
-}
-
-.account__message {
-  margin: 0;
-  font-size: 1.0625rem;
-  font-weight: 500;
-  color: #374151;
-  line-height: 1.5;
-  white-space: nowrap;
-}
-
-.account__actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 0.65rem;
-}
-
-.account__btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 8.5rem;
-  padding: 0.55rem 1.15rem;
-  font-size: 0.9375rem;
-  font-weight: 500;
-  text-decoration: none;
-  border-radius: 8px;
-  border: 1px solid transparent;
-  box-sizing: border-box;
-}
-
-.account__btn--primary {
-  color: #fff;
-  background: #2f6feb;
-  border-color: #2f6feb;
-}
-
-.account__btn--primary:hover {
-  background: #2563d4;
-  border-color: #2563d4;
-}
-
-.account__btn--outline {
-  color: #2f6feb;
-  background: #fff;
-  border-color: #d1d5db;
-}
-
-.account__btn--outline:hover {
-  background: #f9fafb;
-  border-color: #9ca3af;
 }
 
 .account__profile {

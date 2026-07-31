@@ -18,8 +18,9 @@ import {
   formatDesignRentalLabel,
 } from '@/utils/overlayDesignPricing'
 import { enrichLobbyPhotoLayouts } from '@/utils/overlayPhotoLayoutBridge'
+import { AUTH_REQUIRED_MESSAGE } from '@/utils/apiErrorMessage'
 
-const AUTH_REQUIRED_TEXT = 'Авторизуйтесь или зарегистрируйтесь.'
+const AUTH_REQUIRED_TEXT = AUTH_REQUIRED_MESSAGE
 
 type UseCardDesignPickerOptions = {
   onSaved?: () => void

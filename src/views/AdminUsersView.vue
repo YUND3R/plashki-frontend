@@ -4,6 +4,7 @@ import { listAdminUsers, me, type AdminUser } from '@/api/auth'
 import type { AdminUserListParams } from '@/api/listQuery'
 import { useDebouncedRef } from '@/composables/useDebouncedRef'
 import AdminFilterSelect from '@/components/admin/AdminFilterSelect.vue'
+import AppPageError from '@/components/common/AppPageError.vue'
 
 const PAGE_SIZE = 50
 
@@ -214,10 +215,12 @@ onMounted(() => {
     </div>
 
     <p v-if="loading" class="admin-users__status">Загружаем список пользователей…</p>
-    <p v-else-if="forbidden" class="admin-users__status admin-users__status--error" role="alert">
-      Доступ только для ADMIN.
-    </p>
-    <p v-else-if="error" class="admin-users__status admin-users__status--error" role="alert">{{ error }}</p>
+    <div v-else-if="forbidden" class="admin-users__page-error">
+      <AppPageError title="Нет доступа" message="Доступ только для ADMIN." :show-auth-actions="false" />
+    </div>
+    <div v-else-if="error" class="admin-users__page-error">
+      <AppPageError :message="error" @retry="loadAdminUsers" />
+    </div>
 
     <div v-else-if="users.length" class="admin-users__table-wrap">
       <table class="admin-users__table">

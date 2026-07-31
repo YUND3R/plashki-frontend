@@ -143,19 +143,24 @@ function onOverlayPointerDown(e: PointerEvent) {
 .imported-pmodal {
   position: fixed;
   inset: 0;
-  z-index: 340;
+  z-index: 3000;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 1rem;
+  padding: max(0.75rem, env(safe-area-inset-top, 0px))
+    max(0.75rem, env(safe-area-inset-right, 0px))
+    max(0.75rem, env(safe-area-inset-bottom, 0px))
+    max(0.75rem, env(safe-area-inset-left, 0px));
   pointer-events: none;
+  box-sizing: border-box;
 }
 
 .imported-pmodal__overlay {
   position: absolute;
   inset: 0;
-  background: rgba(17, 24, 39, 0.5);
+  background: var(--modal-backdrop);
   pointer-events: auto;
+  animation: modal-overlay-in 0.18s ease;
 }
 
 .imported-pmodal__card {
@@ -167,33 +172,40 @@ function onOverlayPointerDown(e: PointerEvent) {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: #fff;
-  border-radius: 12px;
-  border: 1px solid #e5e7eb;
-  padding: 0.95rem;
+  background: var(--modal-panel-bg);
+  border-radius: var(--modal-panel-radius);
+  border: 1px solid var(--modal-panel-border);
+  box-shadow: var(--modal-panel-shadow);
+  padding: 0;
   box-sizing: border-box;
   pointer-events: auto;
+  animation: modal-panel-in 0.28s var(--modal-ease-out);
 }
 
 .imported-pmodal__head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 0.75rem;
   flex-shrink: 0;
+  padding: 1.2rem var(--modal-content-x) 1rem;
+  border-bottom: 1px solid var(--modal-head-border);
 }
 
 .imported-pmodal__title {
   margin: 0;
-  font-size: 1rem;
+  font-size: var(--modal-title-size);
+  font-weight: 600;
   color: #111827;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
 }
 
 .imported-pmodal__close {
-  border: 1px solid #e5e7eb;
+  border: none;
   background: transparent;
   color: #6b7280;
-  border-radius: 8px;
+  border-radius: 10px;
   width: 2.25rem;
   height: 2.25rem;
   padding: 0;
@@ -202,11 +214,17 @@ function onOverlayPointerDown(e: PointerEvent) {
   line-height: 1;
   cursor: pointer;
   flex-shrink: 0;
+  transition: color 0.15s ease, background-color 0.15s ease;
 }
 
 .imported-pmodal__close:hover {
   color: #111827;
   background: #f3f4f6;
+}
+
+.imported-pmodal__close:focus-visible {
+  outline: 2px solid #2f6feb;
+  outline-offset: 2px;
 }
 
 .imported-pmodal__body {
@@ -215,11 +233,13 @@ function onOverlayPointerDown(e: PointerEvent) {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  padding: 1rem var(--modal-content-x) calc(1.15rem + env(safe-area-inset-bottom, 0px));
 }
 
 .imported-pmodal__status {
-  margin: 0.85rem 0 0;
-  font-size: 0.875rem;
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.45;
   color: #4b5563;
 }
 
@@ -247,20 +267,22 @@ function onOverlayPointerDown(e: PointerEvent) {
 .imported-pmodal__search {
   display: block;
   width: 100%;
-  margin-top: 0.85rem;
-  padding: 0.65rem 0.75rem;
+  box-sizing: border-box;
+  margin-bottom: 0.55rem;
+  padding: 0.55rem 0.75rem;
   font: inherit;
   font-size: 0.9375rem;
   color: #111827;
   background: #fff;
   border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  box-sizing: border-box;
+  border-radius: 10px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .imported-pmodal__search:focus {
-  outline: 2px solid #93c5fd;
-  outline-offset: 1px;
+  outline: 2px solid #2f6feb;
+  outline-offset: 2px;
+  border-color: #2f6feb;
 }
 
 .imported-pmodal__search::placeholder {
@@ -268,31 +290,60 @@ function onOverlayPointerDown(e: PointerEvent) {
 }
 
 .imported-pmodal__total {
-  margin: 0.55rem 0 0;
-  font-size: 0.9375rem;
-  font-weight: 600;
-  color: #374151;
+  margin: 0 0 0.55rem;
+  font-size: 0.8125rem;
+  color: #64748b;
 }
 
 .imported-pmodal__list {
   flex: 1 1 auto;
   min-height: 0;
-  margin: 0.65rem 0 0;
-  padding: 0;
+  margin: 0;
+  padding: 0.35rem 0;
   list-style: none;
   overflow-y: auto;
-  font-size: 1rem;
-  line-height: 1.5;
-  color: #111827;
+  border: 1px solid #eef2f7;
+  border-radius: 12px;
+  background: #f9fafb;
 }
 
 .imported-pmodal__item {
-  margin: 0;
-  padding: 0.7rem 0;
-  border-bottom: 1px solid #f3f4f6;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: #111827;
+  border-bottom: 1px solid #eef2f7;
+  background: #fff;
 }
 
 .imported-pmodal__item:last-child {
   border-bottom: none;
+}
+
+@media (max-width: 767px) {
+  .imported-pmodal {
+    align-items: flex-end;
+    padding-left: 0;
+    padding-right: 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .imported-pmodal__card {
+    width: 100%;
+    height: min(88dvh, 620px);
+    max-height: min(88dvh, 620px);
+    border-radius: var(--modal-panel-radius-mobile);
+  }
+
+  .imported-pmodal__head {
+    padding-top: max(1rem, env(safe-area-inset-top, 0px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .imported-pmodal__overlay,
+  .imported-pmodal__card {
+    animation: none;
+  }
 }
 </style>

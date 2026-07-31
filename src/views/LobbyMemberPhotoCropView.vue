@@ -10,6 +10,7 @@ import { overlayPhotoSpecForDesign } from '@/utils/overlayPhotoSpec'
 import { DEFAULT_PHOTO_CROP, findPhotoLayoutForUrl, normalizePhotoCrop, type PhotoCrop } from '@/utils/photoCrop'
 import { readCachedPhotoLayouts, writeCachedPhotoLayouts } from '@/utils/overlayPhotoLayoutBridge'
 import { notifyOverlayLobbyChanged } from '@/utils/overlayLobbySync'
+import AppPageError from '@/components/common/AppPageError.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -198,7 +199,12 @@ onMounted(() => {
 
     <main class="photo-crop-page__body">
       <p v-if="loading" class="photo-crop-page__status">Загрузка…</p>
-      <p v-else-if="error && !photoUrl" class="photo-crop-page__error" role="alert">{{ error }}</p>
+      <AppPageError
+        v-else-if="error && !photoUrl"
+        compact
+        :message="error"
+        @retry="load"
+      />
       <template v-else>
         <p v-if="error" class="photo-crop-page__error" role="alert">{{ error }}</p>
         <PhotoCropper

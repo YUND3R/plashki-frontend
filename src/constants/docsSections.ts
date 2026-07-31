@@ -1,4 +1,11 @@
-export type DocsSectionId = 'about' | 'start' | 'players' | 'dashboard' | 'import' | 'lobby' | 'stream'
+export type DocsSectionId =
+  | 'about'
+  | 'start'
+  | 'players'
+  | 'dashboard'
+  | 'import'
+  | 'lobby'
+  | 'stream'
 
 export const DOCS_SECTIONS: { id: DocsSectionId; label: string }[] = [
   { id: 'about', label: 'О сервисе' },

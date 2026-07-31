@@ -1,3 +1,5 @@
+import { normalizeApiErrorMessage } from '@/utils/apiErrorMessage'
+
 const COOKIE_SESSION_MARKER = '__cookie_session__'
 const CSRF_COOKIE_NAME = (import.meta.env.VITE_CSRF_COOKIE_NAME ?? 'plashki_csrf_token').trim()
 const CSRF_HEADER_NAME = 'X-CSRF-Token'
@@ -108,16 +110,6 @@ function joinBase(path: string): string {
   const base = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
   const p = path.startsWith('/') ? path : `/${path}`
   return `${base}${p}`
-}
-
-/** Нормализуем «технические» auth-сообщения бэка в понятный текст для UI. */
-function normalizeApiErrorMessage(rawMessage: string): string {
-  const message = rawMessage.trim()
-  if (!message) return message
-  if (/Authorization:\s*Bearer\s*(<token>|&lt;token&gt;)/i.test(message)) {
-    return 'Авторизуйтесь или зарегистрируйтесь.'
-  }
-  return message
 }
 
 /** Текст ошибки из тела ответа (FastAPI: `{ "detail": "..." }` или список валидации). */

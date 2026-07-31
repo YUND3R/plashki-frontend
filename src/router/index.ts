@@ -122,6 +122,24 @@ const router = createRouter({
           component: () => import('@/views/HomeView.vue'),
         },
         {
+          path: 'ratings',
+          name: 'ratings',
+          meta: { title: 'Рейтинги' },
+          component: () => import('@/views/RatingsView.vue'),
+        },
+        {
+          path: 'ratings/:ratingId',
+          name: 'rating-detail',
+          meta: { title: 'Рейтинг' },
+          component: () => import('@/views/RatingDetailView.vue'),
+        },
+        {
+          path: 'ratings/:ratingId/add-game',
+          name: 'rating-add-game',
+          meta: { title: 'Добавить игру' },
+          component: () => import('@/views/RatingAddGameView.vue'),
+        },
+        {
           path: 'lobby/:lobbyId/manage',
           name: 'lobby-manage',
           meta: { title: 'Управление лобби' },

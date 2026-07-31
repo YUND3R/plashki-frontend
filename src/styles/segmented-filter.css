@@ -28,7 +28,7 @@
   flex-wrap: nowrap;
   overflow-x: auto;
   overflow-y: hidden;
-  padding-bottom: 0.15rem;
+  align-items: center;
   scroll-behavior: smooth;
   scroll-snap-type: x proximity;
   scrollbar-width: none;

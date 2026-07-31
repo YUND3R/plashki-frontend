@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
-import { RouterLink } from 'vue-router'
 import OverlayDesignPlatePreview from '@/components/overlay/OverlayDesignPlatePreview.vue'
+import AppPageError from '@/components/common/AppPageError.vue'
 import { useCardDesignPicker } from '@/composables/useCardDesignPicker'
 import { useCardsUiStore } from '@/stores/cardsUi'
 import type { CardDesignFilter } from '@/stores/cardsUi'
@@ -56,7 +56,6 @@ const {
   hasUnsavedChanges,
   canSave,
   activeDesignTitle,
-  isAuthRequiredError,
   formatDesignPriceRub,
   formatDesignRentalLabel,
   formatDesignAccessLabel,
@@ -108,13 +107,12 @@ function onCancel() {
         Загружаем доступные дизайны…
       </p>
 
-      <div v-else-if="error" class="card-design__alert card-design__alert--error" role="alert">
-        <span>{{ error }}</span>
-        <span v-if="isAuthRequiredError" class="card-design__auth-actions">
-          <RouterLink class="card-design__auth-link card-design__auth-link--ghost" to="/login">Вход</RouterLink>
-          <RouterLink class="card-design__auth-link" to="/register">Регистрация</RouterLink>
-        </span>
-      </div>
+      <AppPageError
+        v-else-if="error"
+        compact
+        inline
+        :message="error"
+      />
 
       <div v-else-if="filteredDesigns.length" class="card-design__content">
         <div class="card-design__list" role="radiogroup" aria-label="Доступные дизайны карточек">

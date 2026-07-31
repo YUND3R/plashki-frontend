@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useLobby } from '@/composables/useLobby'
+import AppPageError from '@/components/common/AppPageError.vue'
 
 const { lobby, loading, error, createNew, loadById } = useLobby()
 const lobbyIdInput = ref('')
@@ -36,9 +37,13 @@ function loadTypedId() {
     </div>
 
     <p v-if="loading" class="lobby__status">Загрузка…</p>
-    <p v-else-if="error" class="lobby__error" role="alert">
-      {{ error }}
-    </p>
+    <AppPageError
+      v-else-if="error"
+      compact
+      inline
+      :message="error"
+      @retry="loadTypedId"
+    />
     <div v-else-if="lobby" class="lobby__card">
       <p><strong>ID:</strong> {{ lobby.id }}</p>
       <p><strong>Макс. игроков:</strong> {{ lobby.max_players }}</p>

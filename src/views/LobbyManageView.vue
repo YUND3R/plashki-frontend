@@ -21,6 +21,7 @@ import speechTimerPauseIcon from '@/assets/icons/go_speek.svg?url'
 import LobbyMemberPhotoModal from '@/components/lobby/LobbyMemberPhotoModal.vue'
 import LobbyImportedParticipantsModal from '@/components/lobby/LobbyImportedParticipantsModal.vue'
 import CardDesignPickerPanel from '@/components/cardDesign/CardDesignPickerPanel.vue'
+import AppPageError from '@/components/common/AppPageError.vue'
 import {
   clearLobbyBestMove,
   clearLobbySheriffCheck,
@@ -45,6 +46,14 @@ import {
   type LobbyImportedVariant,
   type LobbyPlayer,
 } from '@/api/lobbies'
+import {
+  listRatings,
+  type RatingGameResultWrite,
+  type RatingGameRole,
+  type RatingListItem,
+  type RatingWinnerSide,
+  syncRatingFromLobby,
+} from '@/api/ratings'
 import { me } from '@/api/auth'
 import { useLobbyManageUiStore } from '@/stores/lobbyManageUi'
 import {
@@ -65,7 +74,7 @@ import {
 const route = useRoute()
 const router = useRouter()
 const lobbyManageUi = useLobbyManageUiStore()
-const { hostMode, designPickerOpen } = storeToRefs(lobbyManageUi)
+const { hostMode, designPickerOpen, addToRatingOpen } = storeToRefs(lobbyManageUi)
 
 const lobby = ref<GameLobby | null>(null)
 const loading = ref(true)
@@ -149,11 +158,25 @@ const bonusPointsDraft = ref<Record<string, string>>({})
 const bonusPointsSaving = ref(false)
 const bonusPointsResetting = ref(false)
 const bonusPointsError = ref<string | null>(null)
+const addToRatingLoading = ref(false)
+const addToRatingSubmitting = ref(false)
+const addToRatingError = ref<string | null>(null)
+const addToRatingSuccess = ref<string | null>(null)
+const addToRatingRatings = ref<RatingListItem[]>([])
+const addToRatingSelectedId = ref('')
+const addToRatingWinnerSide = ref<RatingWinnerSide>('red')
+const addToRatingGameTitle = ref('')
+const addToRatingCopyPersistentDismissed = ref(false)
+const addToRatingPlayedAt = ref('')
+const addToRatingRatingMenuOpen = ref(false)
+const addToRatingRatingPickerRef = ref<HTMLElement | null>(null)
 const PERSISTENT_MESSAGE_MAX_LENGTH = 50
 const popupTitleDraft = ref('')
 const popupSubtitleDraft = ref('')
 const popupDurationDraft = ref('7')
 const popupFeedback = ref<string | null>(null)
+const lobbyToastVisible = ref(false)
+const lobbyToastMessage = ref('')
 const POPUP_TEXT_MAX_LENGTH = 120
 const popupTitleTone = ref<OverlayTextTone>('green')
 const popupSubtitleTone = ref<OverlayTextTone>('green')
@@ -168,6 +191,7 @@ const toneOptions: Array<{ value: OverlayTextTone; className: string; label: str
   { value: 'red', className: 'lobby-manage__c-dot--r', label: 'Красный' },
 ]
 let popupFeedbackTimer: ReturnType<typeof setTimeout> | null = null
+let lobbyToastTimer: ReturnType<typeof setTimeout> | null = null
 let persistentFeedbackTimer: ReturnType<typeof setTimeout> | null = null
 let speechTimerTickInterval: ReturnType<typeof setInterval> | null = null
 let speechTimerStartedAtMs: number | null = null
@@ -278,8 +302,10 @@ watch(
 
 onMounted(() => {
   document.addEventListener('pointerdown', onDocPointerDownImported, true)
+  document.addEventListener('pointerdown', onDocPointerDownAddToRating, true)
   document.addEventListener('visibilitychange', syncSpeechTimerElapsed)
   window.addEventListener('keydown', onImportedEscapeKey)
+  window.addEventListener('keydown', onAddToRatingEscapeKey)
   window.addEventListener('dragend', onGlobalSeatDragEnd)
   window.addEventListener('blur', onWindowSeatDragBlur)
   tabletMq = window.matchMedia('(max-width: 1024px)')
@@ -310,9 +336,11 @@ onUnmounted(() => {
   roleHostFlash.value = null
   document.removeEventListener('pointerdown', onDocPointerDownReplace, true)
   document.removeEventListener('pointerdown', onDocPointerDownImported, true)
+  document.removeEventListener('pointerdown', onDocPointerDownAddToRating, true)
   document.removeEventListener('visibilitychange', syncSpeechTimerElapsed)
   window.removeEventListener('keydown', onReplaceEscapeKey)
   window.removeEventListener('keydown', onImportedEscapeKey)
+  window.removeEventListener('keydown', onAddToRatingEscapeKey)
   window.removeEventListener('dragend', onGlobalSeatDragEnd)
   window.removeEventListener('blur', onWindowSeatDragBlur)
   resetSeatDragState()
@@ -631,6 +659,20 @@ function onDocPointerDownImported(e: PointerEvent) {
   if (!(t instanceof Element)) return
   if (importedSwitcherRef.value?.contains(t)) return
   closeImportedMenus()
+}
+
+function onDocPointerDownAddToRating(e: PointerEvent) {
+  if (!addToRatingRatingMenuOpen.value) return
+  const t = e.target
+  if (!(t instanceof Element)) return
+  if (addToRatingRatingPickerRef.value?.contains(t)) return
+  closeAddToRatingRatingMenu()
+}
+
+function onAddToRatingEscapeKey(e: KeyboardEvent) {
+  if (e.key !== 'Escape') return
+  if (!addToRatingRatingMenuOpen.value) return
+  closeAddToRatingRatingMenu()
 }
 
 function onImportedEscapeKey(e: KeyboardEvent) {
@@ -1067,6 +1109,36 @@ function rowPhoto(p: LobbyPlayer | null): string {
   return typeof u === 'string' && u.trim() ? u.trim() : ''
 }
 
+function rowInitials(p: LobbyPlayer | null): string {
+  if (!p) return '?'
+  const name = (p.nickname || p.username || '').trim()
+  if (name) return name[0]!.toUpperCase()
+  return '?'
+}
+
+function playerRoleMeta(p: LobbyPlayer | null): { label: string; icon: string; toneClass: string } | null {
+  const role = normRole(p?.game_role)
+  const opt = ROLE_OPTIONS.find((item) => item.value === role)
+  if (!opt) return null
+  return {
+    label: opt.label,
+    icon: opt.icon,
+    toneClass: `add-to-rating-panel__player-role-icon--${opt.value}`,
+  }
+}
+
+function playerBestMoveLabels(p: LobbyPlayer | null): string[] {
+  const raw = p?.best_move
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((value) => (typeof value === 'string' ? value : '').trim())
+    .filter(Boolean)
+}
+
+const addToRatingHasBestMove = computed(() =>
+  (lobby.value?.players ?? []).some((player) => playerBestMoveLabels(player).length > 0),
+)
+
 function rowKey(idx: number, p: LobbyPlayer | null): string {
   if (p?.membership_id) return p.membership_id
   return `empty-${idx}`
@@ -1074,6 +1146,16 @@ function rowKey(idx: number, p: LobbyPlayer | null): string {
 
 function goDashboard() {
   void router.push({ name: 'dashboard' })
+}
+
+function showLobbyToast(text: string, ms = 1800) {
+  lobbyToastMessage.value = text
+  lobbyToastVisible.value = true
+  if (lobbyToastTimer) clearTimeout(lobbyToastTimer)
+  lobbyToastTimer = setTimeout(() => {
+    lobbyToastTimer = null
+    lobbyToastVisible.value = false
+  }, ms)
 }
 
 function showPopupFeedback(text: string, ms = 1800) {
@@ -1103,6 +1185,11 @@ function clearFeedbackTimers() {
     clearTimeout(persistentFeedbackTimer)
     persistentFeedbackTimer = null
   }
+  if (lobbyToastTimer) {
+    clearTimeout(lobbyToastTimer)
+    lobbyToastTimer = null
+  }
+  lobbyToastVisible.value = false
 }
 
 function formatSpeechTimerDisplay(totalSec: number): string {
@@ -1282,6 +1369,325 @@ function teamPointsForPlayer(player: LobbyPlayer): number {
   return 0
 }
 
+function teamPointsForBonusModal(player: LobbyPlayer): number {
+  if (addToRatingOpen.value) {
+    const role = mapLobbyRoleToRatingRole(player.game_role)
+    if (!role) return 0
+    return scoreTeamPointByWinner(role, addToRatingWinnerSide.value)
+  }
+  return teamPointsForPlayer(player)
+}
+
+function mapLobbyRoleToRatingRole(role: string | null | undefined): RatingGameRole | null {
+  const normalized = (role ?? '').trim().toLowerCase()
+  if (normalized === 'peaceful') return 'peaceful'
+  if (normalized === 'mafia') return 'mafia'
+  if (normalized === 'don') return 'don'
+  if (normalized === 'sheriff') return 'sheriff'
+  return null
+}
+
+const ADD_TO_RATING_REQUIRED_ROLE_COUNTS: Record<RatingGameRole, number> = {
+  peaceful: 6,
+  mafia: 2,
+  don: 1,
+  sheriff: 1,
+}
+
+const ADD_TO_RATING_REQUIRED_PLAYERS = Object.values(ADD_TO_RATING_REQUIRED_ROLE_COUNTS).reduce(
+  (sum, count) => sum + count,
+  0,
+)
+
+type AddToRatingValidation = {
+  ok: boolean
+  message: string
+}
+
+function validateAddToRatingTable(): AddToRatingValidation {
+  const players = lobby.value?.players ?? []
+
+  if (players.length !== ADD_TO_RATING_REQUIRED_PLAYERS) {
+    return {
+      ok: false,
+      message: `На столе должно быть ${ADD_TO_RATING_REQUIRED_PLAYERS} игроков с карточками и ролями.`,
+    }
+  }
+
+  const roleCounts: Record<RatingGameRole, number> = {
+    peaceful: 0,
+    mafia: 0,
+    don: 0,
+    sheriff: 0,
+  }
+  let missingCardsOrRoles = 0
+
+  for (const player of players) {
+    const playerCardId = player.player_card_id?.trim()
+    const mappedRole = mapLobbyRoleToRatingRole(player.game_role)
+    if (!playerCardId || !mappedRole) {
+      missingCardsOrRoles += 1
+      continue
+    }
+    roleCounts[mappedRole] += 1
+  }
+
+  if (missingCardsOrRoles > 0) {
+    return {
+      ok: false,
+      message: 'У части игроков не назначены роли или карточки. Заполните стол полностью.',
+    }
+  }
+
+  const mismatches: string[] = []
+  if (roleCounts.peaceful !== ADD_TO_RATING_REQUIRED_ROLE_COUNTS.peaceful) {
+    mismatches.push(`мирных ${roleCounts.peaceful}/${ADD_TO_RATING_REQUIRED_ROLE_COUNTS.peaceful}`)
+  }
+  if (roleCounts.mafia !== ADD_TO_RATING_REQUIRED_ROLE_COUNTS.mafia) {
+    mismatches.push(`мафии ${roleCounts.mafia}/${ADD_TO_RATING_REQUIRED_ROLE_COUNTS.mafia}`)
+  }
+  if (roleCounts.don !== ADD_TO_RATING_REQUIRED_ROLE_COUNTS.don) {
+    mismatches.push(`дона ${roleCounts.don}/${ADD_TO_RATING_REQUIRED_ROLE_COUNTS.don}`)
+  }
+  if (roleCounts.sheriff !== ADD_TO_RATING_REQUIRED_ROLE_COUNTS.sheriff) {
+    mismatches.push(`шерифа ${roleCounts.sheriff}/${ADD_TO_RATING_REQUIRED_ROLE_COUNTS.sheriff}`)
+  }
+
+  if (mismatches.length) {
+    return {
+      ok: false,
+      message: `Неверный состав ролей: нужно 6 мирных, 2 мафии, 1 дон и 1 шериф (${mismatches.join(', ')}).`,
+    }
+  }
+
+  return { ok: true, message: '' }
+}
+
+function inferWinnerSideFromOverlay(): RatingWinnerSide {
+  if (bonusPointsWinner.value === 'mafia') return 'black'
+  if (bonusPointsWinner.value === 'peaceful') return 'red'
+  return 'red'
+}
+
+function scoreTeamPointByWinner(role: RatingGameRole, winnerSide: RatingWinnerSide): number {
+  if (winnerSide === 'black') return role === 'mafia' || role === 'don' ? 1 : 0
+  return role === 'peaceful' || role === 'sheriff' ? 1 : 0
+}
+
+function parseAddToRatingBonusPoints(membershipId: string): number {
+  const bonusRaw = Number(bonusPointsDraft.value[membershipId] ?? 0)
+  return Number.isFinite(bonusRaw) ? Math.round(bonusRaw * 10) / 10 : 0
+}
+
+function totalPointsForAddToRating(player: LobbyPlayer): number {
+  const role = mapLobbyRoleToRatingRole(player.game_role)
+  if (!role) return 0
+  const team = scoreTeamPointByWinner(role, addToRatingWinnerSide.value)
+  const bonus = parseAddToRatingBonusPoints(player.membership_id)
+  return Math.round((team + bonus) * 10) / 10
+}
+
+function buildRatingGameTitleDefault(): string {
+  return `${lobbyDisplayName.value} — игра`
+}
+
+function readPersistentMessageText(): string {
+  const draft = persistentMessageDraft.value.trim()
+  if (draft) return draft
+  if (!lobbyId.value) return ''
+  return readOverlayPersistentMessage(lobbyId.value, activePersistentDesignCode.value).text.trim()
+}
+
+const addToRatingPersistentMessageAvailable = computed(() => !!readPersistentMessageText())
+
+const showAddToRatingCopyPersistentButton = computed(
+  () =>
+    !addToRatingCopyPersistentDismissed.value &&
+    addToRatingPersistentMessageAvailable.value &&
+    !addToRatingSubmitting.value,
+)
+
+function copyAddToRatingTitleFromPersistentMessage() {
+  if (addToRatingSubmitting.value) return
+  const text = readPersistentMessageText()
+  if (!text) return
+  addToRatingGameTitle.value = text.slice(0, 255)
+  addToRatingCopyPersistentDismissed.value = true
+}
+
+function buildRatingGameResults(
+  winnerSide: RatingWinnerSide,
+): { results: RatingGameResultWrite[]; skippedCount: number } {
+  const players = lobby.value?.players ?? []
+  const results: RatingGameResultWrite[] = []
+  let skippedCount = 0
+  for (const player of players) {
+    const playerCardId = player.player_card_id?.trim()
+    const mappedRole = mapLobbyRoleToRatingRole(player.game_role)
+    if (!playerCardId || !mappedRole) {
+      skippedCount += 1
+      continue
+    }
+    const bonusSource = addToRatingOpen.value
+      ? bonusPointsDraft.value[player.membership_id]
+      : undefined
+    const bonusRaw = bonusSource !== undefined ? Number(bonusSource) : Number(player.bonus_points ?? 0)
+    const bonusPoints = Number.isFinite(bonusRaw) ? Math.round(bonusRaw * 10) / 10 : 0
+    const totalPoints = Math.round((scoreTeamPointByWinner(mappedRole, winnerSide) + bonusPoints) * 10) / 10
+    results.push({
+      player_card_id: playerCardId,
+      role: mappedRole,
+      bonus_points: bonusPoints,
+      total_points: totalPoints,
+    })
+  }
+  return { results, skippedCount }
+}
+
+function initBonusPointsDraft() {
+  if (!lobby.value) return
+  bonusPointsDraft.value = Object.fromEntries(
+    lobby.value.players.map((player) => [player.membership_id, String(player.bonus_points ?? 0)]),
+  )
+}
+
+const addToRatingTransferStats = computed(() => {
+  return buildRatingGameResults(addToRatingWinnerSide.value)
+})
+
+const addToRatingValidation = computed(() => validateAddToRatingTable())
+
+const addToRatingCanSubmit = computed(
+  () =>
+    addToRatingValidation.value.ok &&
+    !!addToRatingRatings.value.length &&
+    !addToRatingLoading.value,
+)
+
+const addToRatingSelectedLabel = computed(() => {
+  const id = addToRatingSelectedId.value.trim()
+  if (!id) return 'Выберите рейтинг'
+  return addToRatingRatings.value.find((rating) => rating.id === id)?.name ?? 'Выберите рейтинг'
+})
+
+const addToRatingSelectedRating = computed(() => {
+  const id = addToRatingSelectedId.value.trim()
+  if (!id) return null
+  return addToRatingRatings.value.find((rating) => rating.id === id) ?? null
+})
+
+function formatAddToRatingEventDate(value: string): string {
+  if (!value) return ''
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return value
+  return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })
+}
+
+function closeAddToRatingRatingMenu() {
+  addToRatingRatingMenuOpen.value = false
+}
+
+function toggleAddToRatingRatingMenu() {
+  if (addToRatingLoading.value || addToRatingSubmitting.value || !addToRatingRatings.value.length) return
+  addToRatingRatingMenuOpen.value = !addToRatingRatingMenuOpen.value
+}
+
+function selectAddToRatingRating(id: string) {
+  addToRatingSelectedId.value = id
+  closeAddToRatingRatingMenu()
+}
+
+async function openAddToRatingModal() {
+  if (!isLobbyHost.value || !lobby.value || addToRatingLoading.value || addToRatingSubmitting.value) return
+  lobbyManageUi.openAddToRating()
+  addToRatingError.value = null
+  addToRatingSuccess.value = null
+  loadPersistentMessageDraft()
+  addToRatingGameTitle.value = buildRatingGameTitleDefault()
+  addToRatingCopyPersistentDismissed.value = false
+  addToRatingPlayedAt.value = new Date().toISOString().slice(0, 10)
+  addToRatingWinnerSide.value = inferWinnerSideFromOverlay()
+  addToRatingSelectedId.value = ''
+  addToRatingRatings.value = []
+  closeAddToRatingRatingMenu()
+  initBonusPointsDraft()
+  bonusPointsError.value = null
+  addToRatingLoading.value = true
+  try {
+    const rows = await listRatings()
+    addToRatingRatings.value = rows
+    addToRatingSelectedId.value = rows[0]?.id ?? ''
+    if (!rows.length) addToRatingError.value = 'Сначала создайте рейтинг в разделе «Рейтинги».'
+  } catch (e) {
+    addToRatingError.value = e instanceof Error ? e.message : 'Не удалось загрузить список рейтингов'
+  } finally {
+    addToRatingLoading.value = false
+  }
+}
+
+function closeAddToRatingModal(forceOrEvent: boolean | Event = false) {
+  const force = typeof forceOrEvent === 'boolean' ? forceOrEvent : false
+  if (addToRatingSubmitting.value && !force) return
+  closeAddToRatingRatingMenu()
+  lobbyManageUi.closeAddToRating()
+  addToRatingError.value = null
+}
+
+async function submitAddToRating() {
+  if (!lobby.value || addToRatingSubmitting.value) return
+  if (!lobbyId.value) {
+    addToRatingError.value = 'Не удалось определить ID лобби.'
+    return
+  }
+  const ratingId = addToRatingSelectedId.value.trim()
+  if (!ratingId) {
+    addToRatingError.value = 'Выберите рейтинг'
+    return
+  }
+  if (!addToRatingPlayedAt.value.trim()) {
+    addToRatingError.value = 'Укажите дату игры'
+    return
+  }
+
+  const { results } = buildRatingGameResults(addToRatingWinnerSide.value)
+  const validation = validateAddToRatingTable()
+  if (!validation.ok) {
+    addToRatingError.value = validation.message
+    return
+  }
+  if (results.length !== ADD_TO_RATING_REQUIRED_PLAYERS) {
+    addToRatingError.value = validation.message || 'Не удалось собрать результаты для всех игроков.'
+    return
+  }
+
+  addToRatingSubmitting.value = true
+  addToRatingError.value = null
+  addToRatingSuccess.value = null
+  try {
+    const bonusSaved = await persistBonusPointsDraft()
+    if (!bonusSaved) return
+
+    const syncedResults = buildRatingGameResults(addToRatingWinnerSide.value).results
+    await syncRatingFromLobby(ratingId, {
+      lobby_id: lobbyId.value,
+      played_at: addToRatingPlayedAt.value.trim(),
+      winner_side: addToRatingWinnerSide.value,
+      title: addToRatingGameTitle.value.trim(),
+      total_points: syncedResults.map((row) => ({
+        player_card_id: row.player_card_id,
+        total_points: row.total_points,
+      })),
+    })
+    await applyLobbyRolesAndStatusesReset()
+    closeAddToRatingModal(true)
+    showLobbyToast('Игра добавлена в рейтинг', 1800)
+  } catch (e) {
+    addToRatingError.value = e instanceof Error ? e.message : 'Не удалось добавить игру в рейтинг'
+  } finally {
+    addToRatingSubmitting.value = false
+  }
+}
+
 async function setOverlayScreen(screenKey: 'lobby' | 'victory-mafia' | 'victory-peaceful') {
   if (!lobbyId.value || !isLobbyHost.value || overlayScreenSaving.value) return
   overlayScreenSaving.value = true
@@ -1314,9 +1720,7 @@ async function toggleVictoryScores() {
 
 function openBonusPointsModal() {
   if (!isLobbyHost.value || !lobby.value) return
-  bonusPointsDraft.value = Object.fromEntries(
-    lobby.value.players.map((player) => [player.membership_id, String(player.bonus_points ?? 0)]),
-  )
+  initBonusPointsDraft()
   bonusPointsError.value = null
   bonusPointsModalOpen.value = true
 }
@@ -1338,8 +1742,10 @@ function changeBonusPointsByStep(membershipId: string, delta: number) {
   updateBonusPoints(membershipId, next.toFixed(1))
 }
 
-async function saveBonusPoints() {
-  if (!lobbyId.value || !lobby.value || !isLobbyHost.value || bonusPointsSaving.value || bonusPointsResetting.value) return
+async function persistBonusPointsDraft(): Promise<boolean> {
+  if (!lobbyId.value || !lobby.value || !isLobbyHost.value || bonusPointsSaving.value || bonusPointsResetting.value) {
+    return false
+  }
   const entries = lobby.value.players.map((player) => {
     const raw = (bonusPointsDraft.value[player.membership_id] ?? '').trim()
     const points = raw ? Number(raw) : 0
@@ -1355,19 +1761,25 @@ async function saveBonusPoints() {
     )
   ) {
     bonusPointsError.value = 'Укажите значение от −99.9 до 99.9 с шагом 0.1.'
-    return
+    return false
   }
   bonusPointsSaving.value = true
   bonusPointsError.value = null
   try {
     lobby.value = await setLobbyBonusPoints(lobbyId.value, { bonus_points: entries })
     notifyOverlayLobbyChanged(lobbyId.value)
-    bonusPointsModalOpen.value = false
+    return true
   } catch (e) {
     bonusPointsError.value = e instanceof Error ? e.message : String(e)
+    return false
   } finally {
     bonusPointsSaving.value = false
   }
+}
+
+async function saveBonusPoints() {
+  const saved = await persistBonusPointsDraft()
+  if (saved) bonusPointsModalOpen.value = false
 }
 
 async function resetBonusPoints() {
@@ -1539,6 +1951,28 @@ async function toggleStatus(p: LobbyPlayer | null, status: LobbyStatusValue) {
   }
 }
 
+async function applyLobbyRolesAndStatusesReset(): Promise<void> {
+  const id = lobbyId.value
+  if (!id) throw new Error('Не удалось определить ID лобби.')
+  await clearLobbyBestMove(id)
+  await clearLobbySheriffCheck(id)
+  if (lobby.value?.players.length) {
+    await setLobbyBonusPoints(id, {
+      bonus_points: lobby.value.players.map((player) => ({
+        membership_id: player.membership_id,
+        points: 0,
+      })),
+    })
+  }
+  await resetLobbyGameRoles(id)
+  lobby.value = await resetLobbyStatuses(id)
+  sheriffChecksValues.value = ['', '', '', '', '']
+  sheriffChecksError.value = null
+  bestMoveValues.value = ['', '', '']
+  bestMoveError.value = null
+  initBonusPointsDraft()
+}
+
 async function resetAllRolesAndStatuses() {
   if (!isLobbyHost.value || swapBusy.value || rolesResetBusy.value || replaceSubmitting.value) return
   const id = lobbyId.value
@@ -1546,22 +1980,7 @@ async function resetAllRolesAndStatuses() {
   rolesResetBusy.value = true
   swapHint.value = null
   try {
-    await clearLobbyBestMove(id)
-    await clearLobbySheriffCheck(id)
-    if (lobby.value?.players.length) {
-      await setLobbyBonusPoints(id, {
-        bonus_points: lobby.value.players.map((player) => ({
-          membership_id: player.membership_id,
-          points: 0,
-        })),
-      })
-    }
-    await resetLobbyGameRoles(id)
-    lobby.value = await resetLobbyStatuses(id)
-    sheriffChecksValues.value = ['', '', '', '', '']
-    sheriffChecksError.value = null
-    bestMoveValues.value = ['', '', '']
-    bestMoveError.value = null
+    await applyLobbyRolesAndStatusesReset()
   } catch (e) {
     swapHint.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -1654,6 +2073,13 @@ watch(
   () => lobbyManageUi.deleteConfirmOpenToken,
   () => {
     openDeleteConfirm()
+  },
+)
+
+watch(
+  () => lobbyManageUi.addToRatingOpenToken,
+  () => {
+    void openAddToRatingModal()
   },
 )
 
@@ -1871,12 +2297,13 @@ async function resetBestMove() {
     class="lobby-manage"
     :class="{
       'lobby-manage--design-picker': designPickerOpen,
+      'lobby-manage--add-rating': addToRatingOpen,
     }"
   >
     <p v-if="loading" class="lobby-manage__status">Загрузка лобби…</p>
-    <p v-else-if="error" class="lobby-manage__status lobby-manage__status--error" role="alert">
-      {{ error }}
-    </p>
+    <div v-else-if="error" class="lobby-manage__page-error">
+      <AppPageError :message="error" @retry="load" />
+    </div>
 
     <template v-else-if="lobby">
       <div v-if="designPickerOpen" class="lobby-manage__design-picker">
@@ -1888,6 +2315,315 @@ async function resetBestMove() {
           @saved="onCardDesignSaved"
           @close="closeCardDesignPicker"
         />
+      </div>
+
+      <div v-else-if="addToRatingOpen" class="lobby-manage__add-rating">
+        <div class="add-to-rating-panel">
+          <div class="add-to-rating-panel__split">
+            <section class="add-to-rating-panel__col add-to-rating-panel__col--form">
+              <div class="add-to-rating-panel__col-body">
+                <div class="add-to-rating-panel__form-fields">
+                  <label class="add-to-rating-panel__field add-to-rating-panel__field--title">
+                    <div class="add-to-rating-panel__input-wrap">
+                      <input
+                        v-model="addToRatingGameTitle"
+                        type="text"
+                        class="add-to-rating-panel__input"
+                        :class="{ 'add-to-rating-panel__input--has-action': showAddToRatingCopyPersistentButton }"
+                        maxlength="255"
+                        placeholder="Название игры"
+                        aria-label="Название игры"
+                        :disabled="addToRatingSubmitting"
+                      />
+                      <button
+                        v-if="showAddToRatingCopyPersistentButton"
+                        type="button"
+                        class="add-to-rating-panel__copy-persistent"
+                        title="Скопировать из постоянного сообщения"
+                        aria-label="Скопировать из постоянного сообщения"
+                        @click="copyAddToRatingTitleFromPersistentMessage"
+                      >
+                        <svg class="add-to-rating-panel__copy-persistent-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                          <path
+                            d="M5.5 2.75h6.75a1 1 0 0 1 1 1V10.5M3.75 5.5h6.75a1 1 0 0 1 1 1v6.75a1 1 0 0 1-1 1H3.75a1 1 0 0 1-1-1V6.5a1 1 0 0 1 1-1Z"
+                            stroke="currentColor"
+                            stroke-width="1.35"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                          />
+                        </svg>
+                        <span class="add-to-rating-panel__copy-persistent-text">Из постоянного сообщения</span>
+                      </button>
+                    </div>
+                  </label>
+
+                  <label class="add-to-rating-panel__field add-to-rating-panel__field--picker">
+                    <div
+                      ref="addToRatingRatingPickerRef"
+                      class="add-to-rating-panel__picker"
+                      :class="{ 'add-to-rating-panel__picker--open': addToRatingRatingMenuOpen }"
+                    >
+                      <button
+                        type="button"
+                        class="add-to-rating-panel__select-btn"
+                        :disabled="addToRatingLoading || addToRatingSubmitting || !addToRatingRatings.length"
+                        :aria-expanded="addToRatingRatingMenuOpen"
+                        aria-haspopup="listbox"
+                        aria-label="Выбор рейтинга"
+                        @click="toggleAddToRatingRatingMenu"
+                      >
+                        <span
+                          class="add-to-rating-panel__select-value"
+                          :class="{ 'add-to-rating-panel__select-value--placeholder': !addToRatingSelectedId }"
+                        >
+                          <span class="add-to-rating-panel__select-name">{{ addToRatingSelectedLabel }}</span>
+                          <span
+                            v-if="addToRatingSelectedRating?.event_date"
+                            class="add-to-rating-panel__select-meta"
+                          >
+                            {{ formatAddToRatingEventDate(addToRatingSelectedRating.event_date) }}
+                          </span>
+                        </span>
+                        <span class="add-to-rating-panel__select-arrow" aria-hidden="true">
+                          <svg viewBox="0 0 16 16" fill="none">
+                            <path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                          </svg>
+                        </span>
+                      </button>
+                      <div
+                        v-if="addToRatingRatingMenuOpen"
+                        class="add-to-rating-panel__menu"
+                        role="listbox"
+                        aria-label="Рейтинги"
+                      >
+                        <button
+                          v-for="rating in addToRatingRatings"
+                          :key="rating.id"
+                          type="button"
+                          class="add-to-rating-panel__menu-item"
+                          :class="{ 'add-to-rating-panel__menu-item--active': rating.id === addToRatingSelectedId }"
+                          role="option"
+                          :aria-selected="rating.id === addToRatingSelectedId"
+                          @click="selectAddToRatingRating(rating.id)"
+                        >
+                          <span class="add-to-rating-panel__menu-item-name">{{ rating.name }}</span>
+                          <span v-if="rating.event_date" class="add-to-rating-panel__menu-item-meta">
+                            {{ formatAddToRatingEventDate(rating.event_date) }}
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+                  </label>
+
+                  <label class="add-to-rating-panel__field">
+                    <input
+                      v-model="addToRatingPlayedAt"
+                      type="date"
+                      class="add-to-rating-panel__input"
+                      aria-label="Дата игры"
+                      :disabled="addToRatingSubmitting"
+                    />
+                  </label>
+                </div>
+
+                <p v-if="addToRatingLoading" class="add-to-rating-panel__hint">Загружаем рейтинги…</p>
+                <p
+                  v-else-if="!addToRatingValidation.ok"
+                  class="add-to-rating-panel__hint add-to-rating-panel__hint--warn"
+                  role="status"
+                >
+                  {{ addToRatingValidation.message }}
+                </p>
+                <p v-else class="add-to-rating-panel__hint">
+                  Будет добавлено результатов: {{ addToRatingTransferStats.results.length }}
+                </p>
+
+                <p
+                  v-if="addToRatingSuccess"
+                  class="add-to-rating-panel__banner add-to-rating-panel__banner--ok"
+                  role="status"
+                >
+                  {{ addToRatingSuccess }}
+                </p>
+              </div>
+            </section>
+
+            <section class="add-to-rating-panel__col add-to-rating-panel__col--players">
+              <div
+                class="add-to-rating-panel__table"
+                :class="{ 'add-to-rating-panel__table--has-lh': addToRatingHasBestMove }"
+              >
+                <div class="add-to-rating-panel__players">
+                <div
+                  v-for="(player, index) in lobby?.players ?? []"
+                  :key="player.membership_id"
+                  class="add-to-rating-panel__player"
+                >
+                  <span class="add-to-rating-panel__player-seat">{{ index + 1 }}</span>
+                  <div class="add-to-rating-panel__player-main">
+                    <img
+                      v-if="rowPhoto(player)"
+                      :src="rowPhoto(player)"
+                      alt=""
+                      class="add-to-rating-panel__player-photo"
+                    />
+                    <span
+                      v-else
+                      class="add-to-rating-panel__player-photo add-to-rating-panel__player-photo--ph"
+                      aria-hidden="true"
+                    >
+                      {{ rowInitials(player) }}
+                    </span>
+                    <span class="add-to-rating-panel__player-name">
+                      {{ player.nickname || player.username || `Игрок ${index + 1}` }}
+                    </span>
+                  </div>
+                  <span class="add-to-rating-panel__stat add-to-rating-panel__stat--role">
+                    <img
+                      v-if="playerRoleMeta(player)"
+                      :src="playerRoleMeta(player)!.icon"
+                      :alt="playerRoleMeta(player)!.label"
+                      :title="playerRoleMeta(player)!.label"
+                      class="add-to-rating-panel__player-role-icon"
+                      :class="playerRoleMeta(player)!.toneClass"
+                    />
+                    <span v-else class="add-to-rating-panel__stat-empty" aria-hidden="true">—</span>
+                  </span>
+                  <span
+                    v-if="addToRatingHasBestMove"
+                    class="add-to-rating-panel__stat add-to-rating-panel__stat--lh"
+                  >
+                    <span
+                      v-if="playerBestMoveLabels(player).length"
+                      class="add-to-rating-panel__lh-inline"
+                      :title="`Лучший ход: ${playerBestMoveLabels(player).join(', ')}`"
+                    >
+                      <span class="add-to-rating-panel__lh-label">ЛХ</span>
+                      <span class="add-to-rating-panel__lh-values">
+                        {{ playerBestMoveLabels(player).join(' ') }}
+                      </span>
+                    </span>
+                    <span v-else class="add-to-rating-panel__stat-empty" aria-hidden="true">—</span>
+                  </span>
+                  <span class="add-to-rating-panel__stat add-to-rating-panel__stat--total">
+                    {{ totalPointsForAddToRating(player).toFixed(1) }}
+                  </span>
+                  <div class="add-to-rating-panel__stat add-to-rating-panel__stat--bonus">
+                    <div class="lobby-manage__bonus-points-stepper add-to-rating-panel__player-stepper">
+                    <input
+                      class="lobby-manage__bonus-points-input"
+                      type="number"
+                      inputmode="decimal"
+                      min="-99.9"
+                      max="99.9"
+                      step="0.1"
+                      :disabled="addToRatingSubmitting || bonusPointsSaving || bonusPointsResetting"
+                      :value="bonusPointsDraft[player.membership_id] ?? '0'"
+                      @input="updateBonusPoints(player.membership_id, ($event.target as HTMLInputElement).value)"
+                    />
+                    <div class="lobby-manage__bonus-points-stepper-actions">
+                      <button
+                        type="button"
+                        tabindex="-1"
+                        aria-label="Увеличить на 0.1"
+                        :disabled="addToRatingSubmitting || bonusPointsSaving || bonusPointsResetting"
+                        @click="changeBonusPointsByStep(player.membership_id, 0.1)"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        tabindex="-1"
+                        aria-label="Уменьшить на 0.1"
+                        :disabled="addToRatingSubmitting || bonusPointsSaving || bonusPointsResetting"
+                        @click="changeBonusPointsByStep(player.membership_id, -0.1)"
+                      >
+                        ↓
+                      </button>
+                    </div>
+                  </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="add-to-rating-panel__bottom">
+                <p class="add-to-rating-panel__panel-note" role="note">
+                  <span class="add-to-rating-panel__panel-note-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.75" />
+                      <path d="M12 8v5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" />
+                      <circle cx="12" cy="16.25" r="1" fill="currentColor" />
+                    </svg>
+                  </span>
+                  Проверьте роли, победителя и доп. баллы.
+                </p>
+
+                <div class="add-to-rating-panel__winner-controls">
+                  <span class="add-to-rating-panel__label add-to-rating-panel__winner-label">Победитель</span>
+                  <div
+                    class="segmented-filter segmented-filter--inline segmented-filter--compact add-to-rating-panel__winner-toggle"
+                    role="group"
+                    aria-label="Победитель"
+                  >
+                    <button
+                      type="button"
+                      class="segmented-filter__btn"
+                      :class="{ 'segmented-filter__btn--active': addToRatingWinnerSide === 'red' }"
+                      :aria-pressed="addToRatingWinnerSide === 'red'"
+                      :disabled="addToRatingSubmitting"
+                      @click="addToRatingWinnerSide = 'red'"
+                    >
+                      Мирные
+                    </button>
+                    <button
+                      type="button"
+                      class="segmented-filter__btn"
+                      :class="{ 'segmented-filter__btn--active': addToRatingWinnerSide === 'black' }"
+                      :aria-pressed="addToRatingWinnerSide === 'black'"
+                      :disabled="addToRatingSubmitting"
+                      @click="addToRatingWinnerSide = 'black'"
+                    >
+                      Мафия
+                    </button>
+                  </div>
+                </div>
+              </div>
+              </div>
+
+              <p
+                v-if="bonusPointsError"
+                class="add-to-rating-panel__banner add-to-rating-panel__banner--inline"
+                role="alert"
+              >
+                {{ bonusPointsError }}
+              </p>
+            </section>
+          </div>
+
+          <div class="add-to-rating-panel__footer">
+            <p v-if="addToRatingError" class="add-to-rating-panel__footer-error" role="alert">
+              {{ addToRatingError }}
+            </p>
+            <div class="add-to-rating-panel__footer-actions">
+              <button
+                type="button"
+                class="app-modal__btn-secondary"
+                :disabled="addToRatingSubmitting"
+                @click="closeAddToRatingModal"
+              >
+                Закрыть
+              </button>
+              <button
+                type="button"
+                class="app-modal__btn-primary"
+                :disabled="addToRatingLoading || addToRatingSubmitting || rolesResetBusy || !addToRatingCanSubmit || bonusPointsSaving || bonusPointsResetting"
+                @click="submitAddToRating"
+              >
+                {{ addToRatingSubmitting ? 'Добавляем и сбрасываем…' : 'Добавить игру и сбросить роли' }}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <template v-else>
@@ -2877,7 +3613,7 @@ async function resetBestMove() {
       </div>
 
       <div
-        v-if="bonusPointsModalOpen"
+        v-if="bonusPointsModalOpen && !addToRatingOpen"
         class="lobby-manage__modal-overlay"
         role="dialog"
         aria-modal="true"
@@ -2900,7 +3636,7 @@ async function resetBestMove() {
             <div v-for="(player, index) in lobby?.players ?? []" :key="player.membership_id" class="lobby-manage__bonus-points-row">
               <span class="lobby-manage__bonus-points-seat">{{ index + 1 }}</span>
               <span class="lobby-manage__bonus-points-name">{{ player.nickname || player.username || `Игрок ${index + 1}` }}</span>
-              <span class="lobby-manage__bonus-points-team">{{ teamPointsForPlayer(player).toFixed(1) }}</span>
+              <span class="lobby-manage__bonus-points-team">{{ teamPointsForBonusModal(player).toFixed(1) }}</span>
               <div class="lobby-manage__bonus-points-stepper">
                 <input
                   class="lobby-manage__bonus-points-input"
@@ -2945,6 +3681,12 @@ async function resetBestMove() {
 
     </template>
     </template>
+
+    <Transition name="lobby-manage-toast">
+      <p v-if="lobbyToastVisible" class="lobby-manage__toast" role="status">
+        {{ lobbyToastMessage }}
+      </p>
+    </Transition>
   </section>
 </template>
 
@@ -2961,7 +3703,8 @@ async function resetBestMove() {
   flex-direction: column;
 }
 
-.lobby-manage--design-picker {
+.lobby-manage--design-picker,
+.lobby-manage--add-rating {
   flex: 1;
   min-height: 0;
   display: flex;
@@ -2969,13 +3712,776 @@ async function resetBestMove() {
   overflow: hidden;
 }
 
-.lobby-manage__design-picker {
+.lobby-manage__design-picker,
+.lobby-manage__add-rating {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   background: #fff;
+}
+
+.add-to-rating-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  box-sizing: border-box;
+  background: #fff;
+  --add-rating-stat-border: rgba(148, 163, 184, 0.22);
+  --add-rating-stat-bg: rgba(148, 163, 184, 0.08);
+  --add-rating-stat-bg-hover: rgba(148, 163, 184, 0.14);
+}
+
+.add-to-rating-panel__split {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 26rem) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
+  padding: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.add-to-rating-panel__col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.add-to-rating-panel__col--form {
+  border-right: 1px solid #e5e7eb;
+  overflow: visible;
+  z-index: 2;
+}
+
+.add-to-rating-panel__col--form .add-to-rating-panel__col-body {
+  overflow: visible;
+}
+
+.add-to-rating-panel__col--players {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.add-to-rating-panel__col-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.85rem;
+  box-sizing: border-box;
+  overflow: hidden;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.add-to-rating-panel__form-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.add-to-rating-panel__table {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  margin: 0.75rem 0.75rem 0;
+  --add-rating-grid: 1.75rem minmax(0, 1fr) 2.75rem 3.85rem 6rem;
+}
+
+.add-to-rating-panel__bottom {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem 0.75rem;
+  margin-top: 0.75rem;
+  padding: 0.65rem 0.85rem 0.85rem;
+  box-sizing: border-box;
+}
+
+.add-to-rating-panel__table--has-lh {
+  --add-rating-grid: 1.75rem minmax(0, 1fr) 2.75rem minmax(4.75rem, 5.75rem) 3.85rem 6rem;
+}
+
+.add-to-rating-panel__player {
+  display: grid;
+  grid-template-columns: var(--add-rating-grid);
+  align-items: center;
+  gap: 0.95rem;
+  min-height: 0;
+  flex: 1 1 0;
+  margin: 0;
+  padding: 0.5rem 0.85rem;
+  border: none;
+  border-radius: 12px;
+  background: #f3f4f6;
+  box-sizing: border-box;
+  transition: background 0.15s ease;
+}
+
+.add-to-rating-panel__players {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  gap: 0.4rem;
+  padding: 0.15rem 0 0;
+}
+
+.add-to-rating-panel__player:hover {
+  background: #eceff3;
+}
+
+.add-to-rating-panel__player:hover .add-to-rating-panel__stat:not(.add-to-rating-panel__stat--bonus) {
+  background: #fff;
+  border-color: rgba(148, 163, 184, 0.28);
+}
+
+.add-to-rating-panel__player:last-child {
+  margin-bottom: 0;
+}
+
+.add-to-rating-panel__player-seat {
+  color: #94a3b8;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.add-to-rating-panel__player-main {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.add-to-rating-panel__player-photo {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 999px;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid #e5e7eb;
+  background: #f3f4f6;
+}
+
+.add-to-rating-panel__player-photo--ph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #eef2f7;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.add-to-rating-panel__player-name {
+  min-width: 0;
+  overflow: hidden;
+  color: #111827;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.add-to-rating-panel__stat {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 2.25rem;
+  height: 100%;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid var(--add-rating-stat-border);
+  border-radius: 0.625rem;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.add-to-rating-panel__stat--role {
+  padding: 0.25rem;
+}
+
+.add-to-rating-panel__stat--total {
+  color: #475569;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.add-to-rating-panel__stat--lh {
+  padding-inline: 0.4rem;
+}
+
+.add-to-rating-panel__stat--bonus {
+  padding: 0;
+  overflow: hidden;
+  background: #fff;
+  border-color: #d1d5db;
+}
+
+.add-to-rating-panel__stat--bonus .lobby-manage__bonus-points-stepper {
+  width: 100%;
+  min-height: 2.25rem;
+  height: 100%;
+  border: none;
+  border-radius: 0;
+}
+
+.add-to-rating-panel__stat-empty {
+  color: #94a3b8;
+  font-size: 0.875rem;
+  line-height: 1;
+}
+
+.add-to-rating-panel__player-role-icon {
+  display: block;
+  width: 1.35rem;
+  height: 1.35rem;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+.add-to-rating-panel__player-role-icon--peaceful {
+  filter: brightness(0) saturate(100%) invert(36%) sepia(72%) saturate(1400%) hue-rotate(328deg)
+    brightness(95%) contrast(92%);
+}
+
+.add-to-rating-panel__player-role-icon--mafia {
+  filter: brightness(0) saturate(100%) invert(40%) sepia(52%) saturate(1200%) hue-rotate(196deg)
+    brightness(96%) contrast(92%);
+}
+
+.add-to-rating-panel__player-role-icon--sheriff {
+  filter: brightness(0) saturate(100%) invert(46%) sepia(38%) saturate(900%) hue-rotate(118deg)
+    brightness(94%) contrast(90%);
+}
+
+.add-to-rating-panel__player-role-icon--don {
+  filter: brightness(0) saturate(100%) invert(40%) sepia(52%) saturate(1200%) hue-rotate(196deg)
+    brightness(96%) contrast(92%);
+}
+
+.add-to-rating-panel__lh-inline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.add-to-rating-panel__lh-label {
+  color: #94a3b8;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.add-to-rating-panel__lh-values {
+  color: #334155;
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.add-to-rating-panel__player-stepper {
+  width: 100%;
+}
+
+.add-to-rating-panel__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-shrink: 0;
+  margin-top: auto;
+  padding: 0.625rem 0.75rem;
+  border-top: 1px solid #e5e7eb;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.add-to-rating-panel__footer-error {
+  flex: 1 1 auto;
+  min-width: min(100%, 12rem);
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: #b91c1c;
+}
+
+.add-to-rating-panel__footer-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.add-to-rating-panel__panel-note {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: min(100%, 12rem);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: #92400e;
+  box-sizing: border-box;
+}
+
+.add-to-rating-panel__panel-note-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+  color: #d97706;
+}
+
+.add-to-rating-panel__panel-note-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.add-to-rating-panel__banner--inline {
+  margin: 0;
+  padding: 0.55rem 0.75rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.add-to-rating-panel__field {
+  display: block;
+  min-width: 0;
+}
+
+.add-to-rating-panel__field--picker {
+  position: relative;
+  z-index: 1;
+}
+
+.add-to-rating-panel__picker {
+  position: relative;
+}
+
+.add-to-rating-panel__picker--open {
+  z-index: 20;
+}
+
+.add-to-rating-panel__select-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 3.375rem;
+  padding: 0.7rem 2.5rem 0.7rem 0.9rem;
+  font: inherit;
+  color: #111827;
+  text-align: left;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 10px;
+  background: #fff;
+  box-sizing: border-box;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.add-to-rating-panel__select-btn:hover:not(:disabled) {
+  border-color: rgba(148, 163, 184, 0.35);
+  background: #fafbfc;
+}
+
+.add-to-rating-panel__select-btn:focus,
+.add-to-rating-panel__select-btn:focus-visible {
+  outline: none;
+  border-color: #2f6feb;
+  box-shadow: 0 0 0 3px rgba(47, 111, 235, 0.12);
+}
+
+.add-to-rating-panel__picker--open .add-to-rating-panel__select-btn {
+  border-color: #2f6feb;
+  box-shadow: 0 0 0 3px rgba(47, 111, 235, 0.12);
+}
+
+.add-to-rating-panel__select-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.add-to-rating-panel__select-value {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.add-to-rating-panel__select-name {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.add-to-rating-panel__select-meta {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.75rem;
+  line-height: 1.2;
+  color: #64748b;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.add-to-rating-panel__select-value--placeholder .add-to-rating-panel__select-name {
+  color: #94a3b8;
+  font-weight: 400;
+}
+
+.add-to-rating-panel__picker--open .add-to-rating-panel__select-name,
+.add-to-rating-panel__picker--open .add-to-rating-panel__select-meta {
+  color: inherit;
+}
+
+.add-to-rating-panel__picker--open .add-to-rating-panel__select-meta {
+  color: #64748b;
+}
+
+.add-to-rating-panel__select-arrow {
+  position: absolute;
+  top: 50%;
+  right: 0.7rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  color: #64748b;
+  pointer-events: none;
+  transform: translateY(-50%);
+  transition: transform 0.15s ease, color 0.15s ease;
+}
+
+.add-to-rating-panel__select-arrow svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.add-to-rating-panel__picker--open .add-to-rating-panel__select-arrow {
+  color: #2f6feb;
+  transform: translateY(-50%) rotate(180deg);
+}
+
+.add-to-rating-panel__menu {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  z-index: 21;
+  width: 100%;
+  max-height: min(16rem, calc(100vh - 10rem));
+  overflow-y: auto;
+  padding: 0.35rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+  box-sizing: border-box;
+  box-shadow:
+    0 10px 24px rgba(15, 23, 42, 0.08),
+    0 2px 6px rgba(15, 23, 42, 0.04);
+}
+
+.add-to-rating-panel__menu-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.12rem;
+  width: 100%;
+  margin: 0;
+  padding: 0.6rem 0.7rem;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.add-to-rating-panel__menu-item-name {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  line-height: 1.25;
+  color: #111827;
+}
+
+.add-to-rating-panel__menu-item-meta {
+  font-size: 0.75rem;
+  line-height: 1.2;
+  color: #64748b;
+}
+
+.add-to-rating-panel__menu-item:hover {
+  background: #f8fafc;
+}
+
+.add-to-rating-panel__menu-item--active {
+  background: #eff6ff;
+}
+
+.add-to-rating-panel__menu-item--active .add-to-rating-panel__menu-item-name {
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.add-to-rating-panel__menu-item--active .add-to-rating-panel__menu-item-meta {
+  color: #3b82f6;
+}
+
+.add-to-rating-panel__label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #64748b;
+}
+
+.add-to-rating-panel__field--title {
+  display: block;
+}
+
+.add-to-rating-panel__input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+}
+
+.add-to-rating-panel__input--has-action {
+  padding-right: 13.5rem;
+}
+
+.add-to-rating-panel__copy-persistent {
+  position: absolute;
+  top: 50%;
+  right: 0.45rem;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  max-width: calc(100% - 0.9rem);
+  margin: 0;
+  padding: 0.42rem 0.62rem;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  color: #64748b;
+  background: #f9fafb;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transform: translateY(-50%);
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.12s ease;
+}
+
+.add-to-rating-panel__copy-persistent-icon {
+  width: 0.9rem;
+  height: 0.9rem;
+  flex-shrink: 0;
+}
+
+.add-to-rating-panel__copy-persistent-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.add-to-rating-panel__copy-persistent:hover:not(:disabled) {
+  color: #475569;
+  background: #f3f4f6;
+  border-color: #cbd5e1;
+}
+
+.add-to-rating-panel__copy-persistent:active:not(:disabled) {
+  transform: translateY(calc(-50% + 1px));
+}
+
+.add-to-rating-panel__copy-persistent:disabled {
+  color: #94a3b8;
+  background: #f8fafc;
+  border-color: #e5e7eb;
+  cursor: not-allowed;
+  opacity: 0.85;
+}
+
+.add-to-rating-panel__copy-persistent:focus,
+.add-to-rating-panel__copy-persistent:focus-visible {
+  outline: 2px solid #cbd5e1;
+  outline-offset: 1px;
+}
+
+.add-to-rating-panel__input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 3.375rem;
+  padding: 0.7rem 0.9rem;
+  font: inherit;
+  font-size: 1rem;
+  color: #111827;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 10px;
+  background: #fff;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.add-to-rating-panel__input::placeholder {
+  color: #94a3b8;
+}
+
+.add-to-rating-panel__input:focus,
+.add-to-rating-panel__input:focus-visible {
+  outline: none;
+  border-color: #2f6feb;
+  box-shadow: 0 0 0 3px rgba(47, 111, 235, 0.12);
+}
+
+.add-to-rating-panel__input:disabled {
+  opacity: 0.65;
+}
+
+.add-to-rating-panel__winner-controls {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 0.65rem;
+  margin-left: auto;
+  box-sizing: border-box;
+}
+
+.add-to-rating-panel__winner-label {
+  margin: 0;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.add-to-rating-panel__winner-toggle {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: 100%;
+}
+
+.add-to-rating-panel__hint {
+  margin: 0;
+  padding: 0.6rem 0.7rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: #64748b;
+  background: #f8fafc;
+  border: 1px solid #eef2f7;
+  border-radius: 10px;
+}
+
+.add-to-rating-panel__hint--warn {
+  color: #92400e;
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+.add-to-rating-panel__banner {
+  margin: 0;
+  padding: 0.55rem 0.65rem;
+  font-size: 0.8125rem;
+  color: #b91c1c;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 0;
+}
+
+.add-to-rating-panel__banner--ok {
+  color: #1d4ed8;
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+@media (max-width: 1024px) {
+  .add-to-rating-panel__split {
+    grid-template-columns: 1fr;
+    overflow: hidden;
+  }
+
+  .add-to-rating-panel__col--form {
+    border-right: none;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  .add-to-rating-panel__col--players {
+    min-height: 0;
+  }
+
+  .add-to-rating-panel__table {
+    --add-rating-grid: 1.5rem minmax(0, 1fr) 2.35rem 3.5rem 5.25rem;
+  }
+
+  .add-to-rating-panel__table--has-lh {
+    --add-rating-grid: 1.5rem minmax(0, 1fr) 2.35rem minmax(4.25rem, 5rem) 3.5rem 5.25rem;
+  }
+
+  .add-to-rating-panel__player {
+    min-height: 0;
+    gap: 0.65rem;
+    padding: 0.45rem 0.65rem;
+  }
+
+  .add-to-rating-panel__bottom {
+    margin-top: 0.65rem;
+    padding: 0.6rem 0.65rem 0.75rem;
+  }
 }
 
 .lobby-manage__status {
@@ -4528,6 +6034,41 @@ async function resetBestMove() {
   color: #1d4ed8;
 }
 
+.lobby-manage__toast {
+  position: fixed;
+  bottom: max(1.25rem, env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  z-index: 3200;
+  max-width: min(22rem, calc(100vw - 2rem));
+  margin: 0;
+  padding: 0.75rem 1.15rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  line-height: 1.35;
+  color: #166534;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 10px;
+  box-sizing: border-box;
+  text-align: center;
+  pointer-events: none;
+  transform: translateX(-50%);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+.lobby-manage-toast-enter-active,
+.lobby-manage-toast-leave-active {
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+
+.lobby-manage-toast-enter-from,
+.lobby-manage-toast-leave-to {
+  opacity: 0;
+  transform: translate(-50%, 0.35rem);
+}
+
 .lobby-manage__meta {
   margin: 0;
   padding: 0.75rem 0.75rem 0;
@@ -4561,23 +6102,57 @@ async function resetBestMove() {
 .lobby-manage__modal-overlay {
   position: fixed;
   inset: 0;
-  z-index: 320;
-  background: rgba(17, 24, 39, 0.5);
+  z-index: 3000;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 1rem;
+  padding: max(0.75rem, env(safe-area-inset-top, 0px))
+    max(0.75rem, env(safe-area-inset-right, 0px))
+    max(0.75rem, env(safe-area-inset-bottom, 0px))
+    max(0.75rem, env(safe-area-inset-left, 0px));
+  background: var(--modal-backdrop);
+  animation: modal-overlay-in 0.18s ease;
+  box-sizing: border-box;
 }
 
 .lobby-manage__modal-card {
   width: min(640px, 100%);
-  max-height: min(82vh, 900px);
-  overflow: auto;
-  background: #fff;
-  border-radius: 12px;
-  border: 1px solid #e5e7eb;
-  padding: 0.95rem;
+  max-height: min(85dvh, 900px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--modal-panel-bg);
+  border-radius: var(--modal-panel-radius);
+  border: 1px solid var(--modal-panel-border);
+  box-shadow: var(--modal-panel-shadow);
+  padding: 0;
   box-sizing: border-box;
+  animation: modal-panel-in 0.28s var(--modal-ease-out);
+}
+
+.lobby-manage__modal-card > :not(.lobby-manage__modal-head):not(.lobby-manage__modal-actions) {
+  margin-left: var(--modal-content-x);
+  margin-right: var(--modal-content-x);
+}
+
+.lobby-manage__modal-card > .lobby-manage__modal-head + * {
+  margin-top: 1rem;
+}
+
+.lobby-manage__modal-card > .lobby-manage__bonus-points-table,
+.lobby-manage__modal-card > .lobby-manage__sheriff-checks-form,
+.lobby-manage__modal-card > .lobby-manage__best-move-form {
+  margin-bottom: 0.75rem;
+}
+
+.lobby-manage__modal-card > .lobby-manage__modal-status--error,
+.lobby-manage__modal-card > .lobby-manage__modal-ok {
+  margin-bottom: 0.75rem;
+}
+
+.lobby-manage__modal-card > .lobby-manage__modal-actions {
+  margin-left: 0;
+  margin-right: 0;
 }
 
 .lobby-manage__modal-card--sheriff-checks {
@@ -4608,8 +6183,11 @@ async function resetBestMove() {
 
 .lobby-manage__bonus-points-table {
   display: grid;
-  margin-top: 0.65rem;
-  border-top: 1px solid #e5e7eb;
+  margin-top: 0;
+  border-top: 1px solid #eef2f7;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #f9fafb;
 }
 
 .lobby-manage__bonus-points-row {
@@ -4618,7 +6196,13 @@ async function resetBestMove() {
   align-items: center;
   gap: 0.55rem;
   min-height: 2.75rem;
-  border-bottom: 1px solid #e5e7eb;
+  padding: 0 0.65rem;
+  border-bottom: 1px solid #eef2f7;
+  background: #fff;
+}
+
+.lobby-manage__bonus-points-row:last-child {
+  border-bottom: none;
 }
 
 .lobby-manage__bonus-points-head {
@@ -4627,10 +6211,13 @@ async function resetBestMove() {
   align-items: center;
   min-height: 2rem;
   gap: 0.55rem;
+  padding: 0.45rem 0.65rem 0.35rem;
   color: #64748b;
   font-size: 0.6875rem;
   font-weight: 700;
   text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: #f9fafb;
 }
 
 .lobby-manage__bonus-points-head span:nth-child(3),
@@ -4731,48 +6318,60 @@ async function resetBestMove() {
 }
 
 .lobby-manage__nick-input--modal {
-  width: 100%;
-  margin-top: 0.7rem;
+  width: auto;
+  margin-top: 0;
   min-height: 2.5rem;
-  padding: 0.45rem 0.7rem;
-  font-size: 0.95rem;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.9375rem;
   line-height: 1.35;
   background: #fff;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
   box-sizing: border-box;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .lobby-manage__nick-input--modal:focus,
 .lobby-manage__nick-input--modal:focus-visible {
-  border: 1px solid #d1d5db;
-  outline: none;
+  border-color: #2f6feb;
+  outline: 2px solid #2f6feb;
+  outline-offset: 2px;
 }
 
 .lobby-manage__replace-modal-list {
-  margin-top: 0.6rem;
+  margin-top: 0.75rem;
+  margin-bottom: 1rem;
   max-height: min(50dvh, 420px);
   overflow: auto;
+  border: 1px solid #eef2f7;
+  border-radius: 12px;
+  background: #f9fafb;
 }
 
 .lobby-manage__modal-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 0.75rem;
+  padding: 1.2rem var(--modal-content-x) 1rem;
+  border-bottom: 1px solid var(--modal-head-border);
+  flex-shrink: 0;
 }
 
 .lobby-manage__modal-title {
   margin: 0;
-  font-size: 1rem;
+  font-size: var(--modal-title-size);
+  font-weight: 600;
   color: #111827;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
 }
 
 .lobby-manage__modal-close {
-  border: 1px solid #e5e7eb;
+  border: none;
   background: transparent;
   color: #6b7280;
-  border-radius: 8px;
+  border-radius: 10px;
   width: 2.25rem;
   height: 2.25rem;
   padding: 0;
@@ -4780,6 +6379,7 @@ async function resetBestMove() {
   font-size: 1.5rem;
   line-height: 1;
   cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease;
 }
 
 .lobby-manage__modal-close:hover:not(:disabled) {
@@ -4787,9 +6387,15 @@ async function resetBestMove() {
   background: #f3f4f6;
 }
 
+.lobby-manage__modal-close:focus-visible {
+  outline: 2px solid #2f6feb;
+  outline-offset: 2px;
+}
+
 .lobby-manage__modal-status {
-  margin: 0.85rem 0 0;
-  font-size: 0.875rem;
+  margin: 0 0 0.25rem;
+  font-size: 0.9375rem;
+  line-height: 1.45;
   color: #4b5563;
 }
 
@@ -4924,14 +6530,26 @@ async function resetBestMove() {
 }
 
 .lobby-manage__modal-actions {
-  margin-top: 0.95rem;
+  margin-top: auto;
+  padding: 1rem var(--modal-content-x) calc(1.15rem + env(safe-area-inset-bottom, 0px));
   display: flex;
   align-items: center;
-  gap: 0.65rem;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  border-top: 1px solid var(--modal-head-border);
+  background: #fff;
+}
+
+.lobby-manage__modal-actions .lobby-manage__btn-foot {
+  padding: 0.55rem 1rem;
+  font-size: 0.9375rem;
+  border-radius: 10px;
 }
 
 .lobby-manage__sheriff-checks-form {
-  margin-top: 0.85rem;
+  margin-top: 0;
+  margin-bottom: 0.75rem;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0.55rem;
@@ -5016,7 +6634,7 @@ async function resetBestMove() {
     display: none !important;
   }
 
-  .lobby-manage:not(.lobby-manage--design-picker) {
+  .lobby-manage:not(.lobby-manage--design-picker):not(.lobby-manage--add-rating) {
     padding-bottom: 0;
   }
 
@@ -5691,14 +7309,19 @@ async function resetBestMove() {
 @media (max-width: 767px) {
   .lobby-manage__modal-overlay {
     align-items: flex-end;
-    padding: 0;
+    padding-left: 0;
+    padding-right: 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
   .lobby-manage__modal-card {
     width: 100%;
     max-height: min(88dvh, 900px);
-    border-radius: 14px 14px 0 0;
-    padding: 0.85rem 0.9rem calc(0.85rem + env(safe-area-inset-bottom, 0px));
+    border-radius: var(--modal-panel-radius-mobile);
+  }
+
+  .lobby-manage__modal-head {
+    padding-top: max(1rem, env(safe-area-inset-top, 0px));
   }
 }
 

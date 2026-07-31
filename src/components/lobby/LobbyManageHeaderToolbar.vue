@@ -220,6 +220,16 @@ watch(lobbyId, () => {
       </span>
       <span class="shell-lobby-toolbar__label-wide">Удалить лобби</span>
     </button>
+    <button
+      type="button"
+      class="shell-lobby-toolbar__add-rating"
+      :disabled="!lobbyId"
+      title="Добавить игру в рейтинг"
+      aria-label="Добавить в рейтинг"
+      @click="lobbyManageUi.requestOpenAddToRating"
+    >
+      Добавить в рейтинг
+    </button>
   </div>
 </template>
 
@@ -351,6 +361,41 @@ watch(lobbyId, () => {
   color: #991b1b;
   background: #fee2e2;
   border-color: #fca5a5;
+}
+
+.shell-lobby-toolbar__add-rating {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--shell-header-row-h, 2.375rem);
+  min-height: var(--shell-header-row-h, 2.375rem);
+  max-height: var(--shell-header-row-h, 2.375rem);
+  padding: 0 0.95rem;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  box-sizing: border-box;
+  border-radius: 8px;
+  color: #2f6feb;
+  background: #eff6ff;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.shell-lobby-toolbar__add-rating:hover:not(:disabled) {
+  background: #dbeafe;
+}
+
+.shell-lobby-toolbar__add-rating:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+}
+
+.shell-lobby-toolbar__add-rating:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
 }
 
 @media (max-width: 1024px) {

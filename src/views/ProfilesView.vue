@@ -7,6 +7,8 @@ import { collectGomafiaImportedPlayerCardIds } from '@/api/lobbies'
 import { deletePlayerCard, listPlayerCards, type PlayerCard } from '@/api/playerCards'
 import PlayerCardCreateModal from '@/components/account/PlayerCardCreateModal.vue'
 import PlayerCardInfoModal from '@/components/account/PlayerCardInfoModal.vue'
+import AppGuestPrompt from '@/components/common/AppGuestPrompt.vue'
+import AppPageError from '@/components/common/AppPageError.vue'
 import { useDebouncedRef } from '@/composables/useDebouncedRef'
 import { useAuthStore } from '@/stores/auth'
 import { useProfilesUiStore } from '@/stores/profilesUi'
@@ -297,20 +299,13 @@ function cardInitials(c: PlayerCard): string {
       </Transition>
     </Teleport>
 
-    <div v-if="!token" class="profiles__guest">
-      <p class="profiles__guest-emoji" aria-hidden="true">😔</p>
-      <p class="profiles__guest-text">Вы не авторизованы или не зарегистрированы.</p>
-      <div class="profiles__guest-actions">
-        <RouterLink class="profiles__link profiles__link--outline" :to="{ name: 'register' }">
-          Регистрация
-        </RouterLink>
-        <RouterLink class="profiles__link profiles__link--primary" :to="{ name: 'login' }">Вход</RouterLink>
-      </div>
-    </div>
+    <AppGuestPrompt v-if="!token" />
 
     <template v-else>
       <p v-if="loading" class="profiles__status">Загрузка…</p>
-      <p v-else-if="error" class="profiles__status profiles__status--error" role="alert">{{ error }}</p>
+      <div v-else-if="error" class="profiles__page-error">
+        <AppPageError compact :message="error" @retry="load" />
+      </div>
 
       <div v-if="filteredCards.length && viewMode === 'grid'" class="profiles__grid">
         <article
@@ -491,78 +486,6 @@ function cardInitials(c: PlayerCard): string {
   padding: 0 0 1rem;
   box-sizing: border-box;
   overflow: visible;
-}
-
-.profiles__guest {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 1.25rem;
-  max-width: none;
-  min-height: min(420px, calc(100svh - 8rem));
-  margin: 0 auto;
-  padding: 0;
-  text-align: center;
-}
-
-.profiles__guest-emoji {
-  margin: 0;
-  font-size: 2rem;
-  line-height: 1;
-}
-
-.profiles__guest-text {
-  margin: 0;
-  font-size: 1.0625rem;
-  font-weight: 500;
-  color: #374151;
-  line-height: 1.5;
-  white-space: nowrap;
-}
-
-.profiles__guest-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 0.65rem;
-}
-
-.profiles__link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 8.5rem;
-  padding: 0.55rem 1.15rem;
-  font-size: 0.9375rem;
-  font-weight: 500;
-  text-decoration: none;
-  border-radius: 8px;
-  border: 1px solid transparent;
-  box-sizing: border-box;
-}
-
-.profiles__link--primary {
-  color: #fff;
-  background: #2f6feb;
-  border-color: #2f6feb;
-}
-
-.profiles__link--primary:hover {
-  background: #2563d4;
-  border-color: #2563d4;
-}
-
-.profiles__link--outline {
-  color: #2f6feb;
-  background: #fff;
-  border-color: #d1d5db;
-}
-
-.profiles__link--outline:hover {
-  background: #f9fafb;
-  border-color: #9ca3af;
 }
 
 .profiles__status {

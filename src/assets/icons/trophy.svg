@@ -1,0 +1,23 @@
+<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path
+    d="M7 3.75H13V8.5C13 10.43 11.57 12 10 12C8.43 12 7 10.43 7 8.5V3.75Z"
+    fill="black"
+  />
+  <path
+    d="M7 5.5H5.25C4.42 5.5 3.75 6.17 3.75 7V7.75C3.75 8.58 4.42 9.25 5.25 9.25H7V5.5Z"
+    fill="black"
+  />
+  <path
+    d="M7 5.5H5.25C4.42 5.5 3.75 6.17 3.75 7V7.75C3.75 8.58 4.42 9.25 5.25 9.25H7V5.5Z"
+    fill="black"
+    transform="translate(20 0) scale(-1 1)"
+  />
+  <path
+    d="M9.25 12.25H10.75V14.75H9.25V12.25Z"
+    fill="black"
+  />
+  <path
+    d="M6.75 15.5H13.25V16.75H6.75V16.75Z"
+    fill="black"
+  />
+</svg>

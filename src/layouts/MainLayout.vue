@@ -6,6 +6,7 @@ import { logout as apiLogout, me } from '@/api/auth'
 import AppSidebar from '@/components/common/AppSidebar.vue'
 import ProfileSettingsModal from '@/components/account/ProfileSettingsModal.vue'
 import LobbyManageHeaderToolbar from '@/components/lobby/LobbyManageHeaderToolbar.vue'
+import RatingDetailHeaderToolbar from '@/components/ratings/RatingDetailHeaderToolbar.vue'
 import profilesListIcon from '@/assets/icons/spisok.svg'
 import profilesGridIcon from '@/assets/icons/plitka.svg'
 import { useAuthStore } from '@/stores/auth'
@@ -15,6 +16,7 @@ import { useCardsUiStore } from '@/stores/cardsUi'
 import type { CardDesignFilter } from '@/stores/cardsUi'
 import { useProfilesUiStore } from '@/stores/profilesUi'
 import type { ProfilesPlayerFilter } from '@/stores/profilesUi'
+import { useRatingsUiStore } from '@/stores/ratingsUi'
 import { useLobbyManageUiStore } from '@/stores/lobbyManageUi'
 import { useContactUiStore } from '@/stores/contactUi'
 import { useDocsUiStore } from '@/stores/docsUi'
@@ -25,6 +27,8 @@ const router = useRouter()
 const auth = useAuthStore()
 const { token } = storeToRefs(auth)
 const profilesUi = useProfilesUiStore()
+const ratingsUi = useRatingsUiStore()
+const { detailTab } = storeToRefs(ratingsUi)
 const {
   searchQuery: profilesToolbarSearch,
   playerCardsTotal: profilesPlayerTotal,
@@ -36,7 +40,7 @@ const { lobbyFilter, createLobbyOpen } = storeToRefs(dashboardUi)
 const cardsUi = useCardsUiStore()
 const { designFilter } = storeToRefs(cardsUi)
 const lobbyManageUi = useLobbyManageUiStore()
-const { designPickerOpen, designPickerLobbyTitle } = storeToRefs(lobbyManageUi)
+const { designPickerOpen, designPickerLobbyTitle, addToRatingOpen } = storeToRefs(lobbyManageUi)
 const contactUi = useContactUiStore()
 const { category: contactCategory } = storeToRefs(contactUi)
 const docsUi = useDocsUiStore()
@@ -90,6 +94,7 @@ const pageTitle = computed(() => {
     return 'Новое лобби'
   }
   if (route.name === 'lobby-manage') {
+    if (addToRatingOpen.value) return 'Добавить в рейтинг'
     const name = designPickerLobbyTitle.value.trim()
     if (designPickerOpen.value) {
       if (name) return `Дизайн плашек для лобби «${name}»`
@@ -97,12 +102,21 @@ const pageTitle = computed(() => {
     }
     if (name) return name
   }
+  if (route.name === 'rating-detail') {
+    const name = ratingsUi.detailTitle.trim()
+    if (name) return name
+  }
+  if (route.name === 'rating-add-game') return 'Добавить игру'
   return route.meta.title ?? ''
 })
 /** Только страница «Мой аккаунт»: действия в шапке; в остальных разделах скрыто. */
 const showAccountActions = computed(() => route.name === 'account' && !!token.value)
 /** Страница «Мои составы»: поиск + «Создать профиль» в шапке (profilesUi store). */
 const showProfilesHeader = computed(() => route.name === 'profiles' && !!token.value)
+/** Страница рейтинга: действия в шапке. */
+const showRatingDetailHeader = computed(
+  () => route.name === 'rating-detail' && !!token.value,
+)
 /** Дашборд: фильтр лобби слева, поиск справа в шапке. */
 const showDashboardHeader = computed(
   () => route.name === 'dashboard' && !!token.value && !createLobbyOpen.value,
@@ -115,7 +129,7 @@ const showCardDesignHeader = computed(() => {
 })
 /** Страница «Управление лобби»: панель действий в шапке (скрыта при выборе дизайна). */
 const showLobbyManageHeader = computed(
-  () => route.name === 'lobby-manage' && !!token.value && !designPickerOpen.value,
+  () => route.name === 'lobby-manage' && !!token.value && !designPickerOpen.value && !addToRatingOpen.value,
 )
 /** Contact на мобилке: категория обратной связи в шапке рядом с меню. */
 const showContactHeader = computed(
@@ -131,6 +145,8 @@ const isFlushContentRoute = computed(
     route.name === 'card-design' ||
     route.name === 'docs' ||
     route.name === 'contact' ||
+    route.name === 'rating-detail' ||
+    route.name === 'rating-add-game' ||
     (route.name === 'dashboard' && createLobbyOpen.value),
 )
 /** Лендинг, docs и contact на мобилке: шапка с кнопкой меню; contact с фильтрами при авторизации; на десктопе docs/contact без шапки. */
@@ -203,7 +219,10 @@ watch([mobileNavOpen, isMobile], () => {
 watch(
   () => route.name,
   (name) => {
-    if (name !== 'lobby-manage') lobbyManageUi.closeDesignPicker()
+    if (name !== 'lobby-manage') {
+      lobbyManageUi.closeDesignPicker()
+      lobbyManageUi.closeAddToRating()
+    }
     if (name !== 'docs') docsUi.setHeaderNavEl(null)
   },
 )
@@ -284,7 +303,7 @@ onUnmounted(() => {
             <span class="shell__menu-sr">Меню</span>
           </button>
           <div
-            v-if="!hideShellHeaderTitle && !showProfilesHeader && !showDashboardHeader && !showContactHeader && !showDocsHeader"
+            v-if="!hideShellHeaderTitle && !showProfilesHeader && !showDashboardHeader && !showContactHeader && !showDocsHeader && !showRatingDetailHeader"
             class="shell__title-wrap"
           >
             <h1
@@ -293,6 +312,9 @@ onUnmounted(() => {
             >
               {{ pageTitle }}
             </h1>
+          </div>
+          <div v-else-if="showRatingDetailHeader" class="shell__title-wrap shell__title-wrap--rating-detail">
+            <h1 v-if="pageTitle" class="shell__title shell__title--rating-detail">{{ pageTitle }}</h1>
           </div>
           <div v-else-if="showDashboardHeader" class="shell__title-wrap shell__title-wrap--filters">
             <div
@@ -430,6 +452,38 @@ onUnmounted(() => {
                   Создать профиль
                 </button>
               </div>
+            </div>
+          </div>
+          <div
+            v-else-if="showRatingDetailHeader"
+            class="shell__header-actions shell__header-actions--rating-detail"
+          >
+            <RatingDetailHeaderToolbar />
+            <div
+              class="segmented-filter segmented-filter--inline segmented-filter--compact shell-rating-detail-tabs"
+              role="tablist"
+              aria-label="Раздел рейтинга"
+            >
+              <button
+                type="button"
+                role="tab"
+                class="segmented-filter__btn"
+                :class="{ 'segmented-filter__btn--active': detailTab === 'table' }"
+                :aria-selected="detailTab === 'table'"
+                @click="ratingsUi.setDetailTab('table')"
+              >
+                Таблица
+              </button>
+              <button
+                type="button"
+                role="tab"
+                class="segmented-filter__btn"
+                :class="{ 'segmented-filter__btn--active': detailTab === 'games' }"
+                :aria-selected="detailTab === 'games'"
+                @click="ratingsUi.setDetailTab('games')"
+              >
+                Игры
+              </button>
             </div>
           </div>
           <div
@@ -579,6 +633,21 @@ onUnmounted(() => {
   z-index: 60;
 }
 
+.shell__header-actions--rating-detail {
+  margin-left: auto;
+  justify-content: flex-end;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow: visible;
+  gap: 0.45rem;
+}
+
+.shell__header-actions--rating-detail .shell-rating-toolbar {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .shell__logout {
   display: inline-flex;
   align-items: center;
@@ -659,6 +728,71 @@ onUnmounted(() => {
 
 .shell__title-wrap--filters .shell-dashboard-filters {
   max-width: 100%;
+}
+
+.shell__title-wrap--rating-detail {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.shell-rating-detail-tabs {
+  flex-shrink: 0;
+}
+
+@media (max-width: 1280px) {
+  .shell__header:has(.shell__header-actions--rating-detail) {
+    flex-wrap: wrap;
+    align-items: center;
+    row-gap: 0.5rem;
+  }
+
+  .shell__title-wrap--rating-detail {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .shell:not(.shell--mobile) .shell__header-actions--rating-detail {
+    flex: 1 1 100%;
+    margin-left: 0;
+    justify-content: space-between;
+    gap: 0.45rem;
+    min-width: 0;
+  }
+
+  .shell:not(.shell--mobile) .shell__header-actions--rating-detail :deep(.shell-rating-toolbar) {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .shell:not(.shell--mobile) .shell__header-actions--rating-detail :deep(.shell-rating-toolbar__cluster) {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    row-gap: 0.45rem;
+  }
+
+  .shell:not(.shell--mobile) .shell__header-actions--rating-detail :deep(.shell-rating-toolbar__search) {
+    flex: 1 1 12rem;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .shell:not(.shell--mobile) .shell__header-actions--rating-detail :deep(.shell-rating-toolbar__actions) {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .shell:not(.shell--mobile) .shell__header-actions--rating-detail :deep(.shell-rating-toolbar__actions::-webkit-scrollbar) {
+    display: none;
+  }
+}
+
+.shell__title--rating-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .shell-profiles-filters {
@@ -800,6 +934,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  scrollbar-gutter: auto;
 }
 
 .shell__body.shell__body--landing {
@@ -1082,6 +1217,90 @@ onUnmounted(() => {
   flex-wrap: wrap;
 }
 
+.shell--mobile .shell__header-actions:has(.shell-rating-toolbar__search) {
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  min-width: 0;
+  overflow: visible;
+}
+
+.shell--mobile .shell__header:has(.shell__header-actions--rating-detail) {
+  display: grid;
+  grid-template-columns: var(--shell-header-row-h) minmax(0, 1fr);
+  grid-template-areas:
+    'menu title'
+    'actions actions'
+    'tabs tabs'
+    'search search';
+  align-items: center;
+  gap: 0.5rem 0.45rem;
+}
+
+.shell--mobile .shell__header:has(.shell__header-actions--rating-detail) .shell__menu-toggle {
+  grid-area: menu;
+}
+
+.shell--mobile .shell__header:has(.shell__header-actions--rating-detail) .shell__title-wrap--rating-detail {
+  grid-area: title;
+  min-width: 0;
+}
+
+.shell--mobile .shell__header:has(.shell__header-actions--rating-detail) .shell__title--rating-detail {
+  font-size: 1rem;
+}
+
+.shell--mobile .shell__header-actions--rating-detail {
+  display: contents;
+}
+
+.shell--mobile .shell__header-actions--rating-detail .shell-rating-detail-tabs {
+  grid-area: tabs;
+  display: flex;
+  width: 100%;
+  max-width: 100%;
+  height: var(--shell-header-row-h);
+  padding: 0.15rem;
+  box-sizing: border-box;
+  align-items: center;
+  align-self: stretch;
+  justify-self: stretch;
+}
+
+.shell--mobile .shell__header-actions--rating-detail .shell-rating-detail-tabs .segmented-filter__btn {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.shell--mobile .shell__header-actions--rating-detail :deep(.shell-rating-toolbar),
+.shell--mobile .shell__header-actions--rating-detail :deep(.shell-rating-toolbar__cluster) {
+  display: contents;
+}
+
+.shell--mobile .shell__header-actions--rating-detail :deep(.shell-rating-toolbar__search) {
+  grid-area: search;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+}
+
+.shell--mobile .shell__header-actions--rating-detail :deep(.shell-rating-toolbar__actions) {
+  grid-area: actions;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.45rem;
+  min-width: 0;
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.shell--mobile .shell__header-actions--rating-detail :deep(.shell-rating-toolbar__actions::-webkit-scrollbar) {
+  display: none;
+}
+
 .shell--mobile .shell-profiles-search {
   flex: 1 1 100%;
   min-width: 0;
@@ -1212,16 +1431,18 @@ onUnmounted(() => {
 }
 
 .shell--mobile .shell__header:has(.shell__profiles-header) {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: var(--shell-header-row-h) minmax(0, 1fr) auto;
+  grid-template-areas:
+    'menu filters view'
+    'search search search';
   align-items: center;
-  align-content: flex-start;
-  column-gap: 0.5rem;
-  row-gap: 0.25rem;
+  gap: 0.65rem 0.45rem;
 }
 
 .shell--mobile .shell__header:has(.shell__profiles-header) .shell__menu-toggle {
-  order: 1;
+  grid-area: menu;
+  order: unset;
 }
 
 .shell--mobile .shell__profiles-header {
@@ -1233,32 +1454,50 @@ onUnmounted(() => {
 }
 
 .shell--mobile .shell-profiles-filters {
-  order: 2;
-  flex: 0 1 auto;
+  grid-area: filters;
+  order: unset;
+  flex: initial;
   width: auto;
-  max-width: calc(100% - var(--shell-header-row-h) - 0.5rem);
   min-width: 0;
-  padding-bottom: 0;
+  max-width: none;
+  height: var(--shell-header-row-h);
+  padding: 0.15rem;
+  box-sizing: border-box;
+  align-self: center;
+  align-items: center;
+}
+
+.shell--mobile .shell-profiles-filters .segmented-filter__btn {
+  flex: 0 0 auto;
+  height: calc(var(--shell-header-row-h) - 0.3rem);
+  padding: 0 0.55rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.1;
 }
 
 .shell--mobile .shell__profiles-linebreak {
-  display: block;
-  order: 3;
-  flex: 0 0 100%;
-  width: 0;
-  height: 0;
-  overflow: hidden;
+  display: none;
 }
 
 .shell--mobile .shell-profiles-view-switch {
-  order: 4;
+  grid-area: view;
+  order: unset;
   flex: 0 0 auto;
+  height: var(--shell-header-row-h);
+  padding: 0.15rem;
+  box-sizing: border-box;
+  align-self: center;
+  align-items: center;
+  justify-self: end;
 }
 
 .shell--mobile .shell-profiles-search {
-  order: 5;
-  flex: 1 1 0;
-  width: auto;
+  grid-area: search;
+  order: unset;
+  flex: initial;
+  width: 100%;
   min-width: 0;
   max-width: none;
   margin: 0;
@@ -1360,7 +1599,7 @@ onUnmounted(() => {
   padding: 0;
 }
 
-.shell--mobile .shell__body.shell__body--flush:has(.lobby-manage:not(.lobby-manage--design-picker)) {
+.shell--mobile .shell__body.shell__body--flush:has(.lobby-manage:not(.lobby-manage--design-picker):not(.lobby-manage--add-rating)) {
   scroll-padding-bottom: calc(10.5rem + env(safe-area-inset-bottom, 0px));
 }
 
