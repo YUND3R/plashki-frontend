@@ -20,7 +20,9 @@ import { useRatingsUiStore } from '@/stores/ratingsUi'
 import { useLobbyManageUiStore } from '@/stores/lobbyManageUi'
 import { useContactUiStore } from '@/stores/contactUi'
 import { useDocsUiStore } from '@/stores/docsUi'
+import { useLegalUiStore } from '@/stores/legalUi'
 import type { FeedbackCategory } from '@/api/feedback'
+import { isLandingRoute } from '@/constants/landingContent'
 
 const route = useRoute()
 const router = useRouter()
@@ -46,6 +48,9 @@ const { category: contactCategory } = storeToRefs(contactUi)
 const docsUi = useDocsUiStore()
 const { activeSection: docsActiveSection } = storeToRefs(docsUi)
 const docsHeaderNavRef = ref<HTMLElement | null>(null)
+const legalUi = useLegalUiStore()
+const { activeSection: legalActiveSection } = storeToRefs(legalUi)
+const legalHeaderNavRef = ref<HTMLElement | null>(null)
 const userRole = ref('')
 const userRoleLoading = ref(false)
 const isAdmin = computed(() => userRole.value.trim().toUpperCase() === 'ADMIN')
@@ -137,13 +142,18 @@ const showContactHeader = computed(
 )
 /** Docs на мобилке: вкладки разделов в шапке рядом с меню. */
 const showDocsHeader = computed(() => route.name === 'docs' && isMobile.value)
+/** Legal на мобилке: вкладки разделов в шапке рядом с меню. */
+const showLegalHeader = computed(() => route.name === 'legal' && isMobile.value)
+const isLandingPage = computed(() => isLandingRoute(route.name))
+
 /** Контент без отступа от краёв белой панели. */
 const isFlushContentRoute = computed(
   () =>
-    route.name === 'landing' ||
+    isLandingPage.value ||
     route.name === 'lobby-manage' ||
     route.name === 'card-design' ||
     route.name === 'docs' ||
+    route.name === 'legal' ||
     route.name === 'contact' ||
     route.name === 'rating-detail' ||
     route.name === 'rating-add-game' ||
@@ -153,11 +163,16 @@ const isFlushContentRoute = computed(
 const showShellHeader = computed(() => {
   if (route.name === 'contact') return isMobile.value
   if (route.name === 'docs') return isMobile.value
-  if (route.name === 'landing') return isMobile.value
+  if (route.name === 'legal') return isMobile.value
+  if (isLandingPage.value) return isMobile.value
   return true
 })
 const hideShellHeaderTitle = computed(
-  () => route.name === 'landing' || route.name === 'contact' || route.name === 'docs',
+  () =>
+    isLandingPage.value ||
+    route.name === 'contact' ||
+    route.name === 'docs' ||
+    route.name === 'legal',
 )
 
 async function logout() {
@@ -224,11 +239,16 @@ watch(
       lobbyManageUi.closeAddToRating()
     }
     if (name !== 'docs') docsUi.setHeaderNavEl(null)
+    if (name !== 'legal') legalUi.setHeaderNavEl(null)
   },
 )
 
 watch(docsHeaderNavRef, (el) => {
   if (route.name === 'docs') docsUi.setHeaderNavEl(el)
+}, { flush: 'post' })
+
+watch(legalHeaderNavRef, (el) => {
+  if (route.name === 'legal') legalUi.setHeaderNavEl(el)
 }, { flush: 'post' })
 
 watch(
@@ -272,9 +292,10 @@ onUnmounted(() => {
       <main
         class="shell__panel"
         :class="{
-          'shell__panel--flush-border': isFlushContentRoute && route.name !== 'docs' && route.name !== 'contact',
-          'shell__panel--docs': route.name === 'docs',
+          'shell__panel--flush-border': isFlushContentRoute && route.name !== 'docs' && route.name !== 'legal' && route.name !== 'contact',
+          'shell__panel--docs': route.name === 'docs' || route.name === 'legal',
           'shell__panel--contact': route.name === 'contact',
+          'shell__panel--landing': isLandingPage,
         }"
       >
         <header
@@ -282,9 +303,13 @@ onUnmounted(() => {
           class="shell__header"
           :class="{
             'shell__header--landing-mobile':
-              (route.name === 'landing' || route.name === 'contact' || route.name === 'docs') &&
+              (isLandingPage ||
+                route.name === 'contact' ||
+                route.name === 'docs' ||
+                route.name === 'legal') &&
               !showContactHeader &&
-              !showDocsHeader,
+              !showDocsHeader &&
+              !showLegalHeader,
           }"
         >
           <button
@@ -303,7 +328,7 @@ onUnmounted(() => {
             <span class="shell__menu-sr">Меню</span>
           </button>
           <div
-            v-if="!hideShellHeaderTitle && !showProfilesHeader && !showDashboardHeader && !showContactHeader && !showDocsHeader && !showRatingDetailHeader"
+            v-if="!hideShellHeaderTitle && !showProfilesHeader && !showDashboardHeader && !showContactHeader && !showDocsHeader && !showLegalHeader && !showRatingDetailHeader"
             class="shell__title-wrap"
           >
             <h1
@@ -373,6 +398,28 @@ onUnmounted(() => {
                 :aria-selected="docsActiveSection === section.id"
                 :data-docs-section="section.id"
                 @click="docsUi.scrollToSection(section.id)"
+              >
+                {{ section.label }}
+              </button>
+            </div>
+          </div>
+          <div v-else-if="showLegalHeader" class="shell__title-wrap shell__title-wrap--filters">
+            <div
+              ref="legalHeaderNavRef"
+              class="segmented-filter segmented-filter--compact segmented-filter--scroll shell-legal-sections"
+              role="tablist"
+              aria-label="Разделы правовой информации"
+            >
+              <button
+                v-for="section in legalUi.sections"
+                :key="section.id"
+                type="button"
+                role="tab"
+                class="segmented-filter__btn"
+                :class="{ 'segmented-filter__btn--active': legalActiveSection === section.id }"
+                :aria-selected="legalActiveSection === section.id"
+                :data-legal-section="section.id"
+                @click="legalUi.scrollToSection(section.id)"
               >
                 {{ section.label }}
               </button>
@@ -535,8 +582,8 @@ onUnmounted(() => {
           class="shell__body"
           :class="{
             'shell__body--flush': isFlushContentRoute,
-            'shell__body--landing': route.name === 'landing',
-            'shell__body--docs': route.name === 'docs',
+            'shell__body--landing': isLandingPage,
+            'shell__body--docs': route.name === 'docs' || route.name === 'legal',
             'shell__body--contact': route.name === 'contact',
           }"
         >
@@ -590,6 +637,11 @@ onUnmounted(() => {
 
 .shell__panel.shell__panel--flush-border {
   border: none;
+}
+
+.shell__panel.shell__panel--landing {
+  background: #070b14;
+  border-color: rgba(148, 163, 184, 0.12);
 }
 
 .shell__header {
@@ -1386,7 +1438,8 @@ onUnmounted(() => {
   line-height: 1.1;
 }
 
-.shell--mobile .shell__header:has(.shell-docs-sections) {
+.shell--mobile .shell__header:has(.shell-docs-sections),
+.shell--mobile .shell__header:has(.shell-legal-sections) {
   display: grid;
   grid-template-columns: var(--shell-header-row-h) minmax(0, 1fr);
   grid-template-areas: 'menu filters';
@@ -1399,7 +1452,8 @@ onUnmounted(() => {
   background: #ffffff;
 }
 
-.shell--mobile .shell__header:has(.shell-docs-sections) .shell__title-wrap--filters {
+.shell--mobile .shell__header:has(.shell-docs-sections) .shell__title-wrap--filters,
+.shell--mobile .shell__header:has(.shell-legal-sections) .shell__title-wrap--filters {
   grid-area: filters;
   display: flex;
   align-items: center;
@@ -1408,7 +1462,8 @@ onUnmounted(() => {
   width: 100%;
 }
 
-.shell--mobile .shell__header:has(.shell-docs-sections) .shell-docs-sections {
+.shell--mobile .shell__header:has(.shell-docs-sections) .shell-docs-sections,
+.shell--mobile .shell__header:has(.shell-legal-sections) .shell-legal-sections {
   width: 100%;
   max-width: 100%;
   height: var(--shell-header-row-h);
@@ -1418,7 +1473,8 @@ onUnmounted(() => {
   align-items: center;
 }
 
-.shell--mobile .shell__header:has(.shell-docs-sections) .shell-docs-sections .segmented-filter__btn {
+.shell--mobile .shell__header:has(.shell-docs-sections) .shell-docs-sections .segmented-filter__btn,
+.shell--mobile .shell__header:has(.shell-legal-sections) .shell-legal-sections .segmented-filter__btn {
   flex: 0 0 auto;
   height: calc(var(--shell-header-row-h) - 0.3rem);
   padding: 0 0.55rem;

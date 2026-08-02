@@ -125,7 +125,7 @@ onUnmounted(() => {
           </svg>
         </span>
         <span class="dashboard-lobby-card__text">
-          <span class="dashboard-lobby-card__title">Добавить рейтинг</span>
+          <span class="dashboard-lobby-card__title">Создать турнир</span>
           <span class="dashboard-lobby-card__desc">Новая таблица для турнира или серии игр</span>
         </span>
       </button>
@@ -146,14 +146,14 @@ onUnmounted(() => {
       </button>
     </div>
 
-    <p v-if="loading" class="dashboard__text">Загружаем рейтинги…</p>
+    <p v-if="loading" class="dashboard__text">Загружаем турниры…</p>
     <div v-else-if="loadError" class="dashboard__page-error">
       <AppPageError :message="loadError" @retry="loadRatings" />
     </div>
 
     <div v-else-if="ratings.length" class="dashboard__created">
       <div class="dashboard__created-head">
-        <h2 class="dashboard__created-title">Созданные рейтинги</h2>
+        <h2 class="dashboard__created-title">Созданные турниры</h2>
       </div>
       <ul class="dashboard__created-list">
         <li v-for="item in ratings" :key="item.id">
@@ -225,7 +225,7 @@ onUnmounted(() => {
           <div class="app-modal__wrap" role="dialog" aria-modal="true" aria-labelledby="rating-create-title">
             <div class="app-modal__panel">
               <div class="app-modal__head">
-                <h3 id="rating-create-title" class="app-modal__title">Создать рейтинг</h3>
+                <h3 id="rating-create-title" class="app-modal__title">Создать турнир</h3>
                 <button type="button" class="app-modal__close" :disabled="createSubmitting" @click="closeCreate">×</button>
               </div>
               <form class="app-modal__body app-modal__body--tight" @submit.prevent="submitCreate">

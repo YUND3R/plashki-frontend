@@ -83,6 +83,7 @@ export type RatingGameResult = {
   nickname: string
   first_name?: string | null
   last_name?: string | null
+  photo_url?: string | null
   role: RatingGameRole
   bonus_points: number
   total_points: number
@@ -243,6 +244,8 @@ function normalizeRatingGameResult(raw: unknown): RatingGameResult | null {
     nickname,
     first_name: typeof row.first_name === 'string' ? row.first_name : null,
     last_name: typeof row.last_name === 'string' ? row.last_name : null,
+    photo_url:
+      typeof row.photo_url === 'string' && row.photo_url.trim() ? row.photo_url.trim() : null,
     role: role as RatingGameRole,
     bonus_points: Number.isFinite(row.bonus_points) ? Number(row.bonus_points) : 0,
     total_points: Number.isFinite(row.total_points) ? Number(row.total_points) : 0,

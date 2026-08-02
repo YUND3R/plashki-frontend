@@ -271,6 +271,7 @@ async function submitAddGame() {
       winner_side: addGameWinner.value,
       results,
     })
+    ratingsUi.bumpDetailRefresh()
     ratingsUi.setDetailTab('games')
     await router.push({ name: 'rating-detail', params: { ratingId: ratingId.value } })
   } catch (e) {

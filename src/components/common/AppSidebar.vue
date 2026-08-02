@@ -11,7 +11,6 @@ import iconDocumentation from '@/assets/icons/documentation.svg?url'
 import iconMessage from '@/assets/icons/messege_with_us.svg?url'
 import iconControl from '@/assets/icons/control.svg?url'
 import iconRatings from '@/assets/icons/ratings.svg?url'
-import iconOverlay from '@/assets/icons/overlay.svg?url'
 const props = withDefaults(defineProps<{ mobileDrawer?: boolean; isAdmin?: boolean }>(), {
   mobileDrawer: false,
   isAdmin: false,
@@ -43,10 +42,9 @@ const mainSection = [
 const streamSection = [
   { to: '/dashboard', label: 'Панель управления', icon: iconControl },
   { to: '/card-design', label: 'Дизайн карточек', icon: iconDesignCard },
-  { to: '/overlay', label: 'Overlay', icon: iconOverlay },
 ] as const
 
-const ratingsSection = [{ to: '/ratings', label: 'Рейтинги', icon: iconRatings }] as const
+const ratingsSection = [{ to: '/ratings', label: 'Создать турнир', icon: iconRatings }] as const
 
 const adminSection = [{ to: '/admin/users', label: 'Пользователи', icon: iconProfiles }] as const
 </script>
@@ -97,6 +95,7 @@ const adminSection = [{ to: '/admin/users', label: 'Пользователи', i
             class="sidebar__icon-img"
             :class="{
               'sidebar__icon-img--account': item.to === '/account',
+              'sidebar__icon-img--profiles': item.to === '/profiles',
               'sidebar__icon-img--message': item.to === '/contact',
             }"
             :src="item.icon"
@@ -117,12 +116,18 @@ const adminSection = [{ to: '/admin/users', label: 'Пользователи', i
         :title="collapsed ? item.label : undefined"
       >
         <span class="sidebar__icon" aria-hidden="true">
-          <img class="sidebar__icon-img" :src="item.icon" alt="" width="20" height="20" />
+          <img
+            class="sidebar__icon-img"
+            :src="item.icon"
+            alt=""
+            width="20"
+            height="20"
+          />
         </span>
         <span v-if="!collapsed" class="sidebar__label">{{ item.label }}</span>
       </RouterLink>
 
-      <p v-if="!collapsed" class="sidebar__group sidebar__group--spaced">Рейтинги</p>
+      <p v-if="!collapsed" class="sidebar__group sidebar__group--spaced">Турниры</p>
       <RouterLink
         v-for="item in ratingsSection"
         :key="item.to"
@@ -151,6 +156,12 @@ const adminSection = [{ to: '/admin/users', label: 'Пользователи', i
         <span v-if="!collapsed" class="sidebar__label">{{ item.label }}</span>
       </RouterLink>
     </nav>
+
+    <footer v-if="!collapsed" class="sidebar__footer">
+      <RouterLink :to="{ name: 'legal' }" class="sidebar__footer-link">
+        Политика конфиденциальности
+      </RouterLink>
+    </footer>
 
   </aside>
 </template>
@@ -374,6 +385,34 @@ const adminSection = [{ to: '/admin/users', label: 'Пользователи', i
   padding: 0.55rem 0.35rem;
 }
 
+.sidebar__footer {
+  flex-shrink: 0;
+  margin-top: auto;
+  padding: 0.85rem 0.85rem 1rem;
+  border-top: 1px solid #e8e8ec;
+}
+
+.sidebar__footer-link {
+  display: block;
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: #6b7280;
+  text-decoration: none;
+}
+
+.sidebar__footer-link:hover {
+  color: #374151;
+  background: #f9fafb;
+}
+
+.sidebar__footer-link.router-link-active {
+  color: #2f6feb;
+  font-weight: 500;
+  background: #eef4ff;
+}
+
 .sidebar--mobile-drawer {
   width: 100%;
   min-height: 100%;
@@ -412,6 +451,10 @@ const adminSection = [{ to: '/admin/users', label: 'Пользователи', i
   .sidebar__group {
     margin-left: 0.4rem;
     font-size: 0.625rem;
+  }
+
+  .sidebar__footer {
+    padding: 0.55rem 0.5rem 0.85rem;
   }
 
 }

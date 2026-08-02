@@ -1617,7 +1617,7 @@ async function openAddToRatingModal() {
     const rows = await listRatings()
     addToRatingRatings.value = rows
     addToRatingSelectedId.value = rows[0]?.id ?? ''
-    if (!rows.length) addToRatingError.value = 'Сначала создайте рейтинг в разделе «Рейтинги».'
+    if (!rows.length) addToRatingError.value = 'Сначала создайте турнир в разделе «Создать турнир».'
   } catch (e) {
     addToRatingError.value = e instanceof Error ? e.message : 'Не удалось загрузить список рейтингов'
   } finally {
@@ -2394,7 +2394,7 @@ async function resetBestMove() {
                         v-if="addToRatingRatingMenuOpen"
                         class="add-to-rating-panel__menu"
                         role="listbox"
-                        aria-label="Рейтинги"
+                        aria-label="Создать турнир"
                       >
                         <button
                           v-for="rating in addToRatingRatings"

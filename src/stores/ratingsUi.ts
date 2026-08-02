@@ -22,6 +22,8 @@ export const useRatingsUiStore = defineStore('ratingsUi', () => {
   const detailDeleting = ref(false)
   const tableSearchQuery = ref('')
   const gamesSearchQuery = ref('')
+  /** Инкремент после добавления игры — RatingDetailView перезагружает таблицу и список игр. */
+  const detailRefreshToken = ref(0)
 
   function setOpenCreateHandler(fn: (() => void) | null) {
     openCreateHandler = fn
@@ -71,6 +73,10 @@ export const useRatingsUiStore = defineStore('ratingsUi', () => {
     addGameOpen.value = value
   }
 
+  function bumpDetailRefresh() {
+    detailRefreshToken.value += 1
+  }
+
   function resetDetailUi() {
     detailTitle.value = ''
     detailTab.value = 'table'
@@ -79,6 +85,7 @@ export const useRatingsUiStore = defineStore('ratingsUi', () => {
     detailDeleting.value = false
     tableSearchQuery.value = ''
     gamesSearchQuery.value = ''
+    detailRefreshToken.value = 0
     detailActionHandlers = null
   }
 
@@ -90,11 +97,13 @@ export const useRatingsUiStore = defineStore('ratingsUi', () => {
     detailDeleting,
     tableSearchQuery,
     gamesSearchQuery,
+    detailRefreshToken,
     setOpenCreateHandler,
     requestOpenCreate,
     setDetailTitle,
     setDetailTab,
     setAddGameOpen,
+    bumpDetailRefresh,
     setDetailActionHandlers,
     setCanAddGame,
     setDetailDeleting,

@@ -129,8 +129,16 @@ function roleLabel(role: RatingGameRole): string {
   return addGameRoleOptions.find((opt) => opt.value === role)?.label ?? role
 }
 
-function roleBadgeClass(role: RatingGameRole): string {
-  return `ratings-modal__game-role-badge ratings-modal__game-role-badge--${role}`
+function roleIcon(role: RatingGameRole): string {
+  return addGameRoleOptions.find((opt) => opt.value === role)?.icon ?? ''
+}
+
+function roleIconToneClass(role: RatingGameRole): string {
+  return `ratings-modal__game-role-icon--${role}`
+}
+
+function roleBadgeClass(_role: RatingGameRole): string {
+  return 'ratings-modal__game-role-badge'
 }
 
 function gameDisplayTitle(item: { title: string; played_at: string }): string {
@@ -145,8 +153,16 @@ function formatBestMove(values: string[] | undefined): string {
   return filled.length ? filled.join(' · ') : '—'
 }
 
-function gameResultFullName(result: RatingGameResult): string {
-  return [result.first_name, result.last_name].filter(Boolean).join(' ')
+function gameResultPhoto(result: RatingGameResult): string {
+  const fromResult = result.photo_url?.trim()
+  if (fromResult) return fromResult
+  return participantPhoto(result.player_card_id)
+}
+
+function gameResultInitials(result: RatingGameResult): string {
+  const fromName = `${result.first_name?.[0] || ''}${result.last_name?.[0] || ''}`.trim()
+  if (fromName) return fromName.toUpperCase()
+  return (result.nickname?.[0] || '?').toUpperCase()
 }
 
 function toDateInputValue(value: string): string {
@@ -426,6 +442,13 @@ async function loadRating() {
   } finally {
     detailLoading.value = false
     tableLoading.value = false
+  }
+}
+
+async function refreshDetailData() {
+  await loadRating()
+  if (detailTab.value === 'games') {
+    await loadGames()
   }
 }
 
@@ -716,10 +739,8 @@ async function submitAddGame() {
       results,
     })
     ratingsUi.setAddGameOpen(false)
-    await loadRating()
-    if (detailTab.value === 'games') {
-      await loadGames()
-    }
+    ratingsUi.bumpDetailRefresh()
+    await refreshDetailData()
   } catch (e) {
     addGameError.value = e instanceof Error ? e.message : 'Не удалось добавить игру'
   } finally {
@@ -740,6 +761,15 @@ watch(detailTab, (tab) => {
     void loadGames()
   }
 })
+
+watch(
+  () => ratingsUi.detailRefreshToken,
+  () => {
+    if (!ratingsUi.detailRefreshToken) return
+    gamesPage.value = 0
+    void refreshDetailData()
+  },
+)
 
 let gamesSearchTimer: ReturnType<typeof setTimeout> | null = null
 watch(gamesSearchQuery, () => {
@@ -785,7 +815,7 @@ onMounted(() => {
     onDelete: removeRating,
   })
   document.addEventListener('visibilitychange', onPageVisible)
-  void loadRating()
+  void refreshDetailData()
 })
 
 onUnmounted(() => {
@@ -1306,25 +1336,17 @@ function onPageVisible() {
                   <h3 id="rating-game-detail-title" class="app-modal__title">
                     {{ gameDetail ? gameDisplayTitle(gameDetail) : 'Игра' }}
                   </h3>
-                  <p v-if="gameDetail && !gameDetailLoading && !gameDetailError" class="ratings-modal__game-detail-meta">
-                    <span>{{ formatDate(gameDetail.played_at) }}</span>
-                    <span class="ratings-games-list__dot" aria-hidden="true">·</span>
-                    <span>{{ gameDetail.results.length }} игроков</span>
-                    <span class="ratings-games-list__dot" aria-hidden="true">·</span>
-                    <span>{{ gameSourceLabel(gameDetail.source ?? 'manual') }}</span>
-                  </p>
-                </div>
-                <button type="button" class="app-modal__close" :disabled="gameDetailLoading" @click="closeGameDetail">×</button>
-              </div>
-              <div class="app-modal__body ratings-modal__game-detail-body">
-                <div v-if="gameDetailLoading" class="ratings-modal__game-detail-status">
-                  <p class="dashboard__text">Загружаем игру…</p>
-                </div>
-                <div v-else-if="gameDetailError" class="ratings-modal__game-detail-status">
-                  <p class="app-modal__banner" role="alert">{{ gameDetailError }}</p>
-                </div>
-                <template v-else-if="gameDetail">
-                  <div class="ratings-modal__game-detail-top">
+                  <div
+                    v-if="gameDetail && !gameDetailLoading && !gameDetailError"
+                    class="ratings-modal__game-detail-meta-row"
+                  >
+                    <p class="ratings-modal__game-detail-meta">
+                      <span>{{ formatDate(gameDetail.played_at) }}</span>
+                      <span class="ratings-games-list__dot" aria-hidden="true">·</span>
+                      <span>{{ gameDetail.results.length }} игроков</span>
+                      <span class="ratings-games-list__dot" aria-hidden="true">·</span>
+                      <span>{{ gameSourceLabel(gameDetail.source ?? 'manual') }}</span>
+                    </p>
                     <span
                       class="ratings-games-list__winner ratings-games-list__winner--large"
                       :class="{
@@ -1335,32 +1357,63 @@ function onPageVisible() {
                       Победа: {{ winnerLabel(gameDetail.winner_side) }}
                     </span>
                   </div>
-                  <div class="ratings-modal__game-rows ratings-modal__game-rows--detail">
-                    <div class="ratings-modal__game-row ratings-modal__game-row--head">
-                      <span>Игрок</span>
-                      <span>Роль</span>
-                      <span>Доп.</span>
-                      <span>Итог</span>
-                      <span>ЛХ</span>
-                    </div>
+                </div>
+                <button type="button" class="app-modal__close" :disabled="gameDetailLoading" @click="closeGameDetail">×</button>
+              </div>
+              <div class="app-modal__body ratings-modal__game-detail-body">
+                <div v-if="gameDetailLoading" class="ratings-modal__game-detail-status">
+                  <p class="dashboard__text">Загружаем игру…</p>
+                </div>
+                <div v-else-if="gameDetailError" class="ratings-modal__game-detail-status">
+                  <p class="app-modal__banner" role="alert">{{ gameDetailError }}</p>
+                </div>
+                <div v-else-if="gameDetail" class="ratings-modal__game-table-scroll">
+                  <div class="ratings-modal__game-table">
+                  <div class="ratings-modal__game-row ratings-modal__game-row--head">
+                    <span>Игрок</span>
+                    <span>Роль</span>
+                    <span>ЛХ</span>
+                    <span>Доп.</span>
+                    <span>Итог</span>
+                  </div>
+                  <div class="ratings-modal__game-table-body">
                     <div
                       v-for="row in gameDetail.results"
                       :key="row.player_card_id"
                       class="ratings-modal__game-row ratings-modal__game-row--detail"
                     >
                       <span class="ratings-modal__game-player">
-                        <span class="ratings-modal__game-player-nick">{{ row.nickname }}</span>
-                        <span v-if="gameResultFullName(row)" class="ratings-modal__game-player-name">
-                          {{ gameResultFullName(row) }}
+                        <span class="ratings-modal__game-player-avatar" aria-hidden="true">
+                          <img
+                            v-if="gameResultPhoto(row)"
+                            :src="gameResultPhoto(row)"
+                            alt=""
+                            class="ratings-modal__game-player-avatar-img"
+                          />
+                          <span v-else class="ratings-modal__game-player-avatar-ph">{{ gameResultInitials(row) }}</span>
                         </span>
+                        <span class="ratings-modal__game-player-nick">{{ row.nickname }}</span>
                       </span>
-                      <span :class="roleBadgeClass(row.role)">{{ roleLabel(row.role) }}</span>
+                      <span
+                        :class="roleBadgeClass(row.role)"
+                        :title="roleLabel(row.role)"
+                        :aria-label="roleLabel(row.role)"
+                        role="img"
+                      >
+                        <img
+                          :src="roleIcon(row.role)"
+                          alt=""
+                          class="ratings-modal__game-role-icon"
+                          :class="roleIconToneClass(row.role)"
+                        />
+                      </span>
+                      <span class="ratings-modal__game-best-move">{{ formatBestMove(row.best_move) }}</span>
                       <span class="ratings-modal__game-points">{{ num(row.bonus_points) }}</span>
                       <span class="ratings-modal__game-points ratings-modal__game-points--total">{{ num(row.total_points) }}</span>
-                      <span class="ratings-modal__game-best-move">{{ formatBestMove(row.best_move) }}</span>
                     </div>
                   </div>
-                </template>
+                  </div>
+                </div>
               </div>
               <div class="app-modal__actions app-modal__actions--end ratings-modal__game-detail-actions">
                 <button type="button" class="app-modal__btn-secondary" :disabled="gameDetailLoading" @click="closeGameDetail">

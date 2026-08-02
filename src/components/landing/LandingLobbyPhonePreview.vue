@@ -34,7 +34,9 @@ const PHONE_ASPECT = `${PHONE_WIDTH} / ${PHONE_HEIGHT}`
   width: 100%;
   height: auto;
   aspect-ratio: v-bind(PHONE_ASPECT);
-  filter: drop-shadow(0 28px 56px rgba(15, 23, 42, 0.22));
+  box-shadow:
+    0 24px 48px rgba(15, 23, 42, 0.2),
+    0 0 0 1px rgba(148, 163, 184, 0.12);
   user-select: none;
   pointer-events: none;
 }

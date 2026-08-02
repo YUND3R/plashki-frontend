@@ -41,8 +41,8 @@ const PREVIEW_BOUNDS: Record<'classic' | 'masters-yug25' | 'plus', PreviewBounds
 
 /** Фото выступает выше плашки — как .photo-mask { top: -40px } и classic photo-float. */
 const PHOTO_TOP_BLEED: Record<'classic' | 'masters-yug25' | 'plus', number> = {
-  classic: 22,
-  'masters-yug25': MASTERS_PHOTO_MASK_TOP_OFFSET,
+  classic: 28,
+  'masters-yug25': MASTERS_PHOTO_MASK_TOP_OFFSET + 8,
   plus: 0,
 }
 
@@ -51,12 +51,12 @@ const STAGE_PAD_X = 16
 
 const targetPlateWidth = computed(() => {
   if (props.size !== 'showcase') return 296
-  return plateCount.value === 1 ? 500 : 420
+  return plateCount.value === 1 ? 720 : 520
 })
 
 const stageInnerHeight = computed(() => {
   if (props.size !== 'showcase') return 378
-  return plateCount.value === 1 ? 620 : 560
+  return plateCount.value === 1 ? 920 : 680
 })
 
 const rootRef = ref<HTMLElement | null>(null)
@@ -73,9 +73,14 @@ const bounds = computed(
 
 const plateHeight = computed(() => bounds.value.h)
 
-const photoTopBleed = computed(
-  () => PHOTO_TOP_BLEED[variant.value as keyof typeof PHOTO_TOP_BLEED] ?? 0,
-)
+const photoTopBleed = computed(() => {
+  const key = variant.value as keyof typeof PHOTO_TOP_BLEED
+  const base = PHOTO_TOP_BLEED[key] ?? 0
+  if (props.size !== 'showcase') return base
+  if (key === 'classic') return 56
+  if (key === 'masters-yug25') return MASTERS_PHOTO_MASK_TOP_OFFSET + 52
+  return base
+})
 
 /** Высота HTML-контейнера scale: плашка + зона фото над ней (как в overlay). */
 const renderHeight = computed(() => plateHeight.value + photoTopBleed.value)
@@ -204,30 +209,52 @@ function mastersRoleIsDoubleSeat(seatNum: number): boolean {
   return seatNum >= 10
 }
 
+function mastersRoleClass(role: string | null | undefined): string {
+  const value = normalizedRole(role)
+  if (value === 'peaceful') return 'odpp-masters--peaceful'
+  if (value === 'sheriff') return 'odpp-masters--sheriff'
+  if (value === 'don') return 'odpp-masters--don'
+  if (value === 'mafia') return 'odpp-masters--mafia'
+  return ''
+}
+
 let resizeObserver: ResizeObserver | null = null
+let resizeListener: (() => void) | null = null
+
+function applyRootSize(width: number, height: number) {
+  if (width > 0) rootWidth.value = width
+  if (height > 0) rootHeight.value = height
+}
 
 function syncRootSize() {
   if (!rootRef.value) return
   const rect = rootRef.value.getBoundingClientRect()
-  if (rect.width > 0) rootWidth.value = rect.width
-  if (rect.height > 0) rootHeight.value = rect.height
+  applyRootSize(rect.width, rect.height)
 }
 
 onMounted(() => {
   syncRootSize()
   requestAnimationFrame(syncRootSize)
-  if (!rootRef.value || typeof ResizeObserver === 'undefined') return
-  resizeObserver = new ResizeObserver((entries) => {
-    const rect = entries[0]?.contentRect
-    if (!rect) return
-    if (rect.width > 0) rootWidth.value = rect.width
-    if (rect.height > 0) rootHeight.value = rect.height
+
+  if (!rootRef.value || typeof ResizeObserver === 'undefined') {
+    if (props.size === 'showcase') {
+      resizeListener = () => requestAnimationFrame(syncRootSize)
+      window.addEventListener('resize', resizeListener, { passive: true })
+    }
+    return
+  }
+
+  resizeObserver = new ResizeObserver(() => {
+    requestAnimationFrame(syncRootSize)
   })
   resizeObserver.observe(rootRef.value)
 })
 
 onUnmounted(() => {
   resizeObserver?.disconnect()
+  if (resizeListener) {
+    window.removeEventListener('resize', resizeListener)
+  }
 })
 </script>
 
@@ -272,7 +299,13 @@ onUnmounted(() => {
         <article
           v-else-if="variant === 'masters-yug25'"
           class="odpp-masters"
-          :class="{ 'odpp-masters--no-photo': !hasPhoto(player) }"
+          :class="[
+            mastersRoleClass(player?.game_role),
+            {
+              'odpp-masters--no-photo': !hasPhoto(player),
+              'odpp-masters--seat-double': mastersRoleIsDoubleSeat(displaySeatNumber(idx)),
+            },
+          ]"
         >
           <div v-if="hasPhoto(player)" class="odpp-masters__photo-mask">
             <div class="odpp-masters__photo-stage">
@@ -284,12 +317,16 @@ onUnmounted(() => {
             </div>
           </div>
           <span class="odpp-masters__head">
-            <img :src="mastersSeatIcon(idx)" alt="" class="odpp-masters__seat-icon" />
+            <span
+              class="odpp-masters__seat"
+              :class="{ 'odpp-masters__seat--double': mastersRoleIsDoubleSeat(displaySeatNumber(idx)) }"
+            >
+              <img :src="mastersSeatIcon(idx)" alt="" class="odpp-masters__seat-icon" />
+            </span>
           </span>
           <span
             v-if="roleIcon(player?.game_role)"
             class="odpp-masters__role-center"
-            :class="{ 'odpp-masters__role-center--double': mastersRoleIsDoubleSeat(displaySeatNumber(idx)) }"
           >
             <img
               :src="roleIcon(player?.game_role)"
@@ -355,7 +392,8 @@ onUnmounted(() => {
 .odpp--single.odpp--showcase {
   width: 100%;
   height: 100%;
-  align-items: flex-end;
+  align-items: flex-start;
+  justify-content: center;
 }
 
 .odpp__cell {
@@ -368,7 +406,6 @@ onUnmounted(() => {
   position: absolute;
   left: 50%;
   bottom: 0;
-  will-change: transform;
 }
 
 .odpp-classic,
@@ -532,8 +569,44 @@ onUnmounted(() => {
   );
 }
 
-.odpp-masters--no-photo::before {
+.odpp-masters::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  border-radius: 5px;
   background: none;
+  opacity: 1;
+}
+
+.odpp-masters--peaceful::after {
+  background:
+    radial-gradient(160px 94px at 42% 86%, rgba(220, 24, 62, 0.95) 0%, rgba(220, 24, 62, 0.35) 42%, rgba(4, 6, 12, 0) 100%);
+}
+
+.odpp-masters--sheriff::after {
+  background:
+    radial-gradient(160px 94px at 42% 86%, rgba(34, 197, 94, 0.92) 0%, rgba(34, 197, 94, 0.34) 42%, rgba(4, 6, 12, 0) 100%);
+}
+
+.odpp-masters--don::after {
+  background:
+    radial-gradient(160px 94px at 42% 86%, rgba(147, 51, 234, 0.95) 0%, rgba(147, 51, 234, 0.36) 42%, rgba(4, 6, 12, 0) 100%);
+}
+
+.odpp-masters--mafia::after {
+  background:
+    radial-gradient(160px 94px at 42% 86%, rgba(109, 40, 217, 0.95) 0%, rgba(109, 40, 217, 0.36) 42%, rgba(4, 6, 12, 0) 100%);
+}
+
+.odpp-masters--no-photo::before,
+.odpp-masters--no-photo::after {
+  background: none;
+}
+
+.odpp-masters--no-photo::after {
+  opacity: 0;
 }
 
 .odpp-masters__photo-mask {
@@ -554,6 +627,23 @@ onUnmounted(() => {
   transform-origin: center center;
 }
 
+.odpp--showcase.odpp--single .odpp-masters__photo-mask {
+  top: -80px;
+}
+
+.odpp--showcase.odpp--single .odpp-masters__photo-stage {
+  transform: translate(16px, -26px) scale(1.18);
+}
+
+.odpp--showcase.odpp--single.odpp--classic .odpp-classic__photo-float {
+  height: 132px;
+  bottom: 44px;
+}
+
+.odpp--showcase.odpp--single.odpp--classic .odpp-classic__top {
+  overflow: visible;
+}
+
 .odpp-masters__photo {
   position: absolute;
   inset: 0;
@@ -565,10 +655,24 @@ onUnmounted(() => {
 
 .odpp-masters__head {
   position: absolute;
-  top: 12px;
+  top: 6px;
   left: 12px;
   z-index: 5;
   display: inline-flex;
+  align-items: flex-start;
+  gap: 0;
+}
+
+.odpp-masters__seat {
+  display: inline-flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  min-width: 28px;
+  margin-left: -10px;
+}
+
+.odpp-masters__seat--double {
+  min-width: 34px;
 }
 
 .odpp-masters__seat-icon {
@@ -608,7 +712,7 @@ onUnmounted(() => {
   pointer-events: none;
 }
 
-.odpp-masters__role-center--double {
+.odpp-masters--seat-double .odpp-masters__role-center {
   top: 13px;
   left: 42px;
 }

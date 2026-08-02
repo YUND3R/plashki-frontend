@@ -74,8 +74,12 @@ const router = createRouter({
           path: 'landing',
           name: 'landing',
           meta: { title: 'plashki' },
-          component: () => import('@/views/LandingView.vue'),
+          component: () => import('@/layouts/LandingLayout.vue'),
         },
+        { path: 'landing/plates', redirect: { name: 'landing', hash: '#plates' } },
+        { path: 'landing/host', redirect: { name: 'landing', hash: '#host' } },
+        { path: 'landing/integrations', redirect: { name: 'landing', hash: '#integrations' } },
+        { path: 'landing/ratings', redirect: { name: 'landing', hash: '#ratings' } },
         {
           path: 'account',
           name: 'account',
@@ -116,6 +120,12 @@ const router = createRouter({
           component: () => import('@/views/ContactView.vue'),
         },
         {
+          path: 'legal',
+          name: 'legal',
+          meta: { title: 'Политика конфиденциальности' },
+          component: () => import('@/views/LegalView.vue'),
+        },
+        {
           path: 'dashboard',
           name: 'dashboard',
           meta: { title: 'Панель управления' },
@@ -124,13 +134,13 @@ const router = createRouter({
         {
           path: 'ratings',
           name: 'ratings',
-          meta: { title: 'Рейтинги' },
+          meta: { title: 'Создать турнир' },
           component: () => import('@/views/RatingsView.vue'),
         },
         {
           path: 'ratings/:ratingId',
           name: 'rating-detail',
-          meta: { title: 'Рейтинг' },
+          meta: { title: 'Турнир' },
           component: () => import('@/views/RatingDetailView.vue'),
         },
         {
