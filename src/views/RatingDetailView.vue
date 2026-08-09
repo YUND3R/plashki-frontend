@@ -8,6 +8,8 @@ import {
   addRatingParticipants,
   createRatingGame,
   deleteRating,
+  deleteRatingGame,
+  deleteRatingParticipant,
   getRating,
   getRatingGame,
   getRatingTable,
@@ -45,6 +47,7 @@ const detailError = ref<string | null>(null)
 const tableRows = ref<RatingTableRow[]>([])
 const tableLoading = ref(false)
 const tableError = ref<string | null>(null)
+const pageActionError = ref<string | null>(null)
 
 const editOpen = ref(false)
 const editSubmitting = ref(false)
@@ -59,6 +62,7 @@ const addPlayersError = ref<string | null>(null)
 const addPlayersSearch = ref('')
 const availableCards = ref<PlayerCard[]>([])
 const selectedCardIds = ref<string[]>([])
+const removingParticipantCardId = ref<string | null>(null)
 const PLAYERS_PAGE_LIMIT = 100
 
 const addGameSubmitting = ref(false)
@@ -97,6 +101,7 @@ const gameDetailOpen = ref(false)
 const gameDetailLoading = ref(false)
 const gameDetailError = ref<string | null>(null)
 const gameDetail = ref<RatingGame | null>(null)
+const gameDetailDeleting = ref(false)
 
 const addGameRoleOptions: AddGameRoleOption[] = [
   { value: 'peaceful', label: 'Мирный', icon: civilianRoleIcon, toneClass: 'add-game-role-stepper__icon--peaceful' },
@@ -256,6 +261,10 @@ function bestMoveHitCount(row: RatingTableRow, hits: 0 | 1 | 2 | 3): number {
   return row.best_move_count_3
 }
 
+function bestMoveHitTitle(hits: 0 | 1 | 2 | 3): string {
+  return `${hits}/3 — угадано ${hits} черных (дон/мафия), порядок не важен`
+}
+
 function numBestMoveSum(v: number): string {
   return v > 0 ? num(v) : '0'
 }
@@ -283,6 +292,25 @@ function cardInitials(card: PlayerCard): string {
   const fromName = `${card.first_name?.[0] || ''}${card.last_name?.[0] || ''}`.trim()
   if (fromName) return fromName.toUpperCase()
   return (card.nickname?.[0] || '?').toUpperCase()
+}
+
+function canRemoveParticipant(playerCardId: string): boolean {
+  return removingParticipantCardId.value !== playerCardId
+}
+
+async function removeParticipantFromRating(row: RatingTableRow) {
+  if (!ratingId.value || removingParticipantCardId.value) return
+  if (!window.confirm(`Удалить игрока «${row.nickname}» из рейтинга?`)) return
+  removingParticipantCardId.value = row.player_card_id
+  pageActionError.value = null
+  try {
+    await deleteRatingParticipant(ratingId.value, row.player_card_id)
+    await refreshDetailData()
+  } catch (e) {
+    pageActionError.value = e instanceof Error ? e.message : 'Не удалось удалить игрока из рейтинга'
+  } finally {
+    removingParticipantCardId.value = null
+  }
 }
 
 const filteredTableRows = computed(() => {
@@ -412,10 +440,43 @@ async function openGameDetail(gameId: string) {
 }
 
 function closeGameDetail() {
-  if (gameDetailLoading.value) return
+  if (gameDetailLoading.value || gameDetailDeleting.value) return
   gameDetailOpen.value = false
   gameDetail.value = null
   gameDetailError.value = null
+}
+
+async function removeGameFromDetail() {
+  const game = gameDetail.value
+  if (!ratingId.value || !game || gameDetailDeleting.value) return
+  if (!window.confirm(`Удалить игру «${gameDisplayTitle(game)}»?`)) return
+  gameDetailDeleting.value = true
+  gameDetailError.value = null
+  try {
+    await deleteRatingGame(ratingId.value, game.id)
+    gameDetailOpen.value = false
+    gameDetail.value = null
+    gameDetailError.value = null
+    await loadGames()
+    await loadRating()
+  } catch (e) {
+    gameDetailError.value = e instanceof Error ? e.message : 'Не удалось удалить игру'
+  } finally {
+    gameDetailDeleting.value = false
+  }
+}
+
+function editGameFromDetail() {
+  const game = gameDetail.value
+  if (!ratingId.value || !game || gameDetailLoading.value || gameDetailDeleting.value) return
+  gameDetailOpen.value = false
+  gameDetail.value = null
+  gameDetailError.value = null
+  void router.push({
+    name: 'rating-add-game',
+    params: { ratingId: ratingId.value },
+    query: { gameId: game.id },
+  })
 }
 
 async function loadRating() {
@@ -489,11 +550,12 @@ async function removeRating() {
   if (deleting.value || !ratingDetail.value) return
   if (!window.confirm(`Удалить рейтинг «${ratingDetail.value.name}»?`)) return
   deleting.value = true
+  pageActionError.value = null
   try {
     await deleteRating(ratingId.value)
     await router.push({ name: 'ratings' })
   } catch (e) {
-    alert(e instanceof Error ? e.message : 'Не удалось удалить рейтинг')
+    pageActionError.value = e instanceof Error ? e.message : 'Не удалось удалить рейтинг'
   } finally {
     deleting.value = false
   }
@@ -978,6 +1040,9 @@ function onPageVisible() {
     </div>
 
     <div v-else class="ratings-page">
+      <p v-if="pageActionError" class="app-modal__banner ratings-page__inline-banner" role="alert">
+        {{ pageActionError }}
+      </p>
       <div v-if="detailLoading || tableLoading" class="ratings-page__status">
         <p class="dashboard__text">Загружаем таблицу…</p>
       </div>
@@ -1046,6 +1111,15 @@ function onPageVisible() {
                         <span v-else class="ratings-table__avatar-ph">{{ rowInitials(slot.row) }}</span>
                       </span>
                       <span class="ratings-table__nick">{{ slot.row.nickname }}</span>
+                      <button
+                        type="button"
+                        class="ratings-table__remove-player-btn"
+                        :disabled="!canRemoveParticipant(slot.row.player_card_id)"
+                        title="Удалить игрока из рейтинга"
+                        @click="removeParticipantFromRating(slot.row)"
+                      >
+                        {{ removingParticipantCardId === slot.row.player_card_id ? '…' : '×' }}
+                      </button>
                     </div>
                   </td>
                   <td class="ratings-table__total">{{ num(slot.row.total_points_sum) }}</td>
@@ -1069,7 +1143,7 @@ function onPageVisible() {
                         v-for="slotHit in bestMoveHitSlots"
                         :key="slotHit.hits"
                         class="ratings-table__lh-hit"
-                        :title="`${slotHit.label} — количество`"
+                        :title="bestMoveHitTitle(slotHit.hits)"
                       >
                         <span class="ratings-table__lh-hit-label">{{ slotHit.label }}</span>
                         <span class="ratings-table__lh-hit-value">
@@ -1358,7 +1432,7 @@ function onPageVisible() {
                     </span>
                   </div>
                 </div>
-                <button type="button" class="app-modal__close" :disabled="gameDetailLoading" @click="closeGameDetail">×</button>
+                <button type="button" class="app-modal__close" :disabled="gameDetailLoading || gameDetailDeleting" @click="closeGameDetail">×</button>
               </div>
               <div class="app-modal__body ratings-modal__game-detail-body">
                 <div v-if="gameDetailLoading" class="ratings-modal__game-detail-status">
@@ -1416,7 +1490,25 @@ function onPageVisible() {
                 </div>
               </div>
               <div class="app-modal__actions app-modal__actions--end ratings-modal__game-detail-actions">
-                <button type="button" class="app-modal__btn-secondary" :disabled="gameDetailLoading" @click="closeGameDetail">
+                <button
+                  v-if="gameDetail && !gameDetailLoading"
+                  type="button"
+                  class="app-modal__btn-primary"
+                  :disabled="gameDetailDeleting"
+                  @click="editGameFromDetail"
+                >
+                  Редактировать
+                </button>
+                <button
+                  v-if="gameDetail && !gameDetailLoading"
+                  type="button"
+                  class="app-modal__btn-danger"
+                  :disabled="gameDetailDeleting"
+                  @click="removeGameFromDetail"
+                >
+                  {{ gameDetailDeleting ? 'Удаление…' : 'Удалить игру' }}
+                </button>
+                <button type="button" class="app-modal__btn-secondary" :disabled="gameDetailLoading || gameDetailDeleting" @click="closeGameDetail">
                   Закрыть
                 </button>
               </div>

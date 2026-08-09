@@ -56,6 +56,7 @@ export type RatingGameResultWrite = {
   role: RatingGameRole
   bonus_points: number
   total_points: number
+  best_move?: string[]
 }
 
 export type RatingGameWrite = {
@@ -63,6 +64,22 @@ export type RatingGameWrite = {
   played_at: string
   winner_side: RatingWinnerSide
   results: RatingGameResultWrite[]
+}
+
+export type RatingGamePatch = {
+  title?: string
+  played_at?: string
+  winner_side?: RatingWinnerSide
+  results?: RatingGameResultWrite[]
+}
+
+export type RatingGameBestMoveEntry = {
+  player_card_id: string
+  best_move: string[]
+}
+
+export type RatingGameBestMovePatch = {
+  results: RatingGameBestMoveEntry[]
 }
 
 export type RatingSyncLobbyTotalPointEntry = {
@@ -507,10 +524,26 @@ export async function addRatingParticipants(ratingId: string, body: RatingAddPar
   return rating
 }
 
+export async function deleteRatingParticipant(ratingId: string, playerCardId: string): Promise<Rating> {
+  const data = await apiFetch<unknown>(`/ratings/${ratingId}/participants/${playerCardId}`, {
+    method: 'DELETE',
+  })
+  const rating = normalizeRating(data)
+  if (!rating) throw new Error('Некорректный ответ при удалении игрока из рейтинга')
+  return rating
+}
+
 export async function createRatingGame(ratingId: string, body: RatingGameWrite): Promise<RatingGame> {
   const data = await apiFetchJson<unknown>(`/ratings/${ratingId}/games`, body, { method: 'POST' })
   const game = normalizeRatingGame(data)
   if (!game) throw new Error('Некорректный ответ при добавлении игры')
+  return game
+}
+
+export async function patchRatingGame(ratingId: string, gameId: string, body: RatingGamePatch): Promise<RatingGame> {
+  const data = await apiFetchJson<unknown>(`/ratings/${ratingId}/games/${gameId}`, body, { method: 'PATCH' })
+  const game = normalizeRatingGame(data)
+  if (!game) throw new Error('Некорректный ответ при обновлении игры')
   return game
 }
 
@@ -534,6 +567,23 @@ export async function getRatingGame(ratingId: string, gameId: string): Promise<R
   const data = await apiFetch<unknown>(`/ratings/${ratingId}/games/${gameId}`)
   const game = normalizeRatingGame(data)
   if (!game) throw new Error('Некорректный ответ при получении игры')
+  return game
+}
+
+export async function deleteRatingGame(ratingId: string, gameId: string): Promise<void> {
+  await apiFetch<void>(`/ratings/${ratingId}/games/${gameId}`, { method: 'DELETE' })
+}
+
+export async function patchRatingGameBestMove(
+  ratingId: string,
+  gameId: string,
+  body: RatingGameBestMovePatch,
+): Promise<RatingGame> {
+  const data = await apiFetchJson<unknown>(`/ratings/${ratingId}/games/${gameId}/best-move`, body, {
+    method: 'PATCH',
+  })
+  const game = normalizeRatingGame(data)
+  if (!game) throw new Error('Некорректный ответ при обновлении ЛХ')
   return game
 }
 

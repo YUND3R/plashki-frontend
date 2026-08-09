@@ -35,6 +35,7 @@ const displayTitle = computed(
   () => props.title ?? getPageErrorTitle(normalizedMessage.value, kind.value),
 )
 const showAuth = computed(() => props.showAuthActions && kind.value === 'auth')
+const showMessageLine = computed(() => normalizedMessage.value !== displayTitle.value)
 </script>
 
 <template>
@@ -76,26 +77,11 @@ const showAuth = computed(() => props.showAuthActions && kind.value === 'auth')
           <path d="M9.5 12.5l5-5M14.5 12.5l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
         </svg>
 
-        <svg
-          v-else
-          width="28"
-          height="28"
-          viewBox="0 0 24 24"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <path
-            d="M12 8v5m0 3h.01M10.3 4.3l-7.4 12.8A2 2 0 004.6 20h14.8a2 2 0 001.7-2.9L13.7 4.3a2 2 0 00-3.4 0z"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
+        <span v-else class="app-page-error__emoji">😔</span>
       </div>
 
       <h2 class="app-page-error__title">{{ displayTitle }}</h2>
-      <p class="app-page-error__message">{{ normalizedMessage }}</p>
+      <p v-if="showMessageLine" class="app-page-error__message">{{ normalizedMessage }}</p>
 
       <div v-if="$attrs.onRetry" class="app-page-error__actions">
         <button type="button" class="app-page-error__btn app-page-error__btn--retry" @click="emit('retry')">

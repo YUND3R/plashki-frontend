@@ -307,7 +307,7 @@ onUnmounted(() => {
 
 .docs__nav-link {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 0.65rem;
   width: 100%;
   min-width: 0;
@@ -345,6 +345,7 @@ onUnmounted(() => {
 
 .docs__nav-index {
   flex: 0 0 auto;
+  align-self: center;
   width: 1.5rem;
   height: 1.5rem;
   display: inline-flex;

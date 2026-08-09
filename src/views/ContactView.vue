@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onUnmounted, ref, watch } from 'vue'
+import { onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { RouterLink } from 'vue-router'
 import { ApiError } from '@/api/client'
@@ -12,12 +12,9 @@ const { token } = storeToRefs(useAuthStore())
 const contactUi = useContactUiStore()
 const { category } = storeToRefs(contactUi)
 const message = ref('')
-const contactEmail = ref('')
-const emailFieldOpen = ref(false)
-const emailInputRef = ref<HTMLInputElement | null>(null)
 const submitting = ref(false)
 const submitted = ref(false)
-const fieldErrors = ref<{ message?: string; contact_email?: string; form?: string }>({})
+const fieldErrors = ref<{ message?: string; form?: string }>({})
 
 const ERROR_DISPLAY_MS = 5000
 let errorDismissTimer: ReturnType<typeof setTimeout> | null = null
@@ -30,7 +27,7 @@ function clearErrorDismissTimer() {
 }
 
 function hasVisibleErrors(): boolean {
-  return !!(fieldErrors.value.message || fieldErrors.value.contact_email || fieldErrors.value.form)
+  return !!(fieldErrors.value.message || fieldErrors.value.form)
 }
 
 function scheduleErrorDismiss() {
@@ -58,55 +55,23 @@ function setCategory(next: FeedbackCategory) {
   contactUi.setCategory(next)
 }
 
-function isValidEmail(v: string): boolean {
-  const t = v.trim()
-  if (!t) return true
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t)
-}
-
 function resetForm() {
   contactUi.resetCategory()
   message.value = ''
-  contactEmail.value = ''
-  emailFieldOpen.value = false
   clearErrorDismissTimer()
   fieldErrors.value = {}
-}
-
-async function toggleEmailField() {
-  if (submitting.value) return
-  emailFieldOpen.value = true
-  await nextTick()
-  emailInputRef.value?.focus()
-}
-
-function closeEmailField() {
-  if (submitting.value) return
-  emailFieldOpen.value = false
-  if (fieldErrors.value.contact_email) {
-    const next = { ...fieldErrors.value }
-    delete next.contact_email
-    fieldErrors.value = next
-  }
 }
 
 function validate(): boolean {
   fieldErrors.value = {}
   const trimmedMessage = message.value.trim()
-  const trimmedEmail = contactEmail.value.trim()
 
   if (trimmedMessage.length < 10) {
     fieldErrors.value.message = 'Сообщение должно содержать не менее 10 символов'
   } else if (trimmedMessage.length > 4000) {
     fieldErrors.value.message = 'Сообщение не должно превышать 4000 символов'
   }
-
-  if (trimmedEmail && !isValidEmail(trimmedEmail)) {
-    fieldErrors.value.contact_email = 'Введите корректный адрес почты'
-    emailFieldOpen.value = true
-  }
-
-  return !fieldErrors.value.message && !fieldErrors.value.contact_email
+  return !fieldErrors.value.message
 }
 
 function mapSubmitError(e: unknown): void {
@@ -142,7 +107,6 @@ async function onSubmit() {
   fieldErrors.value = {}
 
   const trimmedMessage = message.value.trim()
-  const trimmedEmail = contactEmail.value.trim()
   const pageUrl = typeof window !== 'undefined' ? window.location.href : ''
 
   try {
@@ -150,7 +114,6 @@ async function onSubmit() {
       category: category.value,
       message: trimmedMessage,
       page_url: pageUrl,
-      contact_email: trimmedEmail || undefined,
     })
     resetForm()
     submitted.value = true
@@ -256,47 +219,7 @@ watch(token, (t) => {
 
         <div class="contact-workspace__footer">
           <div class="contact-workspace__footer-bar">
-            <p
-              v-if="fieldErrors.contact_email"
-              class="contact-workspace__inline-error contact-workspace__inline-error--footer"
-              role="alert"
-            >
-              {{ fieldErrors.contact_email }}
-            </p>
-
-            <div
-              class="contact-workspace__footer-actions"
-              :class="{
-                'contact-workspace__footer-actions--joined': emailFieldOpen,
-                'contact-workspace__footer-actions--invalid': !!fieldErrors.contact_email,
-              }"
-            >
-              <div class="contact-workspace__footer-email-slot">
-                <button
-                  v-if="!emailFieldOpen"
-                  type="button"
-                  class="contact-workspace__email-btn"
-                  :disabled="submitting"
-                  @click="toggleEmailField"
-                >
-                  Ввести почту
-                </button>
-                <input
-                  v-else
-                  id="contact-email"
-                  ref="emailInputRef"
-                  v-model="contactEmail"
-                  class="contact-workspace__footer-email-input"
-                  type="email"
-                  name="contact_email"
-                  autocomplete="email"
-                  placeholder="name@example.com"
-                  aria-label="Email для ответа"
-                  :aria-invalid="fieldErrors.contact_email ? 'true' : undefined"
-                  :disabled="submitting"
-                  @keydown.escape.prevent="closeEmailField"
-                />
-              </div>
+            <div class="contact-workspace__footer-actions">
               <button type="submit" class="app-modal__btn-primary contact-workspace__footer-submit" :disabled="submitting">
                 {{ submitting ? 'Отправка…' : 'Отправить' }}
               </button>
@@ -781,128 +704,17 @@ watch(token, (t) => {
 }
 
 .contact-workspace__footer-actions {
-  display: inline-grid;
-  grid-template-columns: 10.75rem auto;
+  display: inline-flex;
+  align-items: center;
   align-items: stretch;
-  gap: 0.5rem;
+  gap: 0;
   flex: 0 0 auto;
   max-width: 100%;
-}
-
-.contact-workspace__footer-actions--joined {
-  gap: 0;
-  border: var(--contact-stroke) solid #93c5fd;
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.contact-workspace__footer-actions--joined:focus-within {
-  border-color: var(--contact-border-focus);
-}
-
-.contact-workspace__footer-actions--invalid,
-.contact-workspace__footer-actions--invalid:focus-within {
-  border-color: #fca5a5;
-}
-
-.contact-workspace__footer-actions--invalid.contact-workspace__footer-actions--joined .contact-workspace__footer-submit {
-  border-left-color: #fca5a5;
-}
-
-.contact-workspace__footer-email-slot {
-  min-width: 0;
-  display: flex;
-}
-
-.contact-workspace__footer-email-input {
-  width: 100%;
-  min-width: 0;
-  min-height: 2.375rem;
-  padding: 0.55rem 0.875rem;
-  box-sizing: border-box;
-  font: inherit;
-  font-size: 1rem;
-  color: #111827;
-  background: #fff;
-  border: var(--contact-stroke) solid #93c5fd;
-  border-radius: 8px;
-}
-
-.contact-workspace__footer-actions--joined .contact-workspace__footer-email-input {
-  border: none;
-  border-radius: 0;
-}
-
-.contact-workspace__footer-email-input:focus,
-.contact-workspace__footer-email-input:focus-visible {
-  outline: none;
-  box-shadow: none;
-}
-
-.contact-workspace__footer-email-input:disabled {
-  opacity: 0.65;
-}
-
-.contact-workspace__footer-email-input::placeholder {
-  color: #9ca3af;
 }
 
 .contact-workspace__footer-submit {
   min-height: 2.375rem;
   white-space: nowrap;
-}
-
-.contact-workspace__footer-actions--joined .contact-workspace__footer-submit {
-  border-radius: 0;
-  border: none;
-  border-left: var(--contact-stroke) solid #93c5fd;
-}
-
-.contact-workspace__footer-actions--joined:focus-within .contact-workspace__footer-submit {
-  border-left-color: var(--contact-border-focus);
-}
-
-.contact-workspace__footer-actions--invalid:focus-within .contact-workspace__footer-submit {
-  border-left-color: #fca5a5;
-}
-
-.contact-workspace__email-btn {
-  width: 100%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 2.375rem;
-  padding: 0.55rem 1rem;
-  font: inherit;
-  font-size: 1rem;
-  font-weight: 500;
-  color: #2f6feb;
-  background: #eff6ff;
-  border: var(--contact-stroke) solid #93c5fd;
-  border-radius: 8px;
-  cursor: pointer;
-  box-sizing: border-box;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-}
-
-.contact-workspace__email-btn:hover:not(:disabled) {
-  background: #dbeafe;
-  border-color: #60a5fa;
-}
-
-.contact-workspace__email-btn:focus {
-  outline: none;
-}
-
-.contact-workspace__email-btn:focus-visible {
-  outline: 2px solid #2f6feb;
-  outline-offset: 2px;
-}
-
-
-.contact-workspace__email-btn:disabled {
-  opacity: 0.65;
-  cursor: not-allowed;
 }
 
 .contact-workspace__footer .app-modal__btn-primary {

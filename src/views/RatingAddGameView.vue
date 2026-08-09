@@ -4,9 +4,12 @@ import { useRoute, useRouter } from 'vue-router'
 import { listPlayerCards, type PlayerCard } from '@/api/playerCards'
 import {
   createRatingGame,
+  getRatingGame,
   getRating,
   getRatingTable,
+  patchRatingGame,
   type Rating,
+  type RatingGame,
   type RatingGameResultWrite,
   type RatingGameRole,
   type RatingTableRow,
@@ -21,6 +24,7 @@ type AddGameSeatRow = {
   seat: number
   player_card_id: string
   role: RatingGameRole | null
+  best_move: [string, string, string]
   bonus_points: string
   total_points: string
 }
@@ -30,10 +34,17 @@ const router = useRouter()
 const ratingsUi = useRatingsUiStore()
 
 const ratingId = computed(() => String(route.params.ratingId ?? ''))
+const editGameId = computed(() => {
+  const raw = route.query.gameId
+  if (typeof raw === 'string' && raw.trim()) return raw.trim()
+  return ''
+})
+const isEditMode = computed(() => !!editGameId.value)
 const ratingDetail = ref<Rating | null>(null)
 const tableRows = ref<RatingTableRow[]>([])
 const loading = ref(false)
 const loadError = ref<string | null>(null)
+const editSourceGame = ref<RatingGame | null>(null)
 
 const addGameSubmitting = ref(false)
 const addGameError = ref<string | null>(null)
@@ -64,9 +75,50 @@ function createEmptyRows(): AddGameSeatRow[] {
     seat: i + 1,
     player_card_id: '',
     role: null,
+    best_move: ['', '', ''],
     bonus_points: '0',
     total_points: '0',
   }))
+}
+
+function bestMoveToSlots(values: string[] | undefined): [string, string, string] {
+  const source = values ?? []
+  return [
+    String(source[0] ?? '').trim(),
+    String(source[1] ?? '').trim(),
+    String(source[2] ?? '').trim(),
+  ]
+}
+
+function onBestMoveSlotInput(row: AddGameSeatRow, slotIndex: 0 | 1 | 2) {
+  const raw = row.best_move[slotIndex] ?? ''
+  const digits = raw.replace(/\D+/g, '').slice(0, 2)
+  row.best_move[slotIndex] = digits
+}
+
+function parseBestMoveSlots(
+  slots: [string, string, string],
+): { values: [string, string, string]; error: string | null } {
+  const values: [string, string, string] = ['', '', '']
+  const seen = new Set<string>()
+  for (let i = 0; i < slots.length; i += 1) {
+    const raw = String(slots[i] ?? '').trim()
+    if (!raw) continue
+    if (!/^\d+$/.test(raw)) {
+      return { values, error: 'ЛХ должен содержать только числа от 1 до 10' }
+    }
+    const num = Number(raw)
+    if (!Number.isInteger(num) || num < 1 || num > 10) {
+      return { values, error: 'ЛХ должен содержать только числа от 1 до 10' }
+    }
+    const normalized = String(num)
+    if (seen.has(normalized)) {
+      return { values, error: 'ЛХ не должен содержать одинаковые места' }
+    }
+    seen.add(normalized)
+    values[i] = normalized
+  }
+  return { values, error: null }
 }
 
 function parsePoints(value: string): number | null {
@@ -100,6 +152,7 @@ function syncAllTotals() {
 function onPlayerChange(row: AddGameSeatRow) {
   if (!row.player_card_id.trim()) {
     row.role = null
+    row.best_move = ['', '', '']
     row.bonus_points = '0'
   }
   syncRowTotal(row)
@@ -159,7 +212,7 @@ function validateAddGameSeats(): string | null {
   if (filled.length !== ADD_GAME_SEATS) {
     return `Заполните все ${ADD_GAME_SEATS} мест - выберите игрока в каждой строке.`
   }
-  if (new Set(filled.map((row) => row.player_card_id)).size !== filled.length) {
+  if (new Set(filled.map((row) => row.player_card_id.trim())).size !== filled.length) {
     return 'Один игрок не может занимать два места за столом.'
   }
 
@@ -217,9 +270,28 @@ async function loadContext() {
     ratingsUi.setDetailTitle(detail.name)
     ratingsUi.setCanAddGame((detail.participants.length ?? 0) >= ADD_GAME_SEATS)
     addGameRows.value = createEmptyRows()
-    addGameTitle.value = ''
-    addGameDate.value = new Date().toISOString().slice(0, 10)
-    addGameWinner.value = 'red'
+    if (isEditMode.value) {
+      const game = await getRatingGame(id, editGameId.value)
+      editSourceGame.value = game
+      addGameTitle.value = game.title
+      addGameDate.value = game.played_at ? game.played_at.slice(0, 10) : ''
+      addGameWinner.value = game.winner_side
+      for (let i = 0; i < ADD_GAME_SEATS; i += 1) {
+        const source = game.results[i]
+        if (!source) continue
+        const target = addGameRows.value[i]
+        target.player_card_id = source.player_card_id
+        target.role = source.role
+        target.best_move = bestMoveToSlots(source.best_move)
+        target.bonus_points = String(source.bonus_points)
+        target.total_points = String(source.total_points)
+      }
+    } else {
+      editSourceGame.value = null
+      addGameTitle.value = ''
+      addGameDate.value = new Date().toISOString().slice(0, 10)
+      addGameWinner.value = 'red'
+    }
     addGameError.value = null
     syncAllTotals()
     if ((detail.participants.length ?? 0) < ADD_GAME_SEATS) {
@@ -254,23 +326,38 @@ async function submitAddGame() {
       addGameError.value = `Выберите роль для места ${row.seat}`
       return
     }
+    const bestMovePayload = parseBestMoveSlots(row.best_move)
+    if (bestMovePayload.error) {
+      addGameError.value = `ЛХ у места ${row.seat}: ${bestMovePayload.error}`
+      return
+    }
     results.push({
       player_card_id: playerCardId,
       role: row.role,
       bonus_points: bonus,
       total_points: total,
+      best_move: bestMovePayload.values,
     })
   }
 
   addGameSubmitting.value = true
   addGameError.value = null
   try {
-    await createRatingGame(ratingId.value, {
-      title: addGameTitle.value.trim(),
-      played_at: addGameDate.value.trim(),
-      winner_side: addGameWinner.value,
-      results,
-    })
+    if (isEditMode.value && editSourceGame.value) {
+      await patchRatingGame(ratingId.value, editSourceGame.value.id, {
+        title: addGameTitle.value.trim(),
+        played_at: addGameDate.value.trim(),
+        winner_side: addGameWinner.value,
+        results,
+      })
+    } else {
+      await createRatingGame(ratingId.value, {
+        title: addGameTitle.value.trim(),
+        played_at: addGameDate.value.trim(),
+        winner_side: addGameWinner.value,
+        results,
+      })
+    }
     ratingsUi.bumpDetailRefresh()
     ratingsUi.setDetailTab('games')
     await router.push({ name: 'rating-detail', params: { ratingId: ratingId.value } })
@@ -307,6 +394,7 @@ onMounted(() => {
       <div class="rating-add-game-page__split">
         <section class="rating-add-game-page__form-col">
           <div class="rating-add-game-page__form-body">
+            <p v-if="isEditMode" class="rating-add-game-page__edit-chip">Редактирование игры</p>
             <input
               v-model="addGameTitle"
               class="rating-add-game-page__input"
@@ -358,6 +446,43 @@ onMounted(() => {
                   @update:model-value="onRoleChange(row)"
                 />
               </div>
+              <div class="rating-add-game-page__cell rating-add-game-page__cell--best-move">
+                <div class="rating-add-game-page__best-move-group">
+                  <input
+                    v-model="row.best_move[0]"
+                    class="rating-add-game-page__best-move-slot"
+                    type="text"
+                    inputmode="numeric"
+                    maxlength="2"
+                    placeholder="x"
+                    :disabled="addGameSubmitting || !row.player_card_id"
+                    :aria-label="`ЛХ 1, место ${row.seat}`"
+                    @input="onBestMoveSlotInput(row, 0)"
+                  />
+                  <input
+                    v-model="row.best_move[1]"
+                    class="rating-add-game-page__best-move-slot"
+                    type="text"
+                    inputmode="numeric"
+                    maxlength="2"
+                    placeholder="x"
+                    :disabled="addGameSubmitting || !row.player_card_id"
+                    :aria-label="`ЛХ 2, место ${row.seat}`"
+                    @input="onBestMoveSlotInput(row, 1)"
+                  />
+                  <input
+                    v-model="row.best_move[2]"
+                    class="rating-add-game-page__best-move-slot"
+                    type="text"
+                    inputmode="numeric"
+                    maxlength="2"
+                    placeholder="x"
+                    :disabled="addGameSubmitting || !row.player_card_id"
+                    :aria-label="`ЛХ 3, место ${row.seat}`"
+                    @input="onBestMoveSlotInput(row, 2)"
+                  />
+                </div>
+              </div>
               <div class="rating-add-game-page__cell rating-add-game-page__cell--total">
                 <input
                   :value="row.total_points"
@@ -407,7 +532,7 @@ onMounted(() => {
 
           <div class="rating-add-game-page__bottom">
             <p class="rating-add-game-page__note">
-              За столом 10 мест: 6 мирных, 2 мафии, 1 дон, 1 шериф. Выберите игрока в каждой строке.
+              За столом 10 мест: 6 мирных, 2 мафии, 1 дон, 1 шериф. ЛХ — до 3 чисел мест черных (дон/мафия без разницы).
             </p>
             <div class="rating-add-game-page__winner">
               <span class="rating-add-game-page__winner-label">Победитель</span>
@@ -435,7 +560,7 @@ onMounted(() => {
           Закрыть
         </button>
         <button type="button" class="app-modal__btn-primary" :disabled="!addGameCanSubmit" @click="submitAddGame">
-          {{ addGameSubmitting ? 'Сохранение…' : 'Сохранить игру' }}
+          {{ addGameSubmitting ? 'Сохранение…' : isEditMode ? 'Сохранить изменения' : 'Сохранить игру' }}
         </button>
       </footer>
     </div>
@@ -491,6 +616,19 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
+}
+
+.rating-add-game-page__edit-chip {
+  margin: 0;
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 0.75rem;
+  font-weight: 600;
 }
 
 .rating-add-game-page__input {
@@ -550,7 +688,7 @@ onMounted(() => {
   flex: 1 1 0;
   min-height: 2.72rem;
   display: grid;
-  grid-template-columns: 1.75rem minmax(16rem, 1fr) 10.2rem 3.4rem 5.25rem;
+  grid-template-columns: 1.75rem minmax(16rem, 1fr) 10.2rem 5.5rem 3.4rem 5.25rem;
   gap: 0.55rem;
   align-items: center;
   padding: 0.35rem 0.55rem;
@@ -641,6 +779,57 @@ onMounted(() => {
 
 .rating-add-game-page__cell--bonus {
   min-width: 0;
+}
+
+.rating-add-game-page__cell--best-move {
+  min-width: 0;
+}
+
+.rating-add-game-page__best-move-input {
+  display: none;
+}
+
+.rating-add-game-page__best-move-group {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 100%;
+  min-height: 2.35rem;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.rating-add-game-page__best-move-group:focus-within {
+  border-color: #2f6feb;
+}
+
+.rating-add-game-page__best-move-slot {
+  width: 100%;
+  border: 0;
+  border-right: 1px solid #e5e7eb;
+  background: transparent;
+  padding: 0.3rem 0.25rem;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: center;
+  color: #334155;
+  min-height: 2rem;
+}
+
+.rating-add-game-page__best-move-slot:last-child {
+  border-right: 0;
+}
+
+.rating-add-game-page__best-move-slot:focus {
+  outline: none;
+  background: #f8fafc;
+}
+
+.rating-add-game-page__best-move-slot::placeholder {
+  color: #94a3b8;
+  font-weight: 500;
 }
 
 .rating-add-game-page__bonus-stepper {
@@ -801,10 +990,10 @@ onMounted(() => {
   .rating-add-game-page__row {
     flex: 0 0 auto;
     min-height: auto;
-    grid-template-columns: 1.35rem minmax(0, 1fr) 2.75rem 4.85rem;
+    grid-template-columns: 1.35rem minmax(0, 1fr) 2.75rem 4.8rem 3rem 4.85rem;
     grid-template-areas:
-      'seat player player player'
-      'seat roles total bonus';
+      'seat player player player player player'
+      'seat roles lh total bonus bonus';
     gap: 0.35rem 0.4rem;
     row-gap: 0.4rem;
     padding: 0.45rem 0.45rem 0.5rem;
@@ -875,6 +1064,12 @@ onMounted(() => {
     grid-area: bonus;
     align-self: center;
     min-width: 0;
+  }
+
+  .rating-add-game-page__cell--best-move {
+    grid-area: lh;
+    min-width: 0;
+    min-height: 2.25rem;
   }
 
   .rating-add-game-page__cell--total {

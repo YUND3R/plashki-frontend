@@ -1,9 +1,14 @@
 export const AUTH_REQUIRED_MESSAGE = 'Вы не зарегистрированы или не авторизованы.'
+export const NETWORK_LOST_MESSAGE = 'Соединение потеряно'
 
 /** Нормализуем «технические» auth-сообщения бэка в понятный текст для UI. */
 export function normalizeApiErrorMessage(rawMessage: string): string {
   const message = rawMessage.trim()
   if (!message) return message
+
+  if (/failed\s+to\s+fetch|networkerror|load failed|network request failed/i.test(message)) {
+    return NETWORK_LOST_MESSAGE
+  }
 
   if (
     message === 'Авторизуйтесь или зарегистрируйтесь.' ||
@@ -56,6 +61,8 @@ export function getPageErrorKind(message: string | null | undefined): PageErrorK
 }
 
 export function getPageErrorTitle(message: string | null | undefined, kind?: PageErrorKind): string {
+  const normalized = normalizeApiErrorMessage((message ?? '').trim())
+  if (normalized === NETWORK_LOST_MESSAGE) return NETWORK_LOST_MESSAGE
   const resolvedKind = kind ?? getPageErrorKind(message)
   switch (resolvedKind) {
     case 'auth':

@@ -505,7 +505,6 @@ onUnmounted(() => {
             v-else-if="showRatingDetailHeader"
             class="shell__header-actions shell__header-actions--rating-detail"
           >
-            <RatingDetailHeaderToolbar />
             <div
               class="segmented-filter segmented-filter--inline segmented-filter--compact shell-rating-detail-tabs"
               role="tablist"
@@ -532,6 +531,7 @@ onUnmounted(() => {
                 Игры
               </button>
             </div>
+            <RatingDetailHeaderToolbar />
           </div>
           <div
             v-else-if="showDashboardHeader"

@@ -160,6 +160,10 @@
   background: #fff;
 }
 
+.ratings-page__inline-banner {
+  margin: 0.75rem 1.15rem 0;
+}
+
 .ratings-page__status {
   padding: 0.85rem 1.15rem;
   background: #f8fafc;
@@ -832,6 +836,36 @@
   min-width: 0;
 }
 
+.ratings-table__remove-player-btn {
+  margin-left: auto;
+  width: 1.5rem;
+  height: 1.5rem;
+  min-width: 1.5rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  background: #fff;
+  color: #94a3b8;
+  font: inherit;
+  font-size: 0.9rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.ratings-table__remove-player-btn:hover:not(:disabled) {
+  color: #dc2626;
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.ratings-table__remove-player-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
 .ratings-table__avatar,
 .ratings-table__avatar-ph {
   width: 3.25rem;
@@ -1106,6 +1140,13 @@
   .ratings-table__player {
     gap: 0.5rem;
     min-width: 0;
+  }
+
+  .ratings-table__remove-player-btn {
+    width: 1.35rem;
+    height: 1.35rem;
+    min-width: 1.35rem;
+    font-size: 0.8rem;
   }
 
   .ratings-table__avatar,
