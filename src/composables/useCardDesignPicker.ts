@@ -1,14 +1,11 @@
 import { computed, ref, watch, type Ref } from 'vue'
-import { storeToRefs } from 'pinia'
 import {
-  getLobby,
   getLobbyOverlayDesigns,
   setLobbyOverlayDesign,
   type LobbyOverlayDesignOption,
   type LobbyPlayer,
 } from '@/api/lobbies'
-import { purchaseOverlayDesign } from '@/api/shop'
-import { useCardsUiStore } from '@/stores/cardsUi'
+import { getOverlayDesignShopCatalog, purchaseOverlayDesign } from '@/api/shop'
 import { normalizeOverlayDesignCode } from '@/utils/overlayPersistentMessage'
 import { notifyOverlayLobbyChanged } from '@/utils/overlayLobbySync'
 import {
@@ -17,8 +14,9 @@ import {
   formatDesignPriceRub,
   formatDesignRentalLabel,
 } from '@/utils/overlayDesignPricing'
-import { enrichLobbyPhotoLayouts } from '@/utils/overlayPhotoLayoutBridge'
 import { AUTH_REQUIRED_MESSAGE } from '@/utils/apiErrorMessage'
+import { mockPreviewPlayer } from '@/constants/landingContent'
+import { contentAssets } from '@/utils/contentAssets'
 
 const AUTH_REQUIRED_TEXT = AUTH_REQUIRED_MESSAGE
 
@@ -31,9 +29,6 @@ export function useCardDesignPicker(
   lobbyId: Ref<string>,
   options: UseCardDesignPickerOptions = {},
 ) {
-  const cardsUi = useCardsUiStore()
-  const { designFilter } = storeToRefs(cardsUi)
-
   const loading = ref(false)
   const saving = ref(false)
   const rentingDesignCode = ref<string | null>(null)
@@ -45,12 +40,7 @@ export function useCardDesignPicker(
   const initialSelectedDesign = ref('')
   const previewSeats = ref<Array<LobbyPlayer | null>>([])
 
-  const filteredDesigns = computed(() => {
-    if (designFilter.value === 'available') {
-      return designs.value.filter((item) => item.selectable)
-    }
-    return designs.value
-  })
+  const filteredDesigns = computed(() => designs.value)
 
   const hasUnsavedChanges = computed(
     () => !!selectedDesign.value && selectedDesign.value !== initialSelectedDesign.value,
@@ -92,25 +82,48 @@ export function useCardDesignPicker(
       .join(' ')
   }
 
-  async function loadPreviewSeatsForLobby() {
-    if (!lobbyId.value) {
-      previewSeats.value = []
-      return
-    }
-    try {
-      const lobby = await getLobby(lobbyId.value)
-      const enriched = await enrichLobbyPhotoLayouts(lobby)
-      previewSeats.value = enriched.players.slice(0, 3)
-    } catch {
-      previewSeats.value = []
-    }
+  function loadPreviewSeatsForLobby() {
+    previewSeats.value = [
+      mockPreviewPlayer('Неаполь', 1, 'sheriff', contentAssets.neapol),
+      mockPreviewPlayer('Vortex', 2, 'don', contentAssets.vortex),
+      mockPreviewPlayer('Luna', 3, 'mafia', contentAssets.lunaCutout),
+    ]
+  }
+
+  function pickDefaultSelectableDesign(options: LobbyOverlayDesignOption[]): string {
+    const selectable = options.find((item) => item.selectable)
+    if (selectable?.code?.trim()) return selectable.code.trim()
+    const first = options[0]?.code?.trim()
+    return first || ''
   }
 
   async function loadDesignsForLobby(options: { silent?: boolean } = {}) {
     if (!lobbyId.value) {
-      designs.value = []
-      selectedDesign.value = ''
-      initialSelectedDesign.value = ''
+      if (!options.silent) {
+        loading.value = true
+      }
+      error.value = null
+      if (!options.silent) {
+        saveMessage.value = null
+        rentMessage.value = null
+      }
+      try {
+        const catalog = await getOverlayDesignShopCatalog()
+        const items = catalog.items ?? []
+        designs.value = items
+        const fallback = pickDefaultSelectableDesign(items)
+        selectedDesign.value = fallback
+        initialSelectedDesign.value = fallback
+      } catch (e) {
+        error.value = e instanceof Error ? e.message : String(e)
+        designs.value = []
+        selectedDesign.value = ''
+        initialSelectedDesign.value = ''
+      } finally {
+        if (!options.silent) {
+          loading.value = false
+        }
+      }
       return
     }
     if (!options.silent) {
@@ -151,7 +164,9 @@ export function useCardDesignPicker(
     try {
       const result = await purchaseOverlayDesign({ design_code: code })
       await loadDesignsForLobby({ silent: true })
-      selectedDesign.value = code
+      if (!lobbyId.value || selectedDesign.value !== code) {
+        selectedDesign.value = code
+      }
       const expiresLabel = formatDesignAccessExpires(result.expires_at)
       rentMessage.value = expiresLabel
         ? `Аренда «${designTitle(code)}» активна до ${expiresLabel}.`
@@ -193,7 +208,6 @@ export function useCardDesignPicker(
   )
 
   return {
-    designFilter,
     loading,
     saving,
     rentingDesignCode,

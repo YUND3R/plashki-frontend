@@ -12,8 +12,6 @@ import profilesGridIcon from '@/assets/icons/plitka.svg'
 import { useAuthStore } from '@/stores/auth'
 import { useDashboardUiStore } from '@/stores/dashboardUi'
 import type { DashboardLobbyFilter } from '@/stores/dashboardUi'
-import { useCardsUiStore } from '@/stores/cardsUi'
-import type { CardDesignFilter } from '@/stores/cardsUi'
 import { useProfilesUiStore } from '@/stores/profilesUi'
 import type { ProfilesPlayerFilter } from '@/stores/profilesUi'
 import { useRatingsUiStore } from '@/stores/ratingsUi'
@@ -39,8 +37,6 @@ const {
 } = storeToRefs(profilesUi)
 const dashboardUi = useDashboardUiStore()
 const { lobbyFilter, createLobbyOpen } = storeToRefs(dashboardUi)
-const cardsUi = useCardsUiStore()
-const { designFilter } = storeToRefs(cardsUi)
 const lobbyManageUi = useLobbyManageUiStore()
 const { designPickerOpen, designPickerLobbyTitle, addToRatingOpen } = storeToRefs(lobbyManageUi)
 const contactUi = useContactUiStore()
@@ -61,11 +57,6 @@ const FILTER_OPTIONS: { value: DashboardLobbyFilter; label: string }[] = [
   { value: 'gomafia', label: 'Загруженные из GoMafia' },
 ]
 
-const CARD_DESIGN_FILTER_OPTIONS: { value: CardDesignFilter; label: string }[] = [
-  { value: 'all', label: 'Все плашки' },
-  { value: 'available', label: 'Доступные мне' },
-]
-
 const PROFILES_FILTER_OPTIONS: { value: ProfilesPlayerFilter; label: string }[] = [
   { value: 'all', label: 'Все игроки' },
   { value: 'mine', label: 'Созданные мной' },
@@ -84,10 +75,6 @@ function setDashboardFilter(next: DashboardLobbyFilter) {
 
 function setProfilesPlayerFilter(next: ProfilesPlayerFilter) {
   profilesUi.playerFilter = next
-}
-
-function setCardDesignFilter(next: CardDesignFilter) {
-  cardsUi.designFilter = next
 }
 
 function setContactCategory(next: FeedbackCategory) {
@@ -126,12 +113,6 @@ const showRatingDetailHeader = computed(
 const showDashboardHeader = computed(
   () => route.name === 'dashboard' && !!token.value && !createLobbyOpen.value,
 )
-/** Страница «Все дизайны карточек» и выбор в лобби: фильтр плашек в шапке справа. */
-const showCardDesignHeader = computed(() => {
-  if (!token.value) return false
-  if (route.name === 'card-design') return true
-  return route.name === 'lobby-manage' && designPickerOpen.value
-})
 /** Страница «Управление лобби»: панель действий в шапке (скрыта при выборе дизайна). */
 const showLobbyManageHeader = computed(
   () => route.name === 'lobby-manage' && !!token.value && !designPickerOpen.value && !addToRatingOpen.value,
@@ -548,31 +529,6 @@ onUnmounted(() => {
               autocomplete="off"
               aria-label="Поиск лобби по названию турнира"
             />
-          </div>
-          <div
-            v-else-if="showCardDesignHeader"
-            class="shell__header-actions shell__header-actions--card-design"
-            role="toolbar"
-            aria-label="Фильтр списка плашек"
-          >
-            <div
-              class="segmented-filter segmented-filter--inline segmented-filter--compact shell-dashboard-filters"
-              role="radiogroup"
-              aria-label="Показать плашки"
-            >
-              <button
-                v-for="opt in CARD_DESIGN_FILTER_OPTIONS"
-                :key="opt.value"
-                type="button"
-                role="radio"
-                class="segmented-filter__btn"
-                :class="{ 'segmented-filter__btn--active': designFilter === opt.value }"
-                :aria-checked="designFilter === opt.value"
-                @click="setCardDesignFilter(opt.value)"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
           </div>
           <div v-else-if="showLobbyManageHeader" class="shell__header-actions shell__header-actions--lobby-manage">
             <LobbyManageHeaderToolbar />

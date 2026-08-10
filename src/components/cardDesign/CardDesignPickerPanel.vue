@@ -1,25 +1,23 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { storeToRefs } from 'pinia'
 import OverlayDesignPlatePreview from '@/components/overlay/OverlayDesignPlatePreview.vue'
 import AppPageError from '@/components/common/AppPageError.vue'
 import { useCardDesignPicker } from '@/composables/useCardDesignPicker'
-import { useCardsUiStore } from '@/stores/cardsUi'
-import type { CardDesignFilter } from '@/stores/cardsUi'
+import { demoPhotoLayoutForDesign } from '@/utils/contentAssets'
 
 const props = withDefaults(
   defineProps<{
     lobbyId: string
     saveSuccessMessage?: string
     showLobbyContext?: boolean
-    showInlineFilter?: boolean
     showCancel?: boolean
+    showSaveAction?: boolean
   }>(),
   {
     saveSuccessMessage: undefined,
     showLobbyContext: true,
-    showInlineFilter: false,
     showCancel: false,
+    showSaveAction: true,
   },
 )
 
@@ -27,18 +25,6 @@ const emit = defineEmits<{
   saved: []
   close: []
 }>()
-
-const cardsUi = useCardsUiStore()
-const { designFilter } = storeToRefs(cardsUi)
-
-const CARD_DESIGN_FILTER_OPTIONS: { value: CardDesignFilter; label: string }[] = [
-  { value: 'all', label: 'Все плашки' },
-  { value: 'available', label: 'Доступные мне' },
-]
-
-function setDesignFilter(next: CardDesignFilter) {
-  cardsUi.designFilter = next
-}
 
 const lobbyIdRef = computed(() => props.lobbyId)
 
@@ -48,7 +34,6 @@ const {
   error,
   saveMessage,
   rentMessage,
-  designs,
   selectedDesign,
   initialSelectedDesign,
   previewSeats,
@@ -69,6 +54,14 @@ const {
 })
 
 const radioName = computed(() => `overlay-design-${props.lobbyId || 'none'}`)
+const showFooter = computed(
+  () =>
+    props.showSaveAction ||
+    props.showCancel ||
+    !!saveMessage.value ||
+    !!rentMessage.value ||
+    (props.showLobbyContext && !!props.lobbyId && !loading.value && !!initialSelectedDesign.value),
+)
 
 async function onSave() {
   await saveDesign()
@@ -77,30 +70,25 @@ async function onSave() {
 function onCancel() {
   emit('close')
 }
+
+function previewSeatsForDesign(designCode: string) {
+  return previewSeats.value.map((player) => {
+    if (!player) return null
+    const photoUrl = (player.lobby_photo_url ?? player.photo_urls?.[0] ?? '').trim()
+    if (!photoUrl) return player
+    return {
+      ...player,
+      photo_layouts: {
+        ...(player.photo_layouts ?? {}),
+        [photoUrl]: demoPhotoLayoutForDesign(photoUrl, designCode),
+      },
+    }
+  })
+}
 </script>
 
 <template>
   <section class="card-design__designs" aria-label="Доступные дизайны">
-    <div v-if="showInlineFilter" class="card-design__inline-toolbar">
-      <div
-        class="segmented-filter segmented-filter--inline segmented-filter--compact card-design__inline-filters"
-        role="radiogroup"
-        aria-label="Показать плашки"
-      >
-        <button
-          v-for="opt in CARD_DESIGN_FILTER_OPTIONS"
-          :key="opt.value"
-          type="button"
-          role="radio"
-          class="segmented-filter__btn"
-          :class="{ 'segmented-filter__btn--active': designFilter === opt.value }"
-          :aria-checked="designFilter === opt.value"
-          @click="setDesignFilter(opt.value)"
-        >
-          {{ opt.label }}
-        </button>
-      </div>
-    </div>
     <div class="card-design__designs-body">
       <p v-if="loading" class="card-design__status">
         <span class="card-design__spinner" aria-hidden="true" />
@@ -135,90 +123,77 @@ function onCancel() {
               :disabled="!item.selectable || saving"
             />
 
-            <OverlayDesignPlatePreview
-              class="card-design__preview"
-              :design-code="item.code"
-              :seats="previewSeats"
-            />
-
-            <span class="card-design__option-body">
-              <span class="card-design__option-info">
-                <span class="card-design__option-title-block">
-                  <span
-                    v-if="designUsesPhotoCutout(item.code)"
-                    class="design-cutout-hint"
-                    tabindex="0"
-                    role="note"
-                    aria-label="Фотки должны быть вырезаны"
-                    @click.stop
-                    @mousedown.stop
-                  >
-                    <span class="design-cutout-hint__icon" aria-hidden="true" />
-                    <span class="design-cutout-hint__tip" role="tooltip">Фотки должны быть вырезаны</span>
+            <span class="card-design__option-layout">
+              <span class="card-design__option-meta-card">
+                <span class="card-design__option-meta-top">
+                  <span class="card-design__option-title-wrap">
+                    <span class="card-design__option-title-block">
+                      <span class="card-design__option-title">{{ item.title }}</span>
+                    </span>
+                    <span class="card-design__option-price">{{ formatDesignPriceRub(item.price_rub) }}</span>
                   </span>
-                  <span class="card-design__option-title">{{ item.title }}</span>
                 </span>
-                <span
-                  v-if="item.code === initialSelectedDesign"
-                  class="card-design__badge card-design__badge--active"
-                >
-                  Активный
+                <span class="card-design__option-meta-bottom">
+                  <span class="card-design__option-details">
+                    <span class="card-design__detail">
+                      {{ formatDesignRentalLabel(item.rental_hours) }}
+                    </span>
+                    <span v-if="formatDesignAccessLabel(item.access_expires_at)" class="card-design__detail">
+                      {{ formatDesignAccessLabel(item.access_expires_at) }}
+                    </span>
+                    <span class="card-design__detail">
+                      Анимации: {{ item.animations_supported ? 'Да' : 'Нет' }}
+                    </span>
+                    <span
+                      v-if="designUsesPhotoCutout(item.code)"
+                      class="card-design__detail"
+                      aria-label="Для дизайна нужны фото без фона"
+                    >
+                      Фото без фона
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    class="card-design__rent"
+                    :disabled="!!isRentingDesign(item.code) || saving"
+                    @click.stop.prevent="rentDesign(item.code)"
+                  >
+                    {{
+                      isRentingDesign(item.code)
+                        ? 'Оформляем…'
+                        : 'Приобрести'
+                    }}
+                  </button>
                 </span>
-                <span v-if="!item.selectable" class="card-design__badge card-design__badge--locked">
-                  Недоступен
-                </span>
-                <span class="card-design__option-price">{{ formatDesignPriceRub(item.price_rub) }}</span>
-                <span class="card-design__chip">
-                  {{ formatDesignRentalLabel(item.rental_hours) }}
-                </span>
-                <span v-if="formatDesignAccessLabel(item.access_expires_at)" class="card-design__chip">
-                  {{ formatDesignAccessLabel(item.access_expires_at) }}
-                </span>
-                <span class="card-design__chip">
-                  Анимации: {{ item.animations_supported ? 'Да' : 'Нет' }}
-                </span>
-                <button
-                  v-if="!item.selectable"
-                  type="button"
-                  class="card-design__rent"
-                  :disabled="!!isRentingDesign(item.code) || saving"
-                  @click.stop.prevent="rentDesign(item.code)"
-                >
-                  {{
-                    isRentingDesign(item.code)
-                      ? 'Оформляем…'
-                      : `Арендовать за ${formatDesignPriceRub(item.price_rub)}`
-                  }}
-                </button>
               </span>
+
+              <OverlayDesignPlatePreview
+                class="card-design__preview"
+                :design-code="item.code"
+                :seats="previewSeatsForDesign(item.code)"
+              />
             </span>
           </label>
         </div>
       </div>
 
-      <p
-        v-else-if="showLobbyContext && lobbyId && designs.length && designFilter === 'available'"
-        class="card-design__status"
-      >
-        Нет доступных вам плашек.
-      </p>
       <p v-else-if="showLobbyContext && lobbyId" class="card-design__status">
         Для этого лобби нет доступных дизайнов.
       </p>
     </div>
 
-    <footer class="card-design__footer">
+    <footer v-if="showFooter" class="card-design__footer">
       <div class="card-design__footer-note">
         <p v-if="showLobbyContext && lobbyId && !loading && initialSelectedDesign" class="card-design__current">
           <span class="card-design__current-label">Сейчас в overlay:</span>
           <span class="card-design__current-value">{{ activeDesignTitle }}</span>
         </p>
-        <p v-else-if="hasUnsavedChanges" class="card-design__unsaved">Есть несохранённые изменения</p>
+        <p v-else-if="showSaveAction && hasUnsavedChanges" class="card-design__unsaved">Есть несохранённые изменения</p>
         <p v-else-if="saveMessage" class="card-design__ok" role="status">{{ saveMessage }}</p>
         <p v-else-if="rentMessage" class="card-design__ok" role="status">{{ rentMessage }}</p>
-        <p v-else class="card-design__footer-hint">Изменения применятся к overlay после сохранения.</p>
+        <p v-else-if="showSaveAction" class="card-design__footer-hint">Изменения применятся к overlay после сохранения.</p>
       </div>
-      <div class="card-design__footer-actions">
+      <div v-if="showSaveAction || showCancel" class="card-design__footer-actions">
         <button
           v-if="showCancel"
           type="button"
@@ -228,7 +203,7 @@ function onCancel() {
         >
           Отмена
         </button>
-        <button type="button" class="card-design__save" :disabled="!canSave" @click="onSave">
+        <button v-if="showSaveAction" type="button" class="card-design__save" :disabled="!canSave" @click="onSave">
           {{ saving ? 'Сохраняем…' : 'Сохранить дизайн' }}
         </button>
       </div>
@@ -386,8 +361,8 @@ function onCancel() {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-content: start;
-  gap: 0.75rem;
-  padding: 0.75rem 0 1rem;
+  gap: 0.6rem;
+  padding: 0.75rem 0 0.95rem;
   border: none;
   border-bottom: 1px solid #e5e7eb;
   border-radius: 0;
@@ -395,7 +370,7 @@ function onCancel() {
   cursor: pointer;
   box-sizing: border-box;
   overflow: visible;
-  transition: background 0.15s ease;
+  transition: background-color 0.2s ease;
 }
 
 .card-design__option:last-child {
@@ -403,16 +378,15 @@ function onCancel() {
 }
 
 .card-design__option:hover:not(.card-design__option--locked) {
-  background: #f9fafb;
+  background: #fff;
 }
 
 .card-design__option:focus-within:not(.card-design__option--locked) {
-  background: #f8fbff;
+  background: #fff;
 }
 
 .card-design__option--selected {
-  background: #f8fbff;
-  border-left: 3px solid #60a5fa;
+  background: #fff;
 }
 
 .card-design__option--locked {
@@ -439,16 +413,68 @@ function onCancel() {
   white-space: nowrap;
 }
 
-.card-design__badge--active {
-  color: #1d4ed8;
-  background: #dbeafe;
-  border: 1px solid #93c5fd;
+.card-design__option-layout {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(14rem, 18.5rem) minmax(0, 1fr);
+  align-items: stretch;
+  gap: 0.85rem;
+  padding: 0 0.75rem;
+  box-sizing: border-box;
 }
 
-.card-design__badge--locked {
-  color: #9f1239;
-  background: #fff1f2;
-  border: 1px solid #fecaca;
+.card-design__option-meta-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.65rem;
+  min-height: 100%;
+  padding: 1.05rem 1.2rem;
+  border: none;
+  border-radius: 10px;
+  background: #f4f6f8;
+  box-sizing: border-box;
+  transition: background-color 0.2s ease;
+}
+
+.card-design__option--selected .card-design__option-meta-card {
+  background: #f4f6f8;
+}
+
+.card-design__option:hover:not(.card-design__option--locked) .card-design__option-meta-card,
+.card-design__option:focus-within:not(.card-design__option--locked) .card-design__option-meta-card {
+  background: #eef2f5;
+}
+
+.card-design__option--selected:hover .card-design__option-meta-card,
+.card-design__option--selected:focus-within .card-design__option-meta-card {
+  background: #eef2f5;
+}
+
+.card-design__option-meta-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.card-design__option-title-wrap {
+  min-width: 0;
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.12rem 0 0.2rem;
+  justify-items: start;
+  text-align: left;
+}
+
+.card-design__option-meta-bottom {
+  min-height: 1.75rem;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.8rem;
 }
 
 .card-design__preview {
@@ -456,7 +482,7 @@ function onCancel() {
   max-width: 100%;
   overflow: visible;
   background: transparent;
-  padding: 0.35rem 0.75rem 0.5rem 1rem;
+  padding: 0.15rem 0.35rem 0.25rem 0.35rem;
   box-sizing: border-box;
   border: none;
   min-height: 0;
@@ -467,119 +493,99 @@ function onCancel() {
   z-index: 2;
 }
 
-.card-design__option-body {
-  width: 100%;
-  padding: 0 0.75rem;
-  box-sizing: border-box;
-}
-
-.card-design__option-info {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.35rem 0.45rem;
-}
 
 .card-design__option-title-block {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
   min-width: 0;
+  padding: 0.08rem 0;
   margin-right: 0.15rem;
   overflow: visible;
 }
 
-.card-design__option-title-block .design-cutout-hint__tip {
-  left: calc(100% + 0.45rem);
-  bottom: auto;
-  top: 50%;
-  transform: translateY(-50%) translateX(4px);
-  z-index: 200;
-}
-
-.card-design__option-title-block .design-cutout-hint:hover .design-cutout-hint__tip,
-.card-design__option-title-block .design-cutout-hint:focus-visible .design-cutout-hint__tip,
-.card-design__option-title-block .design-cutout-hint:focus .design-cutout-hint__tip {
-  transform: translateY(-50%) translateX(0);
-}
-
-.card-design__option-title-block .design-cutout-hint__tip::after {
-  top: 50%;
-  left: auto;
-  right: 100%;
-  margin-left: 0;
-  margin-top: -4px;
-  border: 4px solid transparent;
-  border-right-color: #f3f4f6;
-  border-top-color: transparent;
-}
-
 .card-design__option-title {
-  font-size: 1rem;
+  font-size: 1.52rem;
   color: #111827;
-  font-weight: 600;
-  line-height: 1.3;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
 .card-design__option-price {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 1.4rem;
-  padding: 0 0.5rem;
-  border: 1px solid #e5e7eb;
-  border-radius: 999px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: #374151;
-  background: #f9fafb;
+  display: inline-block;
+  align-self: flex-start;
+  min-height: 0;
+  padding: 0.1rem 0;
+  border: none;
+  border-radius: 0;
+  font-size: 2.45rem;
+  font-weight: 800;
+  line-height: 1;
+  color: #020617;
+  background: transparent;
 }
 
 .card-design__option--selected .card-design__option-price {
-  border-color: #bfdbfe;
-  background: #fff;
-  color: #1d4ed8;
+  color: #020617;
 }
 
-.card-design__chip {
+@media (max-width: 980px) {
+  .card-design__option-layout {
+    grid-template-columns: 1fr;
+    gap: 0.55rem;
+  }
+}
+
+.card-design__option-details {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.32rem;
+}
+
+.card-design__detail {
   display: inline-flex;
   align-items: center;
-  min-height: 1.35rem;
-  padding: 0 0.5rem;
-  border-radius: 999px;
-  background: #f3f4f6;
-  font-size: 0.75rem;
-  color: #6b7280;
-}
-
-.card-design__option--selected .card-design__chip {
-  background: #eef4ff;
-  color: #4b5563;
+  min-height: 1.25rem;
+  font-size: 0.95rem;
+  font-weight: 450;
+  line-height: 1.25;
+  color: #64748b;
 }
 
 .card-design__rent {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 1.75rem;
-  margin-top: 0.15rem;
-  padding: 0 0.75rem;
-  border: 1px solid #2f6feb;
+  width: auto;
+  align-self: flex-end;
+  flex: 0 0 auto;
+  min-height: 2.2rem;
+  margin: 0;
+  padding: 0.35rem 0.75rem;
+  border: none;
   border-radius: 8px;
-  background: #2f6feb;
-  color: #fff;
+  background: #eaf2fb;
+  color: #2563eb;
   font: inherit;
-  font-size: 0.8125rem;
-  font-weight: 600;
+  font-size: 1.02rem;
+  font-weight: 800;
   cursor: pointer;
   transition:
-    background 0.15s ease,
-    border-color 0.15s ease;
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease;
 }
 
 .card-design__rent:hover:not(:disabled) {
-  background: #2563eb;
-  border-color: #2563eb;
+  background: #dfeaf7;
+  color: #1d4ed8;
+}
+
+.card-design__rent:focus-visible {
+  outline: 2px solid #bfdbfe;
+  outline-offset: 2px;
 }
 
 .card-design__rent:disabled {
