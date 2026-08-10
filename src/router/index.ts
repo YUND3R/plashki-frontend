@@ -30,6 +30,18 @@ const router = createRouter({
       component: () => import('@/views/VerifyEmailView.vue'),
     },
     {
+      path: '/change-email/confirm',
+      name: 'change-email-confirm',
+      meta: { title: 'Подтверждение смены email' },
+      component: () => import('@/views/VerifyEmailView.vue'),
+    },
+    {
+      path: '/auth/change-email/:tokenId/:signature',
+      name: 'change-email-confirm-signed',
+      meta: { title: 'Подтверждение смены email' },
+      component: () => import('@/views/VerifyEmailView.vue'),
+    },
+    {
       path: '/forgot-password',
       name: 'forgot-password',
       meta: { title: 'Восстановление пароля' },

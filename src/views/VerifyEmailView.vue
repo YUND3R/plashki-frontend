@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import logoFull from '@/assets/plashki.svg?url'
 import { verifyEmail } from '@/api/auth'
+import { confirmEmailChange } from '@/api/profileSettings'
 
 const route = useRoute()
 const router = useRouter()
@@ -18,7 +19,36 @@ type VerifyCredentials =
   | { code: string }
   | { token: string }
 
-function readCredentialsFromUrl(): VerifyCredentials | null {
+type ConfirmCredentials = { token_id: string; signature: string }
+type VerificationFlow = 'verify-email' | 'change-email'
+
+const flow = computed<VerificationFlow>(() =>
+  route.name === 'change-email-confirm' || route.name === 'change-email-confirm-signed'
+    ? 'change-email'
+    : 'verify-email',
+)
+
+const pageTitle = computed(() =>
+  flow.value === 'change-email' ? 'Подтверждение смены email' : 'Подтверждение email',
+)
+
+const pageLead = computed(() =>
+  flow.value === 'change-email'
+    ? 'Проверяем ссылку и подтверждаем новый адрес электронной почты.'
+    : 'Проверяем вашу ссылку и активируем аккаунт.',
+)
+
+const loadingText = computed(() =>
+  flow.value === 'change-email' ? 'Подтверждаем смену email…' : 'Подтверждаем email…',
+)
+
+const redirectHint = computed(() =>
+  flow.value === 'change-email'
+    ? 'Смена email подтверждена. Сейчас перенаправим в аккаунт…'
+    : 'Сейчас перенаправим на страницу входа…',
+)
+
+function readVerifyCredentialsFromUrl(): VerifyCredentials | null {
   const hashParams = new URLSearchParams(
     window.location.hash.startsWith('#') ? window.location.hash.slice(1) : '',
   )
@@ -44,37 +74,86 @@ function readCredentialsFromUrl(): VerifyCredentials | null {
   return null
 }
 
-async function runVerification(credentials: VerifyCredentials | null) {
+function readConfirmCredentialsFromUrl(): ConfirmCredentials | null {
+  const hashParams = new URLSearchParams(
+    window.location.hash.startsWith('#') ? window.location.hash.slice(1) : '',
+  )
+  const tokenIdFromPath = typeof route.params.tokenId === 'string' ? route.params.tokenId.trim() : ''
+  const signatureFromPath = typeof route.params.signature === 'string' ? route.params.signature.trim() : ''
+  const tokenIdFromQuery = typeof route.query.token_id === 'string' ? route.query.token_id.trim() : ''
+  const signatureFromQuery = typeof route.query.signature === 'string' ? route.query.signature.trim() : ''
+  const tokenIdFromHash = hashParams.get('token_id')?.trim() ?? hashParams.get('vid')?.trim() ?? ''
+  const signatureFromHash = hashParams.get('signature')?.trim() ?? hashParams.get('sig')?.trim() ?? ''
+
+  if (tokenIdFromPath && signatureFromPath) {
+    return { token_id: tokenIdFromPath, signature: signatureFromPath }
+  }
+  if (tokenIdFromQuery && signatureFromQuery) {
+    return { token_id: tokenIdFromQuery, signature: signatureFromQuery }
+  }
+  if (tokenIdFromHash && signatureFromHash) {
+    return { token_id: tokenIdFromHash, signature: signatureFromHash }
+  }
+  return null
+}
+
+async function runVerification(credentials: VerifyCredentials | ConfirmCredentials | null) {
   loading.value = true
   success.value = false
   error.value = null
   message.value = null
 
   try {
-    const result = credentials ? await verifyEmail(credentials) : null
+    const result = credentials
+      ? flow.value === 'change-email'
+        ? await confirmEmailChange(credentials as ConfirmCredentials)
+        : await verifyEmail(credentials as VerifyCredentials)
+      : null
 
     if (!result) {
       throw new Error('Ссылка подтверждения недействительна или устарела')
     }
 
     success.value = true
-    message.value = result.message ?? 'Email успешно подтвержден.'
+    message.value =
+      result.message ??
+      (flow.value === 'change-email' ? 'Email успешно изменен.' : 'Email успешно подтвержден.')
     redirectTimer = setTimeout(() => {
-      router.push({ name: 'login' })
+      void router.push({ name: flow.value === 'change-email' ? 'account' : 'login' })
     }, 2500)
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Не удалось подтвердить email'
+    error.value =
+      e instanceof Error
+        ? e.message
+        : flow.value === 'change-email'
+          ? 'Не удалось подтвердить смену email'
+          : 'Не удалось подтвердить email'
   } finally {
     loading.value = false
   }
 }
 
 onMounted(async () => {
-  const credentials = readCredentialsFromUrl()
+  const credentials =
+    flow.value === 'change-email'
+      ? readConfirmCredentialsFromUrl()
+      : readVerifyCredentialsFromUrl()
 
   // Очищаем URL заранее, чтобы чувствительные данные не оставались в адресной строке.
-  if (route.name === 'verify-email-signed' || route.query.code || route.query.token || route.hash) {
-    await router.replace({ name: 'verify-email', query: {}, hash: '' })
+  if (
+    route.name === 'verify-email-signed' ||
+    route.name === 'change-email-confirm-signed' ||
+    route.query.code ||
+    route.query.token ||
+    route.query.token_id ||
+    route.query.signature ||
+    route.hash
+  ) {
+    await router.replace({
+      name: flow.value === 'change-email' ? 'change-email-confirm' : 'verify-email',
+      query: {},
+      hash: '',
+    })
   }
 
   await runVerification(credentials)
@@ -98,15 +177,15 @@ onUnmounted(() => {
         <span v-else>!</span>
       </div>
 
-      <h1 class="verify__title">Подтверждение email</h1>
-      <p class="verify__lead">Проверяем вашу ссылку и активируем аккаунт.</p>
+      <h1 class="verify__title">{{ pageTitle }}</h1>
+      <p class="verify__lead">{{ pageLead }}</p>
 
-      <p v-if="loading" class="verify__banner verify__banner--neutral" role="status">Подтверждаем email…</p>
+      <p v-if="loading" class="verify__banner verify__banner--neutral" role="status">{{ loadingText }}</p>
       <p v-else-if="success" class="auth__banner auth__banner--success" role="status">
         {{ message }}
       </p>
       <p v-else class="verify__banner verify__banner--error" role="alert">{{ error }}</p>
-      <p v-if="success" class="verify__hint">Сейчас перенаправим на страницу входа…</p>
+      <p v-if="success" class="verify__hint">{{ redirectHint }}</p>
 
       <div class="verify__actions">
         <RouterLink class="verify__btn verify__btn--primary" :to="{ name: 'landing' }">

@@ -170,13 +170,15 @@ const adminSection = [{ to: '/admin/users', label: 'Пользователи', i
 .sidebar {
   --sidebar-w: 240px;
   --sidebar-w-collapsed: 72px;
+  /* +1px компенсирует верхнюю рамку контентной панели справа */
+  --sidebar-top-h: calc(var(--shell-header-row-h, 2.375rem) + 2 * var(--shell-header-pad-y, 0.75rem) + 1px);
   width: var(--sidebar-w);
   height: 100%;
   min-height: 0;
   display: flex;
   flex-direction: column;
   background: #ffffff;
-  border-right: 1px solid #e8e8ec;
+  border-right: 1px solid #e5e7eb;
   flex-shrink: 0;
   border-radius: 12px;
   overflow: hidden;
@@ -184,7 +186,7 @@ const adminSection = [{ to: '/admin/users', label: 'Пользователи', i
 }
 
 .sidebar--admin {
-  border-color: #fde68a;
+  border-color: #e5e7eb;
 }
 
 .sidebar--collapsed {
@@ -196,11 +198,13 @@ const adminSection = [{ to: '/admin/users', label: 'Пользователи', i
   justify-content: center;
   align-items: center;
   width: 100%;
+  height: var(--sidebar-top-h);
+  min-height: var(--sidebar-top-h);
   box-sizing: border-box;
-  padding: calc(1rem + 10px) 0.75rem calc(0.75rem + 14px);
+  padding: 0 0.75rem;
   text-decoration: none;
   line-height: 0;
-  border-bottom: 1px solid #d0d0d4;
+  border-bottom: 1px solid #e5e7eb;
 }
 
 .sidebar__logo-img {
@@ -213,7 +217,7 @@ const adminSection = [{ to: '/admin/users', label: 'Пользователи', i
 }
 
 .sidebar--collapsed .sidebar__logo {
-  padding: calc(0.85rem + 10px) 0.35rem calc(0.65rem + 12px);
+  padding: 0 0.35rem;
 }
 
 .sidebar--collapsed .sidebar__logo-img {
@@ -431,7 +435,7 @@ const adminSection = [{ to: '/admin/users', label: 'Пользователи', i
   }
 
   .sidebar__logo {
-    padding: calc(0.85rem + 8px) 0.6rem calc(0.65rem + 10px);
+    padding: 0 0.6rem;
   }
 
   .sidebar__collapse {

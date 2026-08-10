@@ -1,8 +1,18 @@
 import type { UserMe } from './auth'
 import { apiFetchFormData, apiFetchJson } from './client'
 
-export type PatchProfileEmailBody = {
-  email: string
+export type ChangeEmailRequestBody = {
+  new_email: string
+  current_password: string
+}
+
+export type ChangeEmailConfirmBody = {
+  token_id: string
+  signature: string
+}
+
+export type MessageResponse = {
+  message?: string
 }
 
 export type PatchMeProfileBody = {
@@ -10,11 +20,14 @@ export type PatchMeProfileBody = {
   last_name: string
 }
 
-/**
- * Смена email: PATCH JSON, ответ 200/204.
- */
-export async function patchProfileEmail(body: PatchProfileEmailBody): Promise<void> {
-  await apiFetchJson<void>('/auth/me/email', body, { method: 'PATCH' })
+/** Запрос на смену email: сервер отправляет письмо подтверждения на новую почту. */
+export async function requestEmailChange(body: ChangeEmailRequestBody): Promise<MessageResponse> {
+  return apiFetchJson<MessageResponse>('/auth/change-email/request', body, { method: 'POST' })
+}
+
+/** Подтверждение смены email по токену из ссылки. */
+export async function confirmEmailChange(body: ChangeEmailConfirmBody): Promise<MessageResponse> {
+  return apiFetchJson<MessageResponse>('/auth/change-email/confirm', body, { method: 'POST' })
 }
 
 /**

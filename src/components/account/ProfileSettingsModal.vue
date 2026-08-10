@@ -6,7 +6,7 @@ import { me, type UserMe } from '@/api/auth'
 import {
   patchMeAvatar,
   patchMeProfile,
-  patchProfileEmail,
+  requestEmailChange,
 } from '@/api/profileSettings'
 import { useAuthStore } from '@/stores/auth'
 import { useProfileSettingsModalStore } from '@/stores/profileSettingsModal'
@@ -23,6 +23,7 @@ const firstName = ref('')
 const lastName = ref('')
 const currentEmail = ref('')
 const newEmail = ref('')
+const currentPasswordForEmail = ref('')
 const avatarUrl = ref<string | null>(null)
 const pendingAvatarFile = ref<File | null>(null)
 const avatarPreviewObjectUrl = ref<string | null>(null)
@@ -58,6 +59,7 @@ function applyFromUser(u: UserMe) {
   lastName.value = u.last_name ?? ''
   currentEmail.value = u.email ?? ''
   newEmail.value = u.email ?? ''
+  currentPasswordForEmail.value = ''
   avatarUrl.value = u.avatar_url?.trim() || null
 }
 
@@ -117,6 +119,10 @@ async function onSubmit() {
       serverError.value = 'Введите корректный адрес почты'
       return
     }
+    if (!currentPasswordForEmail.value.trim()) {
+      serverError.value = 'Введите текущий пароль для смены почты'
+      return
+    }
   }
 
   saving.value = true
@@ -127,11 +133,16 @@ async function onSubmit() {
       resetPendingAvatar()
     }
     if (nextEmail !== currentEmail.value.trim()) {
-      await patchProfileEmail({ email: nextEmail })
-      currentEmail.value = nextEmail
+      await requestEmailChange({
+        new_email: nextEmail,
+        current_password: currentPasswordForEmail.value,
+      })
+      currentPasswordForEmail.value = ''
+      successMessage.value = 'Письмо для подтверждения смены email отправлено на новую почту'
+    } else {
+      successMessage.value = 'Изменения сохранены'
     }
     await loadUser()
-    successMessage.value = 'Изменения сохранены'
   } catch (e) {
     serverError.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -284,6 +295,19 @@ onUnmounted(() => {
                     name="email"
                     autocomplete="email"
                     placeholder="Оставьте без изменений или укажите новую"
+                    :disabled="saving"
+                  />
+                </label>
+
+                <label v-if="newEmail.trim() !== currentEmail.trim()" class="psv__field">
+                  <span class="psv__label">Текущий пароль</span>
+                  <input
+                    v-model="currentPasswordForEmail"
+                    class="psv__input"
+                    type="password"
+                    name="current_password"
+                    autocomplete="current-password"
+                    placeholder="Нужен для подтверждения смены почты"
                     :disabled="saving"
                   />
                 </label>
